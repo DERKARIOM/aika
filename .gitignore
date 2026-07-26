@@ -1,0 +1,15 @@
+.idea
+
+# Linux AppImage
+/app/AppDir
+/app/appimage-build
+
+.refena_inspector/
+
+/secrets
+
+# FVM Version Cache
+.fvm/
+
+# macOS
+.DS_Store
