@@ -59,3 +59,11 @@ bool checkPlatformIsNotWaylandDesktop() {
 bool checkPlatformSupportPayment() {
   return checkPlatform([TargetPlatform.android, TargetPlatform.iOS, TargetPlatform.macOS]);
 }
+
+/// This platform has a `mobile_scanner`-backed live camera QR/barcode scanner.
+/// Windows and Linux are intentionally excluded: no maintained Flutter
+/// plugin currently offers live camera scanning there. On those platforms,
+/// QR pairing falls back to importing a QR code from an image file.
+bool checkPlatformHasLiveQrScanner() {
+  return checkPlatform([TargetPlatform.android, TargetPlatform.iOS, TargetPlatform.macOS], web: true);
+}

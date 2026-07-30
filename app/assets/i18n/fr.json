@@ -461,5 +461,38 @@
     "preview": "Aperçu",
     "whitelist": "Liste blanche",
     "blacklist": "Liste noire"
+  },
+  "qrPairing": {
+    "display": {
+      "title": "Mon QR Code",
+      "buttonTooltip": "Coupler par QR Code",
+      "offline": "Démarrez d'abord la réception (Wi-Fi activé, réception en cours) pour générer un code d'appairage.",
+      "expiration": "Durée de validité",
+      "regenerate": "Régénérer",
+      "expiresIn": "Expire dans {duration}",
+      "expired": "Expiré",
+      "securityNote": "Toute personne qui scanne ce code peut voir l'alias de cet appareil et s'y connecter tant que le code est valide. Régénérez-le si vous l'avez partagé par erreur."
+    },
+    "scan": {
+      "buttonTooltip": "Scanner un QR Code",
+      "title": "Scanner un QR Code",
+      "hint": "Visez le QR Code de l'autre appareil avec la caméra",
+      "importImage": "Importer une image",
+      "notFoundInImage": "Aucun QR Code trouvé dans cette image.",
+      "unreachable": "Impossible de joindre cet appareil. Vérifiez que les deux appareils sont sur le même réseau.",
+      "errorExpired": "Ce QR Code a expiré. Demandez à l'autre appareil d'en générer un nouveau.",
+      "errorUnsupportedVersion": "Ce QR Code a été généré par une version incompatible de l'application.",
+      "errorMalformed": "Ce n'est pas un QR Code d'appairage Aika valide.",
+      "noCameraOnPlatform": "Le scan par caméra n'est pas encore disponible sur cette plateforme. Importez plutôt une image du QR Code.",
+      "cameraUnavailable": "La caméra n'est pas disponible. Vérifiez l'autorisation d'accès à la caméra.",
+      "pairedSnackbar": "Connecté à {alias}"
+    },
+    "confirm": {
+      "title": "Se connecter à cet appareil ?",
+      "description": "La connexion a été vérifiée grâce au certificat de l'appareil. Voulez-vous vous appairer avec lui ?",
+      "fingerprintMismatch": "Attention : l'appareil qui a répondu ne correspond pas au certificat encodé dans le QR Code. Cela peut indiquer que l'adresse a été réattribuée à un autre appareil, ou une tentative d'usurpation. Ne continuez que si vous êtes certain·e.",
+      "connect": "Se connecter",
+      "connectAnyway": "Se connecter quand même"
+    }
   }
 }

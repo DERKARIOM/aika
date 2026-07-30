@@ -100,7 +100,9 @@
         <string>zh-TW</string>
     </array>
 
-	<key>NSPhotoLibraryUsageDescription</key>
+	<key>NSCameraUsageDescription</key>
+    <string>The app uses the camera to scan a Smart QR Code and instantly connect to another device.</string>
+    <key>NSPhotoLibraryUsageDescription</key>
     <string>The app needs photo library access so that the user can select photos to share.</string>
     <key>NSPhotoLibraryAddUsageDescription</key>
     <string>The app saves received media to the photo library.</string>

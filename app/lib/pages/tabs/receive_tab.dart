@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/pages/home_page.dart';
 import 'package:localsend_app/pages/home_page_controller.dart';
+import 'package:localsend_app/pages/qr_pairing_display_page.dart';
 import 'package:localsend_app/pages/receive_history_page.dart';
 import 'package:localsend_app/pages/tabs/receive_tab_vm.dart';
 import 'package:localsend_app/provider/animation_provider.dart';
@@ -294,6 +295,15 @@ class _CornerButtons extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
+            Tooltip(
+              message: t.qrPairing.display.buttonTooltip,
+              child: CustomIconButton(
+                onPressed: () async {
+                  await context.push(() => const QrPairingDisplayPage());
+                },
+                child: const Icon(Icons.qr_code),
+              ),
+            ),
             if (!showAdvanced)
               AnimatedOpacity(
                 opacity: showHistoryButton ? 1 : 0,

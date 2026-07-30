@@ -15,9 +15,17 @@
 
     <uses-permission android:name="android.permission.BIND_QUICK_SETTINGS_TILE" tools:targetApi="24" />
 
+    <!-- Smart QR Code pairing: live camera scanning -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
     <!-- Android TV -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
+    <!-- Camera is used for QR pairing but is not required to use the app
+         (e.g. Android TV, or manual/automatic pairing instead). -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
     <application
         android:label="LocalSend"

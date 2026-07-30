@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:localsend_app/config/theme.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/send_mode.dart';
+import 'package:localsend_app/pages/qr_pairing_scanner_page.dart';
 import 'package:localsend_app/pages/selected_files_page.dart';
 import 'package:localsend_app/pages/tabs/send_tab_vm.dart';
 import 'package:localsend_app/pages/troubleshoot_page.dart';
@@ -20,6 +21,7 @@ import 'package:localsend_app/util/favorites.dart';
 import 'package:localsend_app/util/file_size_helper.dart';
 import 'package:localsend_app/util/native/file_picker.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
+import 'package:localsend_app/util/ui/snackbar.dart';
 import 'package:localsend_app/widget/big_button.dart';
 import 'package:localsend_app/widget/custom_icon_button.dart';
 import 'package:localsend_app/widget/dialogs/add_file_dialog.dart';
@@ -191,6 +193,13 @@ class SendTab extends StatelessWidget {
                       ),
                     ),
                     Tooltip(
+                      message: t.qrPairing.scan.buttonTooltip,
+                      child: CustomIconButton(
+                        onPressed: () async => _onTapQrScan(context),
+                        child: const Icon(Icons.qr_code_scanner),
+                      ),
+                    ),
+                    Tooltip(
                       message: t.dialogs.favoriteDialog.title,
                       child: CustomIconButton(
                         onPressed: () async => await vm.onTapFavorite(context),
@@ -284,6 +293,33 @@ class SendTab extends StatelessWidget {
       },
     );
   }
+}
+
+/// Opens the QR pairing scanner and reacts to the resolved device:
+/// - if files are already selected, starts sending them right away
+///   (same behavior as tapping a device found via manual/automatic scan);
+/// - otherwise, just registers the device as a nearby device so the user
+///   can pick it later, which is the more useful outcome when QR pairing is
+///   used purely to skip waiting for network discovery.
+Future<void> _onTapQrScan(BuildContext context) async {
+  final ref = context.ref;
+  // QrPairingScannerPage already records the device via AddLastDeviceAction
+  // once the pairing is confirmed, so there is no need to repeat it here.
+  final device = await context.pushWithResult<Device, QrPairingScannerPage>(() => const QrPairingScannerPage());
+  if (device == null || !context.mounted) {
+    return;
+  }
+
+  final files = ref.read(selectedSendingFilesProvider);
+  if (files.isEmpty) {
+    await ref.redux(nearbyDevicesProvider).dispatchAsync(RegisterDeviceAction(device));
+    if (context.mounted) {
+      context.showSnackBar(t.qrPairing.scan.pairedSnackbar(alias: device.alias));
+    }
+    return;
+  }
+
+  await ref.notifier(sendProvider).startSession(target: device, files: files, background: false);
 }
 
 /// A button that opens a popup menu to select [T].

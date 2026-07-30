@@ -43,6 +43,10 @@ dependencies:
   # https://github.com/NightFeather0615/macos_dock_progress/issues/1
   # macos_dock_progress: 1.1.0
   mime: 2.0.0
+  # Live camera QR/barcode scanning (Android, iOS, macOS, web).
+  # No maintained plugin currently supports live scanning on Windows/Linux,
+  # see lib/util/native/platform_check.dart#checkPlatformHasLiveQrScanner.
+  mobile_scanner: 7.2.0
   moform: 0.2.11
   nanoid2: 2.0.1
   network_info_plus: 7.0.0
@@ -76,6 +80,10 @@ dependencies:
   window_manager: 0.5.2
   windows_taskbar: 1.1.2
   yaru: 10.2.0
+  # Pure-Dart QR decoding, used to import a QR code from an image file.
+  # This is the *only* way to "scan" a QR code on Windows/Linux, and a handy
+  # fallback everywhere else (e.g. a code received as a picture).
+  zxing2: 0.2.4
 
 dev_dependencies:
   build_runner: 2.15.1
