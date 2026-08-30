@@ -7,9 +7,11 @@ import 'package:localsend_app/config/init.dart';
 import 'package:localsend_app/config/theme.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/pages/home_page_controller.dart';
+import 'package:localsend_app/pages/tabs/chat_tab.dart';
 import 'package:localsend_app/pages/tabs/receive_tab.dart';
 import 'package:localsend_app/pages/tabs/send_tab.dart';
 import 'package:localsend_app/pages/tabs/settings_tab.dart';
+import 'package:localsend_app/provider/chat/chat_conversations_provider.dart';
 import 'package:localsend_app/provider/selection/selected_sending_files_provider.dart';
 import 'package:localsend_app/util/native/cross_file_converters.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
@@ -19,6 +21,7 @@ import 'package:refena_flutter/refena_flutter.dart';
 enum HomeTab {
   receive(Icons.wifi),
   send(Icons.send),
+  chat(Icons.chat_bubble_outline_rounded),
   settings(Icons.settings)
   ;
 
@@ -32,6 +35,8 @@ enum HomeTab {
         return t.receiveTab.title;
       case HomeTab.send:
         return t.sendTab.title;
+      case HomeTab.chat:
+        return t.chat.title;
       case HomeTab.settings:
         return t.settingsTab.title;
     }
@@ -139,7 +144,7 @@ class _HomePageState extends State<HomePage> with Refena {
                             : null,
                         destinations: HomeTab.values.map((tab) {
                           return NavigationRailDestination(
-                            icon: Icon(tab.icon),
+                            icon: _HomeTabIcon(tab: tab),
                             label: Text(tab.label),
                           );
                         }).toList(),
@@ -163,6 +168,7 @@ class _HomePageState extends State<HomePage> with Refena {
                         children: const [
                           SafeArea(child: ReceiveTab()),
                           SafeArea(child: SendTab()),
+                          SafeArea(child: ChatTab()),
                           SettingsTab(),
                         ],
                       ),
@@ -193,13 +199,36 @@ class _HomePageState extends State<HomePage> with Refena {
               backgroundColor: Theme.of(context).colorScheme.surface,
               indicatorColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.55), // ajouté
               destinations: HomeTab.values.map((tab) {
-                return NavigationDestination(icon: Icon(tab.icon), label: tab.label);
+                return NavigationDestination(icon: _HomeTabIcon(tab: tab), label: tab.label);
               }).toList(),
             )
                 : null,
           );
         },
       ),
+    );
+  }
+}
+
+/// A tab icon showing an unread-message badge for [HomeTab.chat].
+/// A separate widget so only this small icon rebuilds when the unread
+/// count changes, not the whole navigation bar/rail.
+class _HomeTabIcon extends StatelessWidget {
+  final HomeTab tab;
+
+  const _HomeTabIcon({required this.tab});
+
+  @override
+  Widget build(BuildContext context) {
+    if (tab != HomeTab.chat) {
+      return Icon(tab.icon);
+    }
+
+    final unread = context.watch(chatConversationsProvider.select((c) => c.totalUnreadCount));
+    return Badge(
+      isLabelVisible: unread > 0,
+      label: Text(unread > 99 ? '99+' : '$unread'),
+      child: Icon(tab.icon),
     );
   }
 }

@@ -30,6 +30,10 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
+        // Required by flutter_local_notifications (chat message notifications):
+        // it uses Java APIs that only exist natively on newer Android versions,
+        // so they need to be "desugared" (backported) for older minSdk devices.
+        coreLibraryDesugaringEnabled true
     }
 
     kotlinOptions {
@@ -86,6 +90,11 @@ android {
 
 flutter {
     source '../..'
+}
+
+dependencies {
+    // Backport library required by coreLibraryDesugaringEnabled above.
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'
 }
 
 // To comply with F-Droid version code schema

@@ -494,5 +494,28 @@
       "connect": "Se connecter",
       "connectAnyway": "Se connecter quand même"
     }
+  },
+  "chat": {
+    "title": "Discussions",
+    "newConversation": "Nouvelle discussion",
+    "empty": "Aucune discussion pour le moment.\nDémarrez-en une avec le bouton +.",
+    "noMessagesYet": "Aucun message pour le moment. Dites bonjour !",
+    "typing": "en train d'écrire…",
+    "online": "En ligne",
+    "offline": "Hors ligne",
+    "messageHint": "Message",
+    "attachment": "Pièce jointe",
+    "export": "Exporter la discussion",
+    "deleteConversation": "Supprimer la discussion",
+    "deleteConversationConfirm": "Cela supprimera définitivement cette discussion et tous ses messages de cet appareil. Cette action est irréversible.",
+    "block": "Bloquer cet appareil",
+    "unblock": "Débloquer cet appareil",
+    "blockedNotice": "Vous avez bloqué cet appareil. Débloquez-le pour pouvoir échanger à nouveau.",
+    "newContact": {
+      "title": "Nouvelle demande de discussion",
+      "description": "Cet appareil n'est pas encore un contact connu. Accepter démarrera une discussion et acceptera automatiquement ses futurs messages.",
+      "accept": "Accepter",
+      "block": "Bloquer"
+    }
   }
 }

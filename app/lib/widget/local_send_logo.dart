@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:localsend_app/gen/assets.gen.dart';
 
+/// Displays the official AIKA logo mark.
+///
+/// The logo is shown in its real two-tone colors (no theme tinting) so that
+/// it stays visually consistent everywhere in the app.
 class LocalSendLogo extends StatelessWidget {
   final bool withText;
 
@@ -8,15 +12,9 @@ class LocalSendLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final logo = ColorFiltered(
-      colorFilter: ColorFilter.mode(
-        Theme.of(context).colorScheme.primary,
-        BlendMode.srcATop,
-      ),
-      child: Assets.img.logo512.image(
-        width: 200,
-        height: 200,
-      ),
+    final logo = Assets.img.logo512.image(
+      width: 200,
+      height: 200,
     );
 
     if (withText) {

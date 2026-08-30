@@ -19,12 +19,21 @@ dependencies:
   desktop_drop: 0.7.1
   device_apps: 2.2.0
   device_info_plus: 12.4.0
+  # Local chat database (conversations, messages, blocklist, offline outbox).
+  # Kept in lockstep with drift_dev below (same version) as recommended by
+  # the drift docs, and specifically below 2.34.1+1 to avoid an analyzer
+  # version conflict with freezed - see the comment on drift_dev.
+  drift: 2.34.0
+  # Cross-platform (Android/iOS/macOS/Windows/Linux) drift database opener.
+  drift_flutter: ^0.3.0
   dynamic_color: 1.8.1
   file_picker: 11.0.2
   file_selector: 1.1.0
   flutter:
     sdk: flutter
   flutter_displaymode: 0.7.0
+  # Local notifications for new chat messages.
+  flutter_local_notifications: ^21.0.0
   flutter_localizations:
     sdk: flutter
   flutter_markdown: 0.7.7+1
@@ -88,6 +97,13 @@ dependencies:
 dev_dependencies:
   build_runner: 2.15.1
   dart_mappable_builder: 4.8.0
+  # Pinned below 2.34.1+1 on purpose: starting with that version, drift_dev
+  # requires analyzer ^13.0.0, which conflicts with freezed 3.2.5's
+  # analyzer >=9.0.0 <11.0.0. 2.34.0 is the last release still on the
+  # older analyzer range (>=10.0.0 <13.0.0), which overlaps with freezed's
+  # range at analyzer 10.x, and it stays on the same 2.34.x line as the
+  # `drift` runtime package above (safer than mixing minor versions).
+  drift_dev: 2.34.0
   flutter_gen_runner: 5.14.1
   flutter_lints: 6.0.0
   freezed: 3.2.5

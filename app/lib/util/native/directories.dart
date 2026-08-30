@@ -35,3 +35,17 @@ Future<String> getDefaultDestinationDirectory() async {
 Future<String> getCacheDirectory() async {
   return (await path.getTemporaryDirectory()).path;
 }
+
+/// Persistent (i.e. never auto-cleared, unlike [getCacheDirectory]) folder
+/// used to store chat media attachments (images/videos/documents received
+/// in a conversation), separate from the user's chosen download
+/// destination so chat history stays self-contained and browsable from the
+/// conversation itself.
+Future<String> getChatMediaDirectory() async {
+  final base = await path.getApplicationSupportDirectory();
+  final dir = Directory('${base.path}/chat_media');
+  if (!dir.existsSync()) {
+    await dir.create(recursive: true);
+  }
+  return dir.path;
+}

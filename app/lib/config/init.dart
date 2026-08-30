@@ -10,10 +10,16 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:localsend_app/config/refena.dart';
 import 'package:localsend_app/config/theme.dart';
+import 'package:localsend_app/model/chat/chat_database.dart';
 import 'package:localsend_app/pages/home_page.dart';
 import 'package:localsend_app/pages/home_page_controller.dart';
 import 'package:localsend_app/provider/animation_provider.dart';
 import 'package:localsend_app/provider/app_arguments_provider.dart';
+import 'package:localsend_app/provider/chat/blocked_devices_provider.dart';
+import 'package:localsend_app/provider/chat/chat_conversations_provider.dart';
+import 'package:localsend_app/provider/chat/chat_database_provider.dart';
+import 'package:localsend_app/provider/chat/chat_notification_service.dart';
+import 'package:localsend_app/provider/chat/chat_provider.dart';
 import 'package:localsend_app/provider/device_info_provider.dart';
 import 'package:localsend_app/provider/network/nearby_devices_provider.dart';
 import 'package:localsend_app/provider/network/server/server_provider.dart';
@@ -153,6 +159,7 @@ Future<RefenaContainer> preInit(List<String> args) async {
     observers: kDebugMode ? [CustomRefenaObserver()] : [],
     overrides: [
       persistenceProvider.overrideWithValue(persistenceService),
+      chatDatabaseProvider.overrideWithValue(ChatDatabase.defaults()),
       deviceRawInfoProvider.overrideWithValue(await getDeviceInfo()),
       appArgumentsProvider.overrideWithValue(args),
       tvProvider.overrideWithValue(await checkIfTv()),
@@ -221,6 +228,19 @@ Future<void> postInit(BuildContext context, Ref ref, bool appStart) async {
   }
 
   ref.redux(signalingProvider).dispatch(SetupSignalingConnection());
+
+  // Chat: keep the blocked-devices list and the conversation list synced
+  // with the database for as long as the app runs, and start the
+  // persistent outbox's periodic retry loop (survives app restarts because
+  // the queue itself lives in the on-disk ChatDatabase, not in memory).
+  try {
+    ref.redux(blockedDevicesProvider).dispatchAsync(StartWatchingBlockedDevicesAction()); // ignore: unawaited_futures
+    ref.redux(chatConversationsProvider).dispatchAsync(StartWatchingChatConversationsAction()); // ignore: unawaited_futures
+    ref.notifier(chatProvider).startOutboxRetryLoop();
+    await ref.read(chatNotificationServiceProvider).initialize();
+  } catch (e) {
+    _logger.warning('Starting chat services failed', e);
+  }
 
   if (appStart) {
     if (defaultTargetPlatform == TargetPlatform.macOS) {

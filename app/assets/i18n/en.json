@@ -564,5 +564,28 @@
       "connect": "Connect",
       "connectAnyway": "Connect anyway"
     }
+  },
+  "chat": {
+    "title": "Chat",
+    "newConversation": "New conversation",
+    "empty": "No conversations yet.\nStart one from the + button.",
+    "noMessagesYet": "No messages yet. Say hello!",
+    "typing": "typing…",
+    "online": "Online",
+    "offline": "Offline",
+    "messageHint": "Message",
+    "attachment": "Attachment",
+    "export": "Export conversation",
+    "deleteConversation": "Delete conversation",
+    "deleteConversationConfirm": "This will permanently delete this conversation and all its messages from this device. This cannot be undone.",
+    "block": "Block this device",
+    "unblock": "Unblock this device",
+    "blockedNotice": "You blocked this device. Unblock it to send messages again.",
+    "newContact": {
+      "title": "New conversation request",
+      "description": "This device is not a known contact yet. Accepting will start a conversation and automatically accept its future messages.",
+      "accept": "Accept",
+      "block": "Block"
+    }
   }
 }

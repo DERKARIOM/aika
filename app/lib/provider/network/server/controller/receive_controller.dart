@@ -4,12 +4,16 @@ import 'dart:convert';
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:localsend_app/model/chat/chat_envelope.dart';
 import 'package:localsend_app/model/state/server/receive_session_state.dart';
 import 'package:localsend_app/model/state/server/receiving_file.dart';
 import 'package:localsend_app/pages/home_page.dart';
 import 'package:localsend_app/pages/home_page_controller.dart';
 import 'package:localsend_app/pages/progress_page.dart';
 import 'package:localsend_app/pages/receive_page.dart';
+import 'package:localsend_app/provider/chat/blocked_devices_provider.dart';
+import 'package:localsend_app/provider/chat/chat_database_provider.dart';
+import 'package:localsend_app/provider/chat/chat_provider.dart';
 import 'package:localsend_app/provider/device_info_provider.dart';
 import 'package:localsend_app/provider/favorites_provider.dart';
 import 'package:localsend_app/provider/http_provider.dart';
@@ -28,9 +32,11 @@ import 'package:localsend_app/util/native/directories.dart';
 import 'package:localsend_app/util/native/file_saver.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/native/tray_helper.dart';
+import 'package:localsend_app/widget/dialogs/chat_new_contact_dialog.dart';
 import 'package:localsend_app/widget/dialogs/open_file_dialog.dart';
 import 'package:localsend_isolates/isolate.dart';
 import 'package:localsend_isolates/model/device.dart';
+import 'package:localsend_isolates/model/dto/file_dto.dart';
 import 'package:localsend_isolates/model/file_status.dart';
 import 'package:localsend_isolates/model/file_type.dart';
 import 'package:localsend_isolates/model/session_status.dart';
@@ -75,10 +81,6 @@ class ReceiveController {
       closeSession();
     }
 
-    final settings = server.ref.read(settingsProvider);
-    final destinationDir = settings.destination ?? await getDefaultDestinationDirectory();
-    final cacheDir = await getCacheDirectory();
-    final sessionId = event.sessionId;
     final files = {
       for (final entry in event.files.entries) entry.key: entry.value.toDart(),
     };
@@ -87,6 +89,36 @@ class ReceiveController {
     // self-reported fingerprint in the JSON payload which is only used as fallback
     // when encryption is disabled.
     final senderFingerprint = event.certFingerprint ?? event.info.fingerprint;
+
+    // Chat messages/media/typing/receipts are smuggled through this very
+    // same `prepare-upload` request as a small reserved-name file (see
+    // `ChatEnvelope`/`kChatEnvelopeFileName`) so they can reuse the whole
+    // existing transfer pipeline without any Rust/FFI change. Detect and
+    // fully hand them off to the chat layer before any of the generic
+    // "accept files?" UI/state below ever runs.
+    final envelopeEntry = files.entries.firstWhereOrNull(
+      (e) => e.value.fileName == kChatEnvelopeFileName && e.value.fileType == FileType.text && e.value.preview != null,
+    );
+    if (envelopeEntry != null) {
+      final decoded = ChatEnvelope.tryDecode(envelopeEntry.value.preview!);
+      if (decoded is ChatEnvelopeDecodeSuccess) {
+        await _handleChatPrepareUpload(
+          event: event,
+          senderFingerprint: senderFingerprint,
+          envelope: decoded.envelope,
+          files: files,
+        );
+        return;
+      }
+      _logger.warning('Received a malformed chat envelope, falling back to the generic file-request flow.');
+      // Fall through: treat it as an ordinary (if odd-looking) file rather
+      // than silently dropping it.
+    }
+
+    final settings = server.ref.read(settingsProvider);
+    final destinationDir = settings.destination ?? await getDefaultDestinationDirectory();
+    final cacheDir = await getCacheDirectory();
+    final sessionId = event.sessionId;
 
     _logger.info('Session Id: $sessionId');
     _logger.info('Destination Directory: $destinationDir');
@@ -216,6 +248,100 @@ class ReceiveController {
     Routerino.context.push(() => ReceivePage(receiveProvider));
   }
 
+  /// Handles a `prepare-upload` request that turned out to be a chat
+  /// envelope (message/typing/receipt), detected in [onPrepareUpload].
+  ///
+  /// Unlike a normal file transfer, this never shows the generic
+  /// "Accept files?" [ReceivePage]: known contacts (an existing
+  /// conversation, or a Favorite) are auto-accepted so messaging feels
+  /// instant, while a brand-new device gets exactly one lightweight
+  /// [ChatNewContactDialog] confirmation the first time it writes - after
+  /// that, it behaves like any other known contact. Blocked devices are
+  /// rejected before anything is persisted or shown.
+  Future<void> _handleChatPrepareUpload({
+    required HttpServerPrepareUploadEvent event,
+    required String senderFingerprint,
+    required ChatEnvelope envelope,
+    required Map<String, FileDto> files,
+  }) async {
+    final blocked = server.ref.read(blockedDevicesProvider).isFingerprintBlocked(senderFingerprint);
+    if (blocked) {
+      server.ref.redux(parentIsolateProvider).dispatch(IsolateHttpServerPrepareUploadDecisionAction(acceptedFileIds: null));
+      return;
+    }
+
+    final sender = event.info.toDevice(event.ip, null).copyWith(fingerprint: senderFingerprint);
+
+    final hasExistingConversation = await server.ref.read(chatDatabaseProvider).getConversation(senderFingerprint) != null;
+    final isFavorite = server.ref.read(favoritesProvider).any((f) => f.fingerprint == senderFingerprint);
+
+    if (!hasExistingConversation && !isFavorite) {
+      // First message ever from this device: ask once, explicitly.
+      // ignore: use_build_context_synchronously
+      final accepted = await showDialog<bool>(
+        context: Routerino.context,
+        builder: (_) => ChatNewContactDialog(sender: sender),
+      );
+      if (accepted != true) {
+        server.ref.redux(parentIsolateProvider).dispatch(IsolateHttpServerPrepareUploadDecisionAction(acceptedFileIds: null));
+        if (accepted == false) {
+          // User explicitly chose "Block" rather than just dismissing the dialog.
+          await server.ref.redux(blockedDevicesProvider).dispatchAsync(BlockDeviceAction(fingerprint: senderFingerprint, alias: sender.alias));
+        }
+        return;
+      }
+    }
+
+    final acceptedIds = await server.ref
+        .notifier(chatProvider)
+        .handleIncomingEnvelope(sender: sender, envelope: envelope, allFilesInBatch: files);
+
+    server.ref.redux(parentIsolateProvider).dispatch(IsolateHttpServerPrepareUploadDecisionAction(acceptedFileIds: acceptedIds.toList()));
+
+    if (acceptedIds.isEmpty) {
+      // Pure text/typing/receipt: fully consumed already, nothing to
+      // download. Rust responds 204 and never creates a session.
+      return;
+    }
+
+    // A companion media file needs its bytes downloaded: give it a normal
+    // ReceiveSessionState so `onFileUpload` can reuse the existing,
+    // already-battle-tested byte-writing/progress logic. `onFileUpload`
+    // recognizes this via `ChatService.isChatSession` and routes its
+    // completion into the chat layer instead of the generic history/"open
+    // file" UI.
+    final chatMediaDir = await getChatMediaDirectory();
+    server.ref.notifier(chatProvider).beginIncomingChatSession(event.sessionId);
+    server.setState(
+      (oldState) => oldState?.copyWith(
+        session: ReceiveSessionState(
+          sessionId: event.sessionId,
+          status: SessionStatus.sending,
+          sender: sender,
+          senderAlias: sender.alias,
+          files: {
+            for (final id in acceptedIds)
+              id: ReceivingFile(
+                file: files[id]!,
+                status: FileStatus.queue,
+                token: null,
+                desiredName: files[id]!.fileName,
+                path: null,
+                savedToGallery: false,
+                errorMessage: null,
+              ),
+          },
+          startTime: null,
+          endTime: null,
+          destinationDirectory: chatMediaDir,
+          cacheDirectory: chatMediaDir,
+          saveToGallery: false,
+          createdDirectories: {},
+        ),
+      ),
+    );
+  }
+
   /// An accepted file is being uploaded.
   /// The Rust server already validated the session, the file token and the
   /// sender's IP address; the file content is written by the Rust server to
@@ -326,22 +452,30 @@ class ReceiveController {
         ),
       );
 
-      // Track it in history
-      await server.ref
-          .redux(receiveHistoryProvider)
-          .dispatchAsync(
-            AddHistoryEntryAction(
-              entryId: fileId,
-              fileName: receivingFile.desiredName!,
-              fileType: receivingFile.file.fileType,
-              path: filePath,
-              savedToGallery: savedToGallery,
-              isMessage: false,
-              fileSize: receivingFile.file.size,
-              senderAlias: receiveState.senderAlias,
-              timestamp: DateTime.now().toUtc(),
-            ),
-          );
+      if (server.ref.notifier(chatProvider).isChatSession(event.sessionId)) {
+        // Chat attachment: it lives in the conversation, not in the
+        // general receive history / gallery-open flow.
+        if (filePath != null) {
+          server.ref.notifier(chatProvider).onAttachmentSaved(fileId: fileId, path: filePath);
+        }
+      } else {
+        // Track it in history
+        await server.ref
+            .redux(receiveHistoryProvider)
+            .dispatchAsync(
+              AddHistoryEntryAction(
+                entryId: fileId,
+                fileName: receivingFile.desiredName!,
+                fileType: receivingFile.file.fileType,
+                path: filePath,
+                savedToGallery: savedToGallery,
+                isMessage: false,
+                fileSize: receivingFile.file.size,
+                senderAlias: receiveState.senderAlias,
+                timestamp: DateTime.now().toUtc(),
+              ),
+            );
+      }
 
       _logger.info('Saved ${receivingFile.file.fileName}.');
     } catch (e, st) {
@@ -388,6 +522,17 @@ class ReceiveController {
           ),
         ),
       );
+      if (server.ref.notifier(chatProvider).isChatSession(event.sessionId)) {
+        // Chat attachment finished: no ReceivePage/OpenFileDialog UI was
+        // ever shown for it, so just close the (headless) session quietly.
+        // The chat conversation screen reflects the finished download on
+        // its own via `ChatDatabase.watchMessages`.
+        server.ref.notifier(chatProvider).endIncomingChatSession(event.sessionId);
+        Future.delayed(Duration.zero, closeSession);
+        _logger.info('Chat attachment received.');
+        return;
+      }
+
       final settings = server.ref.read(settingsProvider);
       bool quickSave = settings.quickSave && server.getState().session?.message == null;
       final quickSaveFromFavorites = settings.quickSaveFromFavorites && server.getState().session?.message == null;
@@ -638,6 +783,10 @@ class ReceiveController {
       ),
     );
     server.ref.notifier(progressProvider).removeSession(sessionId);
+    // Harmless no-op unless this was a chat-media session: makes sure the
+    // "belongs to chat" flag never gets stuck on an aborted/cancelled
+    // transfer (see `_handleChatPrepareUpload`/`onFileUpload`).
+    server.ref.notifier(chatProvider).endIncomingChatSession(sessionId);
   }
 }
 

@@ -73,6 +73,7 @@ class Translations with BaseTranslations<AppLocale, Translations> {
   late final Translations$web$en web = Translations$web$en.internal(_root);
   late final Translations$assetPicker$en assetPicker = Translations$assetPicker$en.internal(_root);
   late final Translations$qrPairing$en qrPairing = Translations$qrPairing$en.internal(_root);
+  late final Translations$chat$en chat = Translations$chat$en.internal(_root);
 }
 
 // Path: general
@@ -1889,4 +1890,82 @@ class Translations$qrPairing$confirm$en {
 
   /// en: 'Connect anyway'
   String get connectAnyway => 'Connect anyway';
+}
+
+// Path: chat
+class Translations$chat$en {
+  Translations$chat$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+  late final Translations$chat$newContact$en newContact = Translations$chat$newContact$en.internal(_root);
+
+  /// en: 'Chat'
+  String get title => 'Chat';
+
+  /// en: 'New conversation'
+  String get newConversation => 'New conversation';
+
+  /// en: 'No conversations yet.\nStart one from the + button.'
+  String get empty => 'No conversations yet.\nStart one from the + button.';
+
+  /// en: 'No messages yet. Say hello!'
+  String get noMessagesYet => 'No messages yet. Say hello!';
+
+  /// en: 'typing…'
+  String get typing => 'typing…';
+
+  /// en: 'Online'
+  String get online => 'Online';
+
+  /// en: 'Offline'
+  String get offline => 'Offline';
+
+  /// en: 'Message'
+  String get messageHint => 'Message';
+
+  /// en: 'Attachment'
+  String get attachment => 'Attachment';
+
+  /// en: 'Export conversation'
+  String get export => 'Export conversation';
+
+  /// en: 'Delete conversation'
+  String get deleteConversation => 'Delete conversation';
+
+  /// en: 'This will permanently delete this conversation and all its messages from this device. This cannot be undone.'
+  String get deleteConversationConfirm =>
+      'This will permanently delete this conversation and all its messages from this device. This cannot be undone.';
+
+  /// en: 'Block this device'
+  String get block => 'Block this device';
+
+  /// en: 'Unblock this device'
+  String get unblock => 'Unblock this device';
+
+  /// en: 'You blocked this device. Unblock it to send messages again.'
+  String get blockedNotice => 'You blocked this device. Unblock it to send messages again.';
+}
+
+// Path: chat.newContact
+class Translations$chat$newContact$en {
+  Translations$chat$newContact$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+
+  /// en: 'New conversation request'
+  String get title => 'New conversation request';
+
+  /// en: 'This device is not a known contact yet. Accepting will start a conversation and automatically accept its future messages.'
+  String get description =>
+      'This device is not a known contact yet. Accepting will start a conversation and automatically accept its future messages.';
+
+  /// en: 'Accept'
+  String get accept => 'Accept';
+
+  /// en: 'Block'
+  String get block => 'Block';
 }
