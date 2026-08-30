@@ -35,11 +35,14 @@ class $AssetsImgGen {
   /// File path: assets/img/logo-512.png
   AssetGenImage get logo512 => const AssetGenImage('assets/img/logo-512.png');
 
+  /// File path: assets/img/logo-512-legacy.png
+  AssetGenImage get logo512Legacy => const AssetGenImage('assets/img/logo-512-legacy.png');
+
   /// File path: assets/img/logo.ico
   String get logo => 'assets/img/logo.ico';
 
   /// List of all assets
-  List<dynamic> get values => [logo128, logo256, logo32Black, logo32White, logo32, logo512White, logo512, logo];
+  List<dynamic> get values => [logo128, logo256, logo32Black, logo32White, logo32, logo512White, logo512, logo512Legacy, logo];
 }
 
 class $AssetsWebGen {
