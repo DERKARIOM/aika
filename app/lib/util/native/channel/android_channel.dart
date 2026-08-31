@@ -124,6 +124,65 @@ Future<void> openGallery() async {
   await _methodChannel.invokeMethod('openGallery');
 }
 
+/// Result of a successful [startLocalOnlyHotspotAndroid] call.
+class LocalOnlyHotspotInfo {
+  /// The generated SSID of the local-only hotspot, if the platform reported one.
+  final String? ssid;
+
+  /// The generated WPA2 passphrase of the local-only hotspot, if the platform reported one.
+  final String? passphrase;
+
+  const LocalOnlyHotspotInfo({required this.ssid, required this.passphrase});
+}
+
+/// Thrown when [startLocalOnlyHotspotAndroid] fails.
+/// [code] mirrors the native error code (e.g. "PERMISSION_DENIED", "HOTSPOT_FAILED",
+/// "UNSUPPORTED", "UNAVAILABLE") so the caller can decide how to react (e.g. show a
+/// permission dialog vs. a generic "open Settings" fallback).
+class LocalOnlyHotspotException implements Exception {
+  final String code;
+  final String? message;
+
+  const LocalOnlyHotspotException({required this.code, this.message});
+
+  @override
+  String toString() => 'LocalOnlyHotspotException($code: $message)';
+}
+
+/// Starts (or reuses, if already active) a local-only Wi-Fi hotspot via
+/// `WifiManager.startLocalOnlyHotspot()`.
+///
+/// Requires Android 8.0 (API 26) or higher, and the NEARBY_WIFI_DEVICES (Android 13+) or
+/// ACCESS_FINE_LOCATION (Android 12 and below) runtime permission to already be granted;
+/// the caller is responsible for requesting it beforehand (see [Permission] usage in
+/// the hotspot provider). Throws [LocalOnlyHotspotException] on any failure — the caller
+/// should fall back to [openHotspotSettingsAndroid] in that case rather than retrying blindly.
+Future<LocalOnlyHotspotInfo> startLocalOnlyHotspotAndroid() async {
+  try {
+    final result = await _methodChannel.invokeMethod<Map>('startLocalOnlyHotspot');
+    return LocalOnlyHotspotInfo(
+      ssid: result?['ssid'] as String?,
+      passphrase: result?['passphrase'] as String?,
+    );
+  } on PlatformException catch (e) {
+    throw LocalOnlyHotspotException(code: e.code, message: e.message);
+  }
+}
+
+/// Stops the local-only hotspot started by [startLocalOnlyHotspotAndroid], if any.
+/// Safe to call even if no hotspot is currently active.
+Future<void> stopLocalOnlyHotspotAndroid() async {
+  await _methodChannel.invokeMethod('stopLocalOnlyHotspot');
+}
+
+/// Opens the system "Hotspot & tethering" settings screen (falling back to the general
+/// wireless settings screen if that specific one is not resolvable on this OEM/ROM).
+/// Used when [startLocalOnlyHotspotAndroid] is unsupported/fails/is denied, so the user
+/// can enable a hotspot manually.
+Future<void> openHotspotSettingsAndroid() async {
+  await _methodChannel.invokeMethod('openHotspotSettings');
+}
+
 @MappableClass()
 class PickDirectoryResult with PickDirectoryResultMappable {
   final String directoryUri;

@@ -18,6 +18,25 @@
     <!-- Smart QR Code pairing: live camera scanning -->
     <uses-permission android:name="android.permission.CAMERA" />
 
+    <!-- Smart QR Code pairing: local-only Wi-Fi hotspot when no Wi-Fi network is available.
+         ACCESS_WIFI_STATE / CHANGE_WIFI_STATE are "normal" permissions (granted at install
+         time, no runtime prompt). NEARBY_WIFI_DEVICES (Android 13+) / ACCESS_FINE_LOCATION
+         (Android 12 and below) are runtime permissions required specifically by
+         WifiManager.startLocalOnlyHotspot(); see https://developer.android.com/develop/connectivity/wifi/wifi-permissions -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <!-- No `usesPermissionFlags="neverForLocation"` here on purpose: Google's own
+         documentation does not clearly state that startLocalOnlyHotspot() qualifies for
+         that exemption, so we don't assert something we can't verify (it would be a false
+         declaration to the Play Store if wrong). We request the permission as a normal
+         (potentially location-capable) grant instead. -->
+    <uses-permission
+        android:name="android.permission.NEARBY_WIFI_DEVICES"
+        tools:targetApi="33" />
+    <uses-permission
+        android:name="android.permission.ACCESS_FINE_LOCATION"
+        android:maxSdkVersion="32" />
+
     <!-- Chat: local notifications for new incoming messages (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />

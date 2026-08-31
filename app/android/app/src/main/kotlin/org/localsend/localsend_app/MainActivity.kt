@@ -7,6 +7,10 @@ import android.content.Context
 import android.content.Intent
 import android.database.Cursor
 import android.net.Uri
+import android.net.wifi.WifiManager
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.DocumentsContract
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
@@ -77,9 +81,131 @@ class MainActivity : FlutterActivity() {
                     result.success(isAnimationsEnabled())
                 }
 
+                "startLocalOnlyHotspot" -> startLocalOnlyHotspot(result)
+
+                "stopLocalOnlyHotspot" -> {
+                    stopLocalOnlyHotspot()
+                    result.success(null)
+                }
+
+                "openHotspotSettings" -> {
+                    openHotspotSettings()
+                    result.success(null)
+                }
+
                 else -> result.notImplemented()
             }
         }
+    }
+
+    // --- Smart QR Code pairing: local-only Wi-Fi hotspot -------------------------------
+    //
+    // Used when the device has no Wi-Fi connection at all, so two devices can still pair
+    // via the Smart QR Code feature. WifiManager.startLocalOnlyHotspot() (API 26+) is the
+    // only Android API that can start a Wi-Fi access point without sending the user to
+    // system Settings. It requires a runtime permission (NEARBY_WIFI_DEVICES on Android 13+,
+    // ACCESS_FINE_LOCATION below that) declared in AndroidManifest.xml and requested from
+    // the Dart side via `permission_handler` before this method is called; on top of the
+    // permission grant, some OEMs additionally require system Location services to be
+    // turned on for the call to succeed. Both failure modes surface here as onFailed/
+    // SecurityException and are reported back to Dart, which falls back to guiding the
+    // user to Settings manually.
+    private var hotspotReservation: WifiManager.LocalOnlyHotspotReservation? = null
+
+    private fun startLocalOnlyHotspot(result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            result.error("UNSUPPORTED", "Local-only hotspot requires Android 8.0 (API 26) or higher", null)
+            return
+        }
+
+        val existingReservation = hotspotReservation
+        if (existingReservation != null) {
+            // Already active (e.g. a previous call from this same app session): reuse it
+            // instead of asking the system to start a second one.
+            result.success(hotspotConfigToMap(existingReservation))
+            return
+        }
+
+        val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+        if (wifiManager == null) {
+            result.error("UNAVAILABLE", "WifiManager is not available on this device", null)
+            return
+        }
+
+        // The system only ever calls one of onStarted/onFailed once, but guard against a
+        // theoretical double-invocation anyway since MethodChannel.Result.success/error
+        // must not be called more than once.
+        var resultHandled = false
+
+        try {
+            wifiManager.startLocalOnlyHotspot(
+                object : WifiManager.LocalOnlyHotspotCallback() {
+                    override fun onStarted(reservation: WifiManager.LocalOnlyHotspotReservation) {
+                        if (resultHandled) return
+                        resultHandled = true
+                        hotspotReservation = reservation
+                        result.success(hotspotConfigToMap(reservation))
+                    }
+
+                    override fun onStopped() {
+                        hotspotReservation = null
+                    }
+
+                    override fun onFailed(reason: Int) {
+                        if (resultHandled) return
+                        resultHandled = true
+                        hotspotReservation = null
+                        result.error("HOTSPOT_FAILED", "startLocalOnlyHotspot failed with reason code $reason", null)
+                    }
+                },
+                Handler(Looper.getMainLooper()),
+            )
+        } catch (e: SecurityException) {
+            result.error("PERMISSION_DENIED", e.message ?: "Missing permission for startLocalOnlyHotspot", null)
+        } catch (e: Exception) {
+            result.error("HOTSPOT_FAILED", e.message ?: "Failed to start local-only hotspot", null)
+        }
+    }
+
+    private fun stopLocalOnlyHotspot() {
+        hotspotReservation?.close()
+        hotspotReservation = null
+    }
+
+    @Suppress("DEPRECATION")
+    private fun hotspotConfigToMap(reservation: WifiManager.LocalOnlyHotspotReservation): Map<String, Any?> {
+        // SoftApConfiguration (API 30+) replaces the deprecated WifiConfiguration-based
+        // getter, but the latter is still functional on older API levels.
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val config = reservation.softApConfiguration
+            mapOf(
+                "ssid" to config?.ssid,
+                "passphrase" to config?.passphrase,
+            )
+        } else {
+            val config = reservation.wifiConfiguration
+            mapOf(
+                "ssid" to config?.SSID,
+                "passphrase" to config?.preSharedKey,
+            )
+        }
+    }
+
+    private fun openHotspotSettings() {
+        try {
+            startActivity(Intent("android.settings.TETHER_SETTINGS"))
+        } catch (e: Exception) {
+            try {
+                startActivity(Intent(Settings.ACTION_WIRELESS_SETTINGS))
+            } catch (e2: Exception) {
+                // Nothing more we can do here; the Dart side also shows textual instructions.
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        stopLocalOnlyHotspot()
+        super.onDestroy()
     }
 
     private fun isAnimationsEnabled() : Boolean {

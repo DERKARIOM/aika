@@ -1805,6 +1805,49 @@ class Translations$qrPairing$display$en {
   /// en: 'Start receiving first (Wi-Fi on, receiving active) to generate a pairing code.'
   String get offline => 'Start receiving first (Wi-Fi on, receiving active) to generate a pairing code.';
 
+  /// en: 'Preparing your network…'
+  String get preparingNetwork => 'Preparing your network…';
+
+  /// en: 'Turning on a Wi-Fi hotspot…'
+  String get activatingHotspot => 'Turning on a Wi-Fi hotspot…';
+
+  /// en: 'Looking for your network…'
+  String get waitingForNetwork => 'Looking for your network…';
+
+  /// en: 'Your network is ready'
+  String get networkReady => 'Your network is ready';
+
+  /// en: 'Hotspot created'
+  String get hotspotPanelTitle => 'Hotspot created';
+
+  /// en: 'Connect the other device to this Wi-Fi network first, then scan the code below.'
+  String get hotspotPanelInstructions => 'Connect the other device to this Wi-Fi network first, then scan the code below.';
+
+  /// en: 'Network'
+  String get hotspotSsidLabel => 'Network';
+
+  /// en: 'Password'
+  String get hotspotPasswordLabel => 'Password';
+
+  /// en: 'No Wi-Fi network available'
+  String get manualActionTitle => 'No Wi-Fi network available';
+
+  /// en: 'Aika could not turn on a hotspot automatically. Turn on Wi-Fi or a hotspot on this device, then come back here.'
+  String get manualActionDescriptionAndroid =>
+      'Aika could not turn on a hotspot automatically. Turn on Wi-Fi or a hotspot on this device, then come back here.';
+
+  /// en: 'Turn on Wi-Fi or Personal Hotspot on this device, then come back here.'
+  String get manualActionDescriptionOther => 'Turn on Wi-Fi or Personal Hotspot on this device, then come back here.';
+
+  /// en: 'Open settings'
+  String get openSettings => 'Open settings';
+
+  /// en: 'Try again'
+  String get retry => 'Try again';
+
+  /// en: 'Waiting… come back here once the network is on.'
+  String get waitingInSettings => 'Waiting… come back here once the network is on.';
+
   /// en: 'Code validity'
   String get expiration => 'Code validity';
 
