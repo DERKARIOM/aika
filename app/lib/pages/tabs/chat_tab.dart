@@ -51,7 +51,7 @@ class ChatTab extends StatelessWidget {
                 Text(
                   t.chat.empty,
                   textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               ],
             ),
@@ -121,7 +121,7 @@ class _ConversationTile extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: typing ? colorScheme.primary : Colors.grey,
+                          color: typing ? colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant,
                           fontStyle: typing ? FontStyle.italic : FontStyle.normal,
                         ),
                       ),
@@ -133,7 +133,7 @@ class _ConversationTile extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     if (conversation.lastMessageAt != null)
-                      Text(_formatTime(conversation.lastMessageAt!), style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey)),
+                      Text(_formatTime(conversation.lastMessageAt!), style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
                     const SizedBox(height: 6),
                     if (conversation.unreadCount > 0)
                       Container(

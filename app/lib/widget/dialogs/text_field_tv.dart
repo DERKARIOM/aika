@@ -67,21 +67,22 @@ class _TextFieldTvState extends State<TextFieldTv> with Refena {
         ),
       );
     } else {
+      final colorScheme = Theme.of(context).colorScheme;
       return TextFormField(
         controller: widget.controller,
         textAlign: TextAlign.center,
         onChanged: widget.onChanged,
-        style: const TextStyle(color: Colors.white),
+        style: TextStyle(color: colorScheme.onSurface),
         decoration: InputDecoration(
           filled: false,
           border: InputBorder.none,
           enabledBorder: InputBorder.none,
-          focusedBorder: const UnderlineInputBorder(
-            borderSide: BorderSide(color: Colors.white54),
+          focusedBorder: UnderlineInputBorder(
+            borderSide: BorderSide(color: colorScheme.primary),
           ),
           suffixIcon: widget.onDelete != null
               ? IconButton(
-            icon: Icon(Icons.clear, color: Colors.white70),
+            icon: Icon(Icons.clear, color: colorScheme.onSurfaceVariant),
             onPressed: () {
               widget.onDelete?.call();
             },

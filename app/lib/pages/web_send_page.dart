@@ -247,7 +247,7 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
                                     ),
                                   ),
                                   const SizedBox(height: 5),
-                                  Text(session.ip, style: Theme.of(context).textTheme.bodyMedium!.copyWith(color: Colors.grey)),
+                                  Text(session.ip, style: Theme.of(context).textTheme.bodyMedium!.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
                                 ],
                               ),
                             ),

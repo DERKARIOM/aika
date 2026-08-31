@@ -87,7 +87,7 @@ class ReceiveOptionsPage extends StatelessWidget {
                     if (receiveSession.containsDirectories && !receiveSession.saveToGallery) ...[
                       const SizedBox(width: 10),
                       Expanded(
-                        child: Text(t.receiveOptionsPage.saveToGalleryOff, style: const TextStyle(color: Colors.grey)),
+                        child: Text(t.receiveOptionsPage.saveToGalleryOff, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
                       ),
                     ],
                   ],
@@ -142,7 +142,7 @@ class ReceiveOptionsPage extends StatelessWidget {
                           '${!selectState.containsKey(file.id) ? t.general.skipped : (selectState[file.id] == file.fileName ? t.general.unchanged : t.general.renamed)} - ${file.size.asReadableFileSize}',
                           style: TextStyle(
                             color: !selectState.containsKey(file.id)
-                                ? Colors.grey
+                                ? Theme.of(context).colorScheme.onSurfaceVariant
                                 : (selectState[file.id] == file.fileName ? Theme.of(context).colorScheme.onSecondaryContainer : Colors.orange),
                           ),
                         ),

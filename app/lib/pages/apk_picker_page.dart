@@ -254,7 +254,7 @@ class _ApkPickerPageState extends State<ApkPickerPage> with Refena {
                               if (apkParams.selectMultipleApps)
                                 Icon(
                                   _selectedApps.contains(app) ? Icons.check_circle : Icons.radio_button_unchecked,
-                                  color: _selectedApps.contains(app) ? Theme.of(context).iconTheme.color : Colors.grey,
+                                  color: _selectedApps.contains(app) ? Theme.of(context).iconTheme.color : Theme.of(context).colorScheme.onSurfaceVariant,
                                 ),
                             ],
                           ),

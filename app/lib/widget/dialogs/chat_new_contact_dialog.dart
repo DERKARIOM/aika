@@ -34,7 +34,7 @@ class ChatNewContactDialog extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             t.chat.newContact.description,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
           ),
         ],
       ),

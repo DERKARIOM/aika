@@ -79,7 +79,7 @@ class _FavoritesDialogState extends State<FavoritesDialog> with Refena {
           if (favorites.isEmpty)
             Text(
               t.dialogs.favoriteDialog.noFavorites,
-              style: const TextStyle(color: Colors.grey),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           for (final favorite in favorites)
             Row(

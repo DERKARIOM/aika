@@ -270,12 +270,12 @@ class _ProgressPageState extends State<ProgressPage> with Refena {
                                 children: [
                                   TextSpan(
                                     text: '${t.settingsTab.receive.destination}: ',
-                                    style: const TextStyle(color: Colors.grey),
+                                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                                   ),
                                   TextSpan(
                                     text: receiveSession.destinationDirectory,
                                     style: TextStyle(
-                                      color: checkPlatform([TargetPlatform.iOS]) ? Colors.grey : Theme.of(context).colorScheme.primary,
+                                      color: checkPlatform([TargetPlatform.iOS]) ? Theme.of(context).colorScheme.onSurfaceVariant : Theme.of(context).colorScheme.primary,
                                     ),
                                     recognizer: checkPlatform([TargetPlatform.iOS])
                                         ? null
@@ -561,7 +561,7 @@ extension on FileStatus {
       case FileStatus.queue:
         return Theme.of(context).colorScheme.primary;
       case FileStatus.skipped:
-        return Colors.grey;
+        return Theme.of(context).colorScheme.onSurfaceVariant;
       case FileStatus.sending:
         return Theme.of(context).colorScheme.primary;
       case FileStatus.failed:

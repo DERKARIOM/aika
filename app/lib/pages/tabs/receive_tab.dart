@@ -175,64 +175,62 @@ class _QuickSaveSpinner extends StatelessWidget {
     const segmentWidth = 80.0;
     final primaryColor = Theme.of(context).colorScheme.primary;
 
+    final colorScheme = Theme.of(context).colorScheme;
     return ClipRRect(
       borderRadius: BorderRadius.circular(18),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          padding: const EdgeInsets.all(3),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.35),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.15),
-              width: 1,
-            ),
+      child: Container(
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: colorScheme.outlineVariant,
+            width: 1,
           ),
-          child: Stack(
-            children: [
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOut,
-                left: segmentWidth * selectedIndex,
-                width: segmentWidth,
-                top: 0,
-                bottom: 0,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: primaryColor.withValues(alpha: 0.55), // couleur de l'app au lieu de blanc
-                    borderRadius: BorderRadius.circular(15),
-                  ),
+        ),
+        child: Stack(
+          children: [
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              left: segmentWidth * selectedIndex,
+              width: segmentWidth,
+              top: 0,
+              bottom: 0,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: primaryColor,
+                  borderRadius: BorderRadius.circular(15),
                 ),
               ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: modes.map((mode) {
-                  final isSelected = mode == selected;
-                  return SizedBox(
-                    width: segmentWidth,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(15),
-                      onTap: () => _onSelect(context, mode),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 7),
-                        child: Text(
-                          _labelFor(mode),
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 12,
-                            letterSpacing: 0.3,
-                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                            color: isSelected ? Colors.white : Colors.white54,
-                          ),
+            ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: modes.map((mode) {
+                final isSelected = mode == selected;
+                return SizedBox(
+                  width: segmentWidth,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(15),
+                    onTap: () => _onSelect(context, mode),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 7),
+                      child: Text(
+                        _labelFor(mode),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12,
+                          letterSpacing: 0.3,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                          color: isSelected ? colorScheme.onPrimary : colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ),
-                  );
-                }).toList(),
-              ),
-            ],
-          ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
         ),
       ),
     );
@@ -245,29 +243,27 @@ class _IdChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), // était 16 / 8
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.35),
-            borderRadius: BorderRadius.circular(16), // était 20
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.15),
-              width: 1,
-            ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), // était 16 / 8
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(16), // était 20
+          border: Border.all(
+            color: colorScheme.outlineVariant,
+            width: 1,
           ),
-          child: Text(
-            id,
-            style: const TextStyle(
-              fontSize: 16, // était 22
-              fontWeight: FontWeight.w600,
-              letterSpacing: 1.0, // était 1.2
-              color: Colors.white,
-              fontFeatures: [FontFeature.tabularFigures()],
-            ),
+        ),
+        child: Text(
+          id,
+          style: TextStyle(
+            fontSize: 16, // était 22
+            fontWeight: FontWeight.w600,
+            letterSpacing: 1.0, // était 1.2
+            color: colorScheme.onSurface,
+            fontFeatures: const [FontFeature.tabularFigures()],
           ),
         ),
       ),

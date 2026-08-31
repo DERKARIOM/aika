@@ -16,6 +16,21 @@ const darkBackgroundColor = Color(0xFF0D1318);
 /// Couleur "seed" utilisée pour générer la palette Material 3 (remplace Colors.teal)
 const seedColor = Color(0xFF42B998);
 
+// --- Palette du thème clair "Aika" -----------------------------------------
+// Épinglée à la main : les tons générés par ColorScheme.fromSeed en clair
+// étaient trop proches les uns des autres (cartes et textes peu contrastés).
+// Utilisée uniquement pour ColorMode.localsend en Brightness.light — le mode
+// "Système" (couleurs dynamiques Material You) et le thème sombre ne sont
+// pas concernés.
+const lightSurfaceBackground = Color(0xFFF8FAF9);
+const lightSurfaceCard = Color(0xFFFFFFFF);
+const lightOnSurface = Color(0xFF17211D);
+const lightOnSurfaceVariant = Color(0xFF5F6B66);
+const lightOnSurfaceDisabled = Color(0xFF8A9590);
+const lightOutline = Color(0xFFB9C5BF);
+const lightOutlineVariant = Color(0xFFE1E8E4);
+const lightSecondaryContainer = Color(0xFFEAF3F0);
+
 /// On desktop, we need to add additional padding to achieve the same visual appearance as on mobile
 double get desktopPaddingFix => checkPlatformIsDesktop() ? 8 : 0;
 
@@ -162,7 +177,30 @@ ColorScheme _determineColorScheme(ColorMode mode, Brightness brightness, Dynamic
     ColorMode.yaru => throw 'Should reach here',
   };
 
-  final resolvedColorScheme = colorScheme ?? defaultColorScheme;
+  var resolvedColorScheme = colorScheme ?? defaultColorScheme;
+
+  // Palette clair "Aika" : épingle des rôles à forte lisibilité/contraste
+  // pour notre thème de marque (ColorMode.localsend). Les couleurs
+  // dynamiques Material You (ColorMode.system) et le thème sombre/OLED ne
+  // sont volontairement pas concernés par ce correctif.
+  if (mode == ColorMode.localsend && brightness == Brightness.light) {
+    resolvedColorScheme = resolvedColorScheme.copyWith(
+      primary: seedColor,
+      onPrimary: Colors.white,
+      surface: lightSurfaceBackground,
+      onSurface: lightOnSurface,
+      onSurfaceVariant: lightOnSurfaceVariant,
+      surfaceContainerLowest: lightSurfaceCard,
+      surfaceContainerLow: lightSurfaceCard,
+      surfaceContainer: lightSurfaceCard,
+      surfaceContainerHigh: lightSurfaceCard,
+      surfaceContainerHighest: lightSurfaceCard,
+      secondaryContainer: lightSecondaryContainer,
+      onSecondaryContainer: lightOnSurface,
+      outline: lightOutline,
+      outlineVariant: lightOutlineVariant,
+    );
+  }
 
   // Applique le fond personnalisé en mode sombre (hors OLED, qui doit rester noir pur)
   if (brightness == Brightness.dark && mode != ColorMode.oled) {

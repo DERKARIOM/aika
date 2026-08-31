@@ -167,29 +167,29 @@ class _AddressInputDialogState extends State<AddressInputDialog> with Refena {
           if (_mode == _InputMode.hashtag) ...[
             Text(
               '${t.general.example}: 123',
-              style: const TextStyle(color: Colors.grey),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
             if (localIps.length <= 1)
               Text(
                 '${t.dialogs.addressInput.ip}: ${localIps.firstOrNull?.ipPrefix ?? '192.168.2'}.$_input',
-                style: const TextStyle(color: Colors.grey),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
               )
             else ...[
               Text(
                 '${t.dialogs.addressInput.ip}:',
-                style: const TextStyle(color: Colors.grey),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
               for (final ip in localIps)
                 Text(
                   '- ${ip.ipPrefix}.$_input',
-                  style: const TextStyle(color: Colors.grey),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
             ],
           ] else ...[
             if (lastDevices.isEmpty)
               Text(
                 '${t.general.example}: ${localIps.firstOrNull?.ipPrefix ?? '192.168.2'}.123',
-                style: const TextStyle(color: Colors.grey),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
               )
             else
               Text.rich(

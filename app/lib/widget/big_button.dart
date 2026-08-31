@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:localsend_app/config/theme.dart';
 import 'package:localsend_app/widget/responsive_builder.dart';
@@ -34,7 +32,7 @@ class BigButton extends StatelessWidget {
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
           backgroundColor: glass ? Colors.transparent : (filled ? colorScheme.primary : colorScheme.secondaryContainerIfDark),
-          foregroundColor: glass ? Colors.white : (filled ? colorScheme.onPrimary : colorScheme.onSecondaryContainerIfDark),
+          foregroundColor: glass ? colorScheme.onSurface : (filled ? colorScheme.onPrimary : colorScheme.onSecondaryContainerIfDark),
           elevation: glass ? 0 : null,
           shadowColor: glass ? Colors.transparent : null,
           shape: RoundedRectangleBorder(
@@ -63,19 +61,16 @@ class BigButton extends StatelessWidget {
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(10),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.35),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.15),
-              width: 1,
-            ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: colorScheme.outlineVariant,
+            width: 1,
           ),
-          child: button,
         ),
+        child: button,
       ),
     );
   }

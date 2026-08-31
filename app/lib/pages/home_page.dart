@@ -119,9 +119,14 @@ class _HomePageState extends State<HomePage> with Refena {
                       onDestinationSelected: (index) => vm.changeTab(HomeTab.values[index]),
                       extended: sizingInformation.isDesktop,
                       backgroundColor: Theme.of(context).cardColorWithElevation,
-                      indicatorColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.55), // ajouté
-                      selectedIconTheme: IconThemeData(color: Colors.white), // ajouté, pour le contraste
-                      selectedLabelTextStyle: const TextStyle(color: Colors.white), // ajouté
+                      // Pastille de sélection pleine (opaque) + textes/icônes garantis lisibles :
+                      // l'icône sélectionnée est DANS la pastille (fond #42B998) -> onPrimary ;
+                      // le libellé sélectionné est SOUS la pastille, sur le fond de la barre -> onSurface.
+                      indicatorColor: Theme.of(context).colorScheme.primary,
+                      selectedIconTheme: IconThemeData(color: Theme.of(context).colorScheme.onPrimary),
+                      unselectedIconTheme: IconThemeData(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      selectedLabelTextStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w600),
+                      unselectedLabelTextStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                       leading: sizingInformation.isDesktop
                           ? Column(
                                 children: [
@@ -193,14 +198,37 @@ class _HomePageState extends State<HomePage> with Refena {
               ],
             ),
             bottomNavigationBar: sizingInformation.isMobile
-                ? NavigationBar(
-              selectedIndex: vm.currentTab.index,
-              onDestinationSelected: (index) => vm.changeTab(HomeTab.values[index]),
-              backgroundColor: Theme.of(context).colorScheme.surface,
-              indicatorColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.55), // ajouté
-              destinations: HomeTab.values.map((tab) {
-                return NavigationDestination(icon: _HomeTabIcon(tab: tab), label: tab.label);
-              }).toList(),
+                ? NavigationBarTheme(
+              // NavigationBar n'expose pas de paramètre `iconTheme` direct : la couleur de
+              // l'icône par état (sélectionné/non-sélectionné) ne peut être surchargée que
+              // via NavigationBarThemeData (contrairement à NavigationRail, qui l'accepte
+              // directement en paramètre du widget).
+              data: NavigationBarThemeData(
+                iconTheme: WidgetStateProperty.resolveWith((states) {
+                  final colorScheme = Theme.of(context).colorScheme;
+                  return IconThemeData(
+                    color: states.contains(WidgetState.selected) ? colorScheme.onPrimary : colorScheme.onSurfaceVariant,
+                  );
+                }),
+              ),
+              child: NavigationBar(
+                selectedIndex: vm.currentTab.index,
+                onDestinationSelected: (index) => vm.changeTab(HomeTab.values[index]),
+                backgroundColor: Theme.of(context).colorScheme.surface,
+                // Même logique que la NavigationRail desktop : pastille pleine + contraste garanti
+                // pour les états sélectionné/non-sélectionné (icône ET libellé).
+                indicatorColor: Theme.of(context).colorScheme.primary,
+                labelTextStyle: WidgetStateProperty.resolveWith((states) {
+                  final colorScheme = Theme.of(context).colorScheme;
+                  return TextStyle(
+                    color: states.contains(WidgetState.selected) ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
+                    fontWeight: states.contains(WidgetState.selected) ? FontWeight.w600 : FontWeight.normal,
+                  );
+                }),
+                destinations: HomeTab.values.map((tab) {
+                  return NavigationDestination(icon: _HomeTabIcon(tab: tab), label: tab.label);
+                }).toList(),
+              ),
             )
                 : null,
           );

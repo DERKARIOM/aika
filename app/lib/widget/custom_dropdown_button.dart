@@ -26,7 +26,7 @@ class CustomDropdownButton<T> extends StatelessWidget {
         isExpanded: expanded,
         underline: Container(),
         borderRadius: Theme.of(context).inputDecorationTheme.borderRadius,
-        dropdownColor: Colors.black.withValues(alpha: 0.85),
+        dropdownColor: Theme.of(context).colorScheme.surfaceContainerHigh,
         items: items,
         onChanged: onChanged == null
             ? null

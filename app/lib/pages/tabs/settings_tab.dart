@@ -468,7 +468,7 @@ class SettingsTab extends StatelessWidget {
                           padding: const EdgeInsets.only(bottom: 15),
                           child: Text(
                             t.settingsTab.network.portWarning(defaultPort: defaultPort),
-                            style: const TextStyle(color: Colors.grey),
+                            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                           ),
                         ),
                       ),
@@ -481,7 +481,7 @@ class SettingsTab extends StatelessWidget {
                           padding: const EdgeInsets.only(bottom: 15),
                           child: Text(
                             t.settingsTab.network.multicastGroupWarning(defaultMulticast: defaultMulticastGroup),
-                            style: const TextStyle(color: Colors.grey),
+                            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                           ),
                         ),
                       ),
@@ -709,32 +709,27 @@ class _SettingsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: padding,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.35),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.15),
-                width: 1,
-              ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.only(left: 15, right: 15, top: 15, bottom: 15),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.white)),
-                  const SizedBox(height: 10),
-                  ...children,
-                ],
-              ),
-            ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: colorScheme.outlineVariant,
+            width: 1,
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.only(left: 15, right: 15, top: 15, bottom: 15),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(color: colorScheme.onSurface)),
+              const SizedBox(height: 10),
+              ...children,
+            ],
           ),
         ),
       ),

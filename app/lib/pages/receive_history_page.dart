@@ -189,7 +189,7 @@ class ReceiveHistoryPage extends StatelessWidget {
                               maxLines: 1,
                               overflow: TextOverflow.fade,
                               softWrap: false,
-                              style: const TextStyle(color: Colors.grey),
+                              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                             ),
                           ],
                         ),
