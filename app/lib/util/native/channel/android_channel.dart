@@ -5,7 +5,7 @@ import 'package:logging/logging.dart';
 
 part 'android_channel.mapper.dart';
 
-const _methodChannel = MethodChannel('org.localsend.localsend_app/localsend');
+const _methodChannel = MethodChannel('com.naniger.aika/localsend');
 final _logger = Logger('AndroidSaf');
 
 /// From Android 10 and above, we need to use the Storage Access Framework (SAF) to access files due to the scoped storage.
@@ -181,6 +181,52 @@ Future<void> stopLocalOnlyHotspotAndroid() async {
 /// can enable a hotspot manually.
 Future<void> openHotspotSettingsAndroid() async {
   await _methodChannel.invokeMethod('openHotspotSettings');
+}
+
+/// Thrown when [joinWifiNetworkAndroid] fails.
+/// [code] mirrors the native error code (e.g. "UNSUPPORTED", "INVALID_ARGUMENT",
+/// "UNAVAILABLE", "JOIN_FAILED").
+class WifiJoinException implements Exception {
+  final String code;
+  final String? message;
+
+  const WifiJoinException({required this.code, this.message});
+
+  @override
+  String toString() => 'WifiJoinException($code: $message)';
+}
+
+/// Requests a connection to the Wi-Fi network [ssid]/[passphrase] via
+/// `WifiNetworkSpecifier` (Android 10+/API 29+) and, once connected, binds this
+/// process's network traffic to it via `ConnectivityManager.bindProcessToNetwork()`.
+///
+/// Used on the *scanning* device of the Smart QR Code pairing feature to automatically
+/// join the emitter's freshly created local-only hotspot, so the pairing HTTP call can
+/// reach it without the user having to join the network by hand first.
+///
+/// The binding affects the whole app process, not just one request: callers MUST call
+/// [unbindWifiNetworkAndroid] as soon as they no longer need it (right after the pairing
+/// HTTP call completes, success or failure), so the app doesn't stay cut off from its
+/// normal network route. Throws [WifiJoinException] on any failure — the caller should
+/// treat this as "could not auto-join" and fall back to whatever it would have done if no
+/// Wi-Fi credentials had been provided at all (e.g. the user already joined manually).
+Future<bool> joinWifiNetworkAndroid({required String ssid, required String? passphrase}) async {
+  try {
+    final result = await _methodChannel.invokeMethod<bool>('joinWifiNetwork', {
+      'ssid': ssid,
+      'passphrase': passphrase,
+    });
+    return result ?? false;
+  } on PlatformException catch (e) {
+    throw WifiJoinException(code: e.code, message: e.message);
+  }
+}
+
+/// Undoes the effect of [joinWifiNetworkAndroid]: unbinds this process from the joined
+/// network and releases the underlying network request. Safe to call even if no join was
+/// ever attempted or it already failed.
+Future<void> unbindWifiNetworkAndroid() async {
+  await _methodChannel.invokeMethod('unbindWifiNetwork');
 }
 
 @MappableClass()

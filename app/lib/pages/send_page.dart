@@ -90,7 +90,7 @@ class _SendPageState extends State<SendPage> with Refena {
       },
       canPop: true,
       child: Scaffold(
-        appBar: widget.showAppBar ? basicLocalSendAppbar('') : null,
+        appBar: widget.showAppBar ? basicAikaAppbar('') : null,
         body: SafeArea(
           child: Center(
             child: ConstrainedBox(

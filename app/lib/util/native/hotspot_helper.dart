@@ -131,3 +131,49 @@ Future<void> openHotspotOrWifiSettings() async {
   }
   await SystemSettings.wifi();
 }
+
+/// Whether this platform could ever support automatically joining a Wi-Fi network by
+/// SSID/passphrase from app code. Only `WifiNetworkSpecifier` on Android (API 29+, checked
+/// again at the native layer) can do this without sending the user to system Settings; iOS
+/// has no equivalent public API.
+bool get canAutoJoinWifi => checkPlatform([TargetPlatform.android]);
+
+/// Tries to automatically join the Wi-Fi network described by [ssid]/[passphrase] (see
+/// [joinWifiNetworkAndroid]) and route this app's traffic through it.
+///
+/// Used on the *scanning* device of the Smart QR Code pairing feature when the scanned QR
+/// code carries credentials for a hotspot the emitter just created (see
+/// [QrPairingPayload.wifiSsid]/[QrPairingPayload.wifiPassphrase]). Never throws: on any
+/// failure (unsupported platform, timeout, permission/config issue) this returns `false` so
+/// the caller can silently fall back to attempting the connection over whatever network is
+/// already active — the same behavior as before this capability existed, which still works
+/// if the user already joined the hotspot by hand using the SSID/password shown next to the
+/// QR code.
+///
+/// On success, the caller MUST call [unbindAutoJoinedWifiNetwork] once it no longer needs
+/// this network (right after the pairing HTTP call completes), since the join binds the
+/// *entire app process* to it until then.
+Future<bool> tryAutoJoinWifiNetwork({required String ssid, required String? passphrase}) async {
+  if (!canAutoJoinWifi) {
+    return false;
+  }
+  try {
+    return await joinWifiNetworkAndroid(ssid: ssid, passphrase: passphrase);
+  } catch (e) {
+    _logger.warning('Failed to auto-join Wi-Fi network', e);
+    return false;
+  }
+}
+
+/// Releases whatever [tryAutoJoinWifiNetwork] set up (network request + process binding).
+/// Safe to call unconditionally, even if no join was ever attempted.
+Future<void> unbindAutoJoinedWifiNetwork() async {
+  if (!canAutoJoinWifi) {
+    return;
+  }
+  try {
+    await unbindWifiNetworkAndroid();
+  } catch (e) {
+    _logger.warning('Failed to unbind auto-joined Wi-Fi network', e);
+  }
+}

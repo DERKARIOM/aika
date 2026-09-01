@@ -1,0 +1,19 @@
+# Copy this file to "key.properties" in this same folder (android/) and fill in
+# your own real values. DO NOT commit "key.properties" itself, nor your .jks /
+# .keystore file, to Git.
+#
+# This repository's android/.gitignore already excludes:
+#   key.properties
+#   **/*.keystore
+#   **/*.jks
+# so a normal `git add`/`git commit` will never pick them up. Still, always
+# double-check with `git status` before committing if you are unsure.
+#
+# storeFile is resolved relative to android/app/ (the module that reads this
+# file), so if your keystore lives at android/aika_key.jks, the correct value
+# is "../aika_key.jks" as shown below.
+
+storePassword=REPLACE_WITH_YOUR_KEYSTORE_PASSWORD
+keyPassword=REPLACE_WITH_YOUR_KEY_PASSWORD
+keyAlias=REPLACE_WITH_YOUR_KEY_ALIAS
+storeFile=../aika_key.jks

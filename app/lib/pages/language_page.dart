@@ -28,7 +28,7 @@ class _LanguagePageState extends State<LanguagePage> {
     final t = Translations.of(context);
     final activeLocale = context.ref.watch(settingsProvider.select((s) => s.locale));
     return Scaffold(
-      appBar: basicLocalSendAppbar(t.sendTab.selection.title),
+      appBar: basicAikaAppbar(t.sendTab.selection.title),
       body: ResponsiveListView(
         padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 20),
         children: [

@@ -1,6 +1,6 @@
 {
   "locale": "English",
-  "appName": "LocalSend",
+  "appName": "Aika",
   "general": {
     "accept": "Accept",
     "accepted": "Accepted",
@@ -108,7 +108,7 @@
       "minimizeToTray": "Minimize to the System Tray/Menu Bar when closing",
       "launchAtStartup": "Autostart after login",
       "launchMinimized": "Autostart: Start hidden",
-      "showInContextMenu": "Show LocalSend in context menu",
+      "showInContextMenu": "Show Aika in context menu",
       "animations": "Animations"
     },
     "receive": {
@@ -149,7 +149,7 @@
     },
     "other": {
       "title": "Other",
-      "support": "Support LocalSend",
+      "support": "Support Aika",
       "donate": "Donate",
       "privacyPolicy": "Privacy Policy",
       "termsOfUse": "Terms of Use"
@@ -177,7 +177,7 @@
   },
   "networkInterfacesPage": {
     "title": "Network Interfaces",
-    "info": "By default, LocalSend uses all available network interfaces. You can exclude unwanted networks here. You need to restart the server to apply the changes.",
+    "info": "By default, Aika uses all available network interfaces. You can exclude unwanted networks here. You need to restart the server to apply the changes.",
     "preview": "Preview",
     "whitelist": "Whitelist",
     "blacklist": "Blacklist"
@@ -215,7 +215,7 @@
   "receiveOptionsPage": {
     "title": "Options",
     "destination": "@:settingsTab.receive.destination",
-    "appDirectory": "(LocalSend folder)",
+    "appDirectory": "(Aika folder)",
     "saveToGallery": "@:settingsTab.receive.saveToGallery",
     "saveToGalleryOff": "Turned off automatically because there are folders."
   },
@@ -264,23 +264,26 @@
     "autoAccept": "Automatically accept requests",
     "requirePin": "Require PIN",
     "pinHint": "The PIN is \"{pin}\"",
-    "encryptionHint": "LocalSend uses a self-signed certificate. You need to accept it in your browser.",
+    "encryptionHint": "Aika uses a self-signed certificate. You need to accept it in your browser.",
     "pendingRequests": "Pending requests: {n}"
   },
   "aboutPage": {
-    "title": "About LocalSend",
+    "title": "About Aika",
     "description": [
-      "LocalSend is a free, open-source app that allows you to securely share files and messages with nearby devices over your local network without needing an internet connection.",
-      "This app is available on Android, iOS, macOS, Windows and Linux. You can find all download options on the official homepage."
+      "Aika is a modern app for transferring and sharing data between devices — fast, secure and private, with no internet connection required.",
+      "Aika is available on Android, iOS, macOS, Windows and Linux."
     ],
     "author": "Author",
+    "academicContext": "Aika is a project developed by Bachir Abdoul Kader as part of his research work for a Master's degree in Fundamental and Applied Computer Science.",
     "contributors": "Contributors",
     "packagers": "Packagers",
-    "translators": "Translators"
+    "translators": "Translators",
+    "openSourceTitle": "Open Source",
+    "openSourceDescription": "Aika is built on and derived from open-source components, distributed under the Apache License 2.0. You can review the licenses and attributions of the open-source components used by Aika below."
   },
   "donationPage": {
-    "title": "Donate",
-    "info": "LocalSend is free, open-source and without any ads. If you like the app, you can support the development with a donation.",
+    "title": "Support the project",
+    "info": "Aika is free and open-source. If you like the app, you can support its development.",
     "donate": "Donate {amount}",
     "thanks": "Thank you very much!",
     "restore": "Restore purchase"
@@ -426,7 +429,7 @@
     },
     "localNetworkUnauthorized": {
       "title": "@:dialogs.noPermission.title",
-      "description": "LocalSend can't find other devices without having the permission to scan the local network. Please grant this permission in the settings.",
+      "description": "Aika can't find other devices without having the permission to scan the local network. Please grant this permission in the settings.",
       "gotoSettings": "Settings"
     },
     "messageInput": {
@@ -475,7 +478,7 @@
       "title": "Send modes",
       "single": "Sends files to one recipient. Selection will be cleared after finished files transfer.",
       "multiple": "Sends files to multiple recipients. Selection will not be cleared after finished files transfer.",
-      "link": "Recipients who do not have LocalSend installed can download the selected files by opening the link in their browser."
+      "link": "Recipients who do not have Aika installed can download the selected files by opening the link in their browser."
     },
     "zoom": {
       "title": "URL"
@@ -488,7 +491,7 @@
   "tray": {
     "@info": "Apple Guidelines are very strict about the \"close\" wording.",
     "open": "@:general.open",
-    "close": "Quit LocalSend",
+    "close": "Quit Aika",
     "closeWindows": "Exit"
   },
   "web": {
@@ -545,6 +548,8 @@
       "hotspotPanelInstructions": "Connect the other device to this Wi-Fi network first, then scan the code below.",
       "hotspotSsidLabel": "Network",
       "hotspotPasswordLabel": "Password",
+      "stopHotspot": "Turn off hotspot",
+      "hotspotStopped": "Hotspot turned off",
       "manualActionTitle": "No Wi-Fi network available",
       "manualActionDescriptionAndroid": "Aika could not turn on a hotspot automatically. Turn on Wi-Fi or a hotspot on this device, then come back here.",
       "manualActionDescriptionOther": "Turn on Wi-Fi or Personal Hotspot on this device, then come back here.",
@@ -561,6 +566,7 @@
       "buttonTooltip": "Scan a QR code",
       "title": "Scan QR code",
       "hint": "Point the camera at the other device's QR code",
+      "joiningNetwork": "Connecting to network…",
       "importImage": "Import an image",
       "notFoundInImage": "No QR code found in this image.",
       "unreachable": "Could not reach this device. Make sure both devices are on the same network.",

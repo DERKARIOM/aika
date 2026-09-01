@@ -65,7 +65,7 @@ class ReceiveHistoryPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final entries = context.watch(receiveHistoryProvider);
     return Scaffold(
-      appBar: basicLocalSendAppbar(t.receiveHistoryPage.title),
+      appBar: basicAikaAppbar(t.receiveHistoryPage.title),
       body: ResponsiveListView(
         padding: const EdgeInsets.symmetric(vertical: 20),
         children: [

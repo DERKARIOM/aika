@@ -210,6 +210,32 @@ class _QrPairingDisplayPageState extends State<QrPairingDisplayPage> with Refena
     await openHotspotOrWifiSettings();
   }
 
+  /// Turns off the local-only hotspot started by this page (if any) and
+  /// re-runs the preparation flow, so the UI immediately reflects whatever
+  /// network state results (back to manual guidance, or another hotspot
+  /// attempt) instead of being left showing a QR code for a network that no
+  /// longer exists.
+  Future<void> _stopHotspot() async {
+    await stopLocalOnlyHotspotIfActive();
+    _hotspotSsid = null;
+    _hotspotPassphrase = null;
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t.qrPairing.display.hotspotStopped)));
+
+    // Give the OS a brief moment to actually tear down the hotspot
+    // interface before re-checking connectivity, otherwise the now-stale IP
+    // could still resolve and the page would flash straight back to
+    // "ready" instead of reflecting that the hotspot is gone.
+    await Future.delayed(const Duration(milliseconds: 300));
+    if (!mounted) {
+      return;
+    }
+    await _prepareNetwork();
+  }
+
   bool _hasUsableIp(Device device) {
     return device.ip != null && device.ip != '-' && device.port > 0;
   }
@@ -220,6 +246,11 @@ class _QrPairingDisplayPageState extends State<QrPairingDisplayPage> with Refena
       setState(() => _payload = null);
       return;
     }
+
+    // Only embed Wi-Fi join credentials when the current IP genuinely belongs to a
+    // local-only hotspot Aika itself created for this pairing — never the user's regular
+    // Wi-Fi network. See the scoping rationale on [QrPairingPayload.wifiSsid].
+    final isOwnHotspot = _networkState.status == QrNetworkPrepStatus.hotspotReady;
 
     setState(() {
       _payload = QrPairingPayload.generate(
@@ -232,6 +263,8 @@ class _QrPairingDisplayPageState extends State<QrPairingDisplayPage> with Refena
         https: device.https,
         fingerprint: device.fingerprint,
         ttl: _ttl,
+        wifiSsid: isOwnHotspot ? _hotspotSsid : null,
+        wifiPassphrase: isOwnHotspot ? _hotspotPassphrase : null,
       );
     });
   }
@@ -253,7 +286,7 @@ class _QrPairingDisplayPageState extends State<QrPairingDisplayPage> with Refena
     }
 
     return Scaffold(
-      appBar: basicLocalSendAppbar(t.qrPairing.display.title),
+      appBar: basicAikaAppbar(t.qrPairing.display.title),
       body: SafeArea(
         child: ResponsiveListView(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
@@ -378,7 +411,7 @@ class _QrPairingDisplayPageState extends State<QrPairingDisplayPage> with Refena
     return [
       if (_networkState.status == QrNetworkPrepStatus.hotspotReady) ...[
         const SizedBox(height: 10),
-        _HotspotInfoPanel(ssid: _hotspotSsid, passphrase: _hotspotPassphrase),
+        _HotspotInfoPanel(ssid: _hotspotSsid, passphrase: _hotspotPassphrase, onStop: () => unawaited(_stopHotspot())),
       ],
       const SizedBox(height: 10),
       Center(
@@ -515,8 +548,9 @@ class _SecurityNote extends StatelessWidget {
 class _HotspotInfoPanel extends StatelessWidget {
   final String? ssid;
   final String? passphrase;
+  final VoidCallback onStop;
 
-  const _HotspotInfoPanel({required this.ssid, required this.passphrase});
+  const _HotspotInfoPanel({required this.ssid, required this.passphrase, required this.onStop});
 
   @override
   Widget build(BuildContext context) {
@@ -530,7 +564,7 @@ class _HotspotInfoPanel extends StatelessWidget {
             children: [
               Icon(Icons.wifi_tethering_rounded, size: 20, color: colorScheme.primary),
               const SizedBox(width: 8),
-              Text(t.qrPairing.display.hotspotPanelTitle, style: Theme.of(context).textTheme.titleSmall),
+              Expanded(child: Text(t.qrPairing.display.hotspotPanelTitle, style: Theme.of(context).textTheme.titleSmall)),
             ],
           ),
           const SizedBox(height: 8),
@@ -546,6 +580,16 @@ class _HotspotInfoPanel extends StatelessWidget {
             const SizedBox(height: 6),
             _HotspotInfoRow(label: t.qrPairing.display.hotspotPasswordLabel, value: passphrase!),
           ],
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: onStop,
+              icon: const Icon(Icons.wifi_off_rounded, size: 18),
+              label: Text(t.qrPairing.display.stopHotspot),
+              style: TextButton.styleFrom(foregroundColor: colorScheme.error),
+            ),
+          ),
         ],
       ),
     );

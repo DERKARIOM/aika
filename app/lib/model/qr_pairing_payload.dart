@@ -85,6 +85,14 @@ class QrPairingDecodeResult {
 /// to travel inside the same QR code, so anyone can recompute it. Real
 /// authenticity is guaranteed by the live [fingerprint] check above, not by
 /// a checksum. Adding one would only create a false sense of security.
+///
+/// [wifiSsid] / [wifiPassphrase] are a deliberately narrow exception to "only what's
+/// needed to reach the device": they are populated *only* when [ip]/[port] belong to a
+/// local-only Wi-Fi hotspot Aika itself just created for this pairing (never the user's
+/// regular Wi-Fi network), so a second device with no network of its own can join it
+/// automatically instead of the user typing the SSID/password by hand. This adds no new
+/// exposure versus the emitter's screen, which already shows both in plain text next to
+/// the QR code; it inherits the same TTL-based expiry as everything else in this payload.
 class QrPairingPayload {
   /// Random identifier for this particular QR code, regenerated every time
   /// the user (re)generates a code. Only used client-side for correlation.
@@ -107,6 +115,13 @@ class QrPairingPayload {
   final DateTime issuedAt;
   final DateTime expiresAt;
 
+  /// SSID of a local-only hotspot the emitter created for this pairing, if any. Never the
+  /// user's regular/personal Wi-Fi network — see the class doc for the scoping rationale.
+  final String? wifiSsid;
+
+  /// Passphrase of the hotspot named by [wifiSsid], if any.
+  final String? wifiPassphrase;
+
   const QrPairingPayload({
     required this.pairId,
     required this.protocolVersion,
@@ -119,6 +134,8 @@ class QrPairingPayload {
     required this.fingerprint,
     required this.issuedAt,
     required this.expiresAt,
+    this.wifiSsid,
+    this.wifiPassphrase,
   });
 
   /// Builds a fresh payload for the current device, valid for [ttl].
@@ -132,6 +149,8 @@ class QrPairingPayload {
     required bool https,
     required String fingerprint,
     Duration ttl = qrPairingDefaultTtl,
+    String? wifiSsid,
+    String? wifiPassphrase,
   }) {
     final now = DateTime.now();
     return QrPairingPayload(
@@ -146,6 +165,8 @@ class QrPairingPayload {
       fingerprint: fingerprint,
       issuedAt: now,
       expiresAt: now.add(ttl),
+      wifiSsid: wifiSsid,
+      wifiPassphrase: wifiPassphrase,
     );
   }
 
@@ -172,6 +193,8 @@ class QrPairingPayload {
       'fingerprint': fingerprint,
       'issuedAt': issuedAt.toUtc().millisecondsSinceEpoch,
       'expiresAt': expiresAt.toUtc().millisecondsSinceEpoch,
+      if (wifiSsid != null) 'wifiSsid': wifiSsid,
+      if (wifiPassphrase != null) 'wifiPassphrase': wifiPassphrase,
     });
   }
 
@@ -216,6 +239,8 @@ class QrPairingPayload {
         fingerprint: json['fingerprint'] as String,
         issuedAt: DateTime.fromMillisecondsSinceEpoch(json['issuedAt'] as int, isUtc: true),
         expiresAt: DateTime.fromMillisecondsSinceEpoch(json['expiresAt'] as int, isUtc: true),
+        wifiSsid: json['wifiSsid'] as String?,
+        wifiPassphrase: json['wifiPassphrase'] as String?,
       );
 
       if (payload.isExpired) {

@@ -510,7 +510,7 @@ class SettingsTab extends StatelessWidget {
                         buttonLabel: t.general.open,
                         onTap: () async {
                           await launchUrl(
-                            Uri.parse('https://localsend.org/privacy'),
+                            Uri.parse('https://aika.naniger.com/privacy'),
                             mode: LaunchMode.externalApplication,
                           );
                         },
@@ -556,7 +556,7 @@ class SettingsTab extends StatelessWidget {
                         orElse: () => Container(),
                       ),
                   Text(
-                    '© ${DateTime.now().year} DERKARIOM',
+                    '© ${DateTime.now().year} Bachir Abdoul Kader',
                     textAlign: TextAlign.center,
                   ),
                   Center(

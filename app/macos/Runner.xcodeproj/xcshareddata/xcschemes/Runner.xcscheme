@@ -79,7 +79,7 @@
          </BuildableReference>
       </BuildableProductRunnable>
       <StoreKitConfigurationFileReference
-         identifier = "../../ios/MyLocalSendStoreKit.storekit">
+         identifier = "../../ios/AikaStoreKit.storekit">
       </StoreKitConfigurationFileReference>
    </LaunchAction>
    <ProfileAction

@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "Tien Do Nam" "\0"
-            VALUE "FileDescription", "LocalSend" "\0"
+            VALUE "CompanyName", "Bachir Abdoul Kader" "\0"
+            VALUE "FileDescription", "Aika" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "localsend_app" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2022-2024 Tien Do Nam. All rights reserved." "\0"
-            VALUE "OriginalFilename", "localsend_app.exe" "\0"
-            VALUE "ProductName", "LocalSend" "\0"
+            VALUE "InternalName", "aika" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 Bachir Abdoul Kader. All rights reserved." "\0"
+            VALUE "OriginalFilename", "aika.exe" "\0"
+            VALUE "ProductName", "Aika" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

@@ -8,7 +8,7 @@
 PRODUCT_NAME = Aika
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = org.localsend.localsendApp
+PRODUCT_BUNDLE_IDENTIFIER = com.naniger.aika
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2022 org.localsend. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 Bachir Abdoul Kader. All rights reserved.

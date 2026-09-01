@@ -1,4 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools" package="org.localsend.localsend_app">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools" package="com.naniger.aika">
 
     <uses-permission android:name="android.permission.INTERNET"/>
 
@@ -36,6 +36,12 @@
     <uses-permission
         android:name="android.permission.ACCESS_FINE_LOCATION"
         android:maxSdkVersion="32" />
+    <!-- Smart QR Code pairing: auto-joining the emitter's local-only hotspot from the
+         scanning device (WifiNetworkSpecifier, Android 10+). CHANGE_NETWORK_STATE is a
+         "normal" permission (auto-granted, no runtime prompt); no location permission is
+         required for this specific API since it connects to an already-known SSID rather
+         than scanning — see https://developer.android.com/develop/connectivity/wifi/wifi-bootstrap -->
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
 
     <!-- Chat: local notifications for new incoming messages (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -51,7 +57,7 @@
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
     <application
-        android:label="LocalSend"
+        android:label="Aika"
         android:name="${applicationName}"
         android:usesCleartextTraffic="true"
         android:banner="@drawable/logo_aika"
@@ -103,7 +109,7 @@
         <service
             android:name=".QuickTileService"
             android:icon="@mipmap/ic_launcher_quicktile_foreground"
-            android:label="LocalSend"
+            android:label="Aika"
             android:process=":quick_tile_service"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
             android:exported="true"

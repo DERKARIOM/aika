@@ -1,4 +1,4 @@
-package org.localsend.localsend_app
+package com.naniger.aika
 
 import android.annotation.SuppressLint
 import android.app.Activity
@@ -6,8 +6,13 @@ import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
 import android.database.Cursor
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.Uri
 import android.net.wifi.WifiManager
+import android.net.wifi.WifiNetworkSpecifier
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -19,10 +24,11 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
 
-private const val CHANNEL = "org.localsend.localsend_app/localsend"
+private const val CHANNEL = "com.naniger.aika/localsend"
 private const val REQUEST_CODE_PICK_DIRECTORY = 1
 private const val REQUEST_CODE_PICK_DIRECTORY_PATH = 2
 private const val REQUEST_CODE_PICK_FILE = 3
+private const val WIFI_JOIN_TIMEOUT_MS = 15000
 
 class MainActivity : FlutterActivity() {
     private var pendingResult: MethodChannel.Result? = null
@@ -92,6 +98,10 @@ class MainActivity : FlutterActivity() {
                     openHotspotSettings()
                     result.success(null)
                 }
+
+                "joinWifiNetwork" -> joinWifiNetwork(call, result)
+
+                "unbindWifiNetwork" -> unbindWifiNetwork(result)
 
                 else -> result.notImplemented()
             }
@@ -203,8 +213,133 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    // --- Smart QR Code pairing: auto-join the emitter's local-only hotspot -------------
+    //
+    // Used on the *scanning* device when the QR payload carries Wi-Fi credentials for a
+    // hotspot the emitter just created (see hotspot_helper.dart / qr_pairing_scanner_page.dart).
+    // WifiNetworkSpecifier (API 29+) lets the app request a connection to a specific
+    // SSID/passphrase without any location permission: unlike the older scan-based Wi-Fi
+    // APIs, Android deliberately exempted this "connect to a network you already know" API
+    // from ACCESS_FINE_LOCATION/NEARBY_WIFI_DEVICES. It only needs CHANGE_NETWORK_STATE, a
+    // normal permission declared in AndroidManifest.xml (auto-granted, no runtime prompt).
+    // See https://developer.android.com/develop/connectivity/wifi/wifi-bootstrap.
+    //
+    // A network requested this way is NOT used for the app's own traffic automatically: it
+    // must be explicitly bound via ConnectivityManager.bindProcessToNetwork(), which affects
+    // *the whole process*, not just one socket. That binding is undone (bindProcessToNetwork
+    // (null) + unregisterNetworkCallback) as soon as the Dart side calls "unbindWifiNetwork"
+    // (right after the pairing HTTP call completes), and again defensively in onDestroy(), so
+    // the device is never left unable to reach the internet because of a stale binding to an
+    // ephemeral hotspot that no longer exists.
+    private var wifiNetworkCallback: ConnectivityManager.NetworkCallback? = null
+
+    private fun joinWifiNetwork(call: MethodCall, result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            result.error("UNSUPPORTED", "Programmatic Wi-Fi join requires Android 10 (API 29) or higher", null)
+            return
+        }
+
+        val ssid = call.argument<String>("ssid")
+        val passphrase = call.argument<String>("passphrase")
+        if (ssid.isNullOrEmpty()) {
+            result.error("INVALID_ARGUMENT", "Missing ssid", null)
+            return
+        }
+
+        val connectivityManager =
+            applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        if (connectivityManager == null) {
+            result.error("UNAVAILABLE", "ConnectivityManager is not available on this device", null)
+            return
+        }
+
+        // Release any still-pending request from a previous call before starting a new one.
+        unbindWifiNetworkInternal(connectivityManager)
+
+        val specifier = try {
+            val builder = WifiNetworkSpecifier.Builder().setSsid(ssid)
+            if (!passphrase.isNullOrEmpty()) {
+                builder.setWpa2Passphrase(passphrase)
+            }
+            builder.build()
+        } catch (e: IllegalArgumentException) {
+            result.error("JOIN_FAILED", e.message ?: "Invalid SSID or passphrase", null)
+            return
+        } catch (e: IllegalStateException) {
+            result.error("JOIN_FAILED", e.message ?: "Invalid Wi-Fi network specifier", null)
+            return
+        }
+
+        // A local-only hotspot has no internet capability: without removing that requirement
+        // (present by default), the request would never match it.
+        val request = NetworkRequest.Builder()
+            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+            .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .setNetworkSpecifier(specifier)
+            .build()
+
+        var resultHandled = false
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                super.onAvailable(network)
+                if (resultHandled) return
+                resultHandled = true
+                try {
+                    connectivityManager.bindProcessToNetwork(network)
+                    result.success(true)
+                } catch (e: Exception) {
+                    result.error("JOIN_FAILED", e.message ?: "Failed to bind to the joined network", null)
+                }
+            }
+
+            override fun onUnavailable() {
+                super.onUnavailable()
+                if (resultHandled) return
+                resultHandled = true
+                wifiNetworkCallback = null
+                result.error("JOIN_FAILED", "Could not connect to the Wi-Fi network", null)
+            }
+        }
+        wifiNetworkCallback = callback
+
+        try {
+            connectivityManager.requestNetwork(request, callback, WIFI_JOIN_TIMEOUT_MS)
+        } catch (e: Exception) {
+            wifiNetworkCallback = null
+            result.error("JOIN_FAILED", e.message ?: "Failed to request the Wi-Fi network", null)
+        }
+    }
+
+    private fun unbindWifiNetwork(result: MethodChannel.Result) {
+        val connectivityManager =
+            applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        if (connectivityManager != null) {
+            unbindWifiNetworkInternal(connectivityManager)
+        }
+        result.success(null)
+    }
+
+    private fun unbindWifiNetworkInternal(connectivityManager: ConnectivityManager) {
+        try {
+            connectivityManager.bindProcessToNetwork(null)
+        } catch (e: Exception) {
+            // Best-effort: nothing more we can do if this fails.
+        }
+        wifiNetworkCallback?.let {
+            try {
+                connectivityManager.unregisterNetworkCallback(it)
+            } catch (e: Exception) {
+                // Already unregistered/invalid — safe to ignore.
+            }
+        }
+        wifiNetworkCallback = null
+    }
+
     override fun onDestroy() {
         stopLocalOnlyHotspot()
+        (applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager)?.let {
+            unbindWifiNetworkInternal(it)
+        }
         super.onDestroy()
     }
 

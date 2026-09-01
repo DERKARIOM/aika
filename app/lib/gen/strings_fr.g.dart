@@ -87,6 +87,8 @@ class TranslationsFr extends Translations with BaseTranslations<AppLocale, Trans
   late final _Translations$assetPicker$fr assetPicker = _Translations$assetPicker$fr._(_root);
   @override
   late final _Translations$networkInterfacesPage$fr networkInterfacesPage = _Translations$networkInterfacesPage$fr._(_root);
+  @override
+  late final _Translations$qrPairing$fr qrPairing = _Translations$qrPairing$fr._(_root);
 }
 
 // Path: general
@@ -441,20 +443,28 @@ class _Translations$aboutPage$fr extends Translations$aboutPage$en {
 
   // Translations
   @override
-  String get title => 'À propos de Aika';
+  String get title => 'À propos d\'Aika';
   @override
   List<String> get description => [
-    'Aika est un logiciel gratuit qui vous permet de partager de manière sécurisée des fichiers et des messages avec d\'autres appareils connectés à votre réseau local. Une connexion à internet n\'est pas requise.',
-    'Aika est disponible sur Android, iOS, macOS, Windows et Linux. Vous pouvez accéder à ces téléchargements depuis la page officielle.',
+    'Aika est une application moderne de transfert et de partage de données entre appareils — rapide, sécurisée et respectueuse de votre vie privée, sans connexion internet requise.',
+    'Aika est disponible sur Android, iOS, macOS, Windows et Linux.',
   ];
   @override
   String get author => 'Auteur';
+  @override
+  String get academicContext =>
+      'Aika est un projet développé par Bachir Abdoul Kader dans le cadre de ses travaux de recherche en Master d\'Informatique Fondamentale et Appliquée.';
   @override
   String get contributors => 'Contributeurs';
   @override
   String get packagers => 'Distributeurs';
   @override
   String get translators => 'Traducteurs';
+  @override
+  String get openSourceTitle => 'Open Source';
+  @override
+  String get openSourceDescription =>
+      'Aika s\'appuie sur et dérive de composants open source, distribués sous licence Apache License 2.0. Vous pouvez consulter ci-dessous les licences et attributions des composants open source utilisés par Aika.';
 }
 
 // Path: donationPage
@@ -465,10 +475,9 @@ class _Translations$donationPage$fr extends Translations$donationPage$en {
 
   // Translations
   @override
-  String get title => 'Faire une donation';
+  String get title => 'Soutenir le projet';
   @override
-  String get info =>
-      'Aika est gratuit et sans aucune pub. Si vous aimez ce logiciel, vous pouvez faire un don pour soutenir son développement.';
+  String get info => 'Aika est gratuit et open-source. Si vous aimez l\'application, vous pouvez soutenir son développement.';
   @override
   String donate({required Object amount}) => 'Donner ${amount}';
   @override
@@ -1435,4 +1444,129 @@ class _Translations$progressPage$total$title$fr extends Translations$progressPag
   String get canceledSender => 'Annulé par l\'expéditeur';
   @override
   String get canceledReceiver => 'Annulé par le destinataire';
+}
+// Path: qrPairing
+class _Translations$qrPairing$fr extends Translations$qrPairing$en {
+  _Translations$qrPairing$fr._(TranslationsFr root) : this._root = root, super.internal(root);
+
+  final TranslationsFr _root; // ignore: unused_field
+
+  // Translations
+  @override
+  late final _Translations$qrPairing$display$fr display = _Translations$qrPairing$display$fr._(_root);
+  @override
+  late final _Translations$qrPairing$scan$fr scan = _Translations$qrPairing$scan$fr._(_root);
+  @override
+  late final _Translations$qrPairing$confirm$fr confirm = _Translations$qrPairing$confirm$fr._(_root);
+}
+
+// Path: qrPairing.display
+class _Translations$qrPairing$display$fr extends Translations$qrPairing$display$en {
+  _Translations$qrPairing$display$fr._(TranslationsFr root) : this._root = root, super.internal(root);
+
+  final TranslationsFr _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String get title => 'Mon QR Code';
+  @override
+  String get buttonTooltip => 'Coupler par QR Code';
+  @override
+  String get offline => 'Démarrez d\'abord la réception (Wi-Fi activé, réception en cours) pour générer un code d\'appairage.';
+  @override
+  String get preparingNetwork => 'Préparation de votre réseau…';
+  @override
+  String get activatingHotspot => 'Activation d\'un point d\'accès Wi-Fi…';
+  @override
+  String get waitingForNetwork => 'Recherche de votre réseau…';
+  @override
+  String get networkReady => 'Votre réseau est prêt';
+  @override
+  String get hotspotPanelTitle => 'Point d\'accès créé';
+  @override
+  String get hotspotPanelInstructions => 'Connectez d\'abord l\'autre appareil à ce réseau Wi-Fi, puis scannez le code ci-dessous.';
+  @override
+  String get hotspotSsidLabel => 'Réseau';
+  @override
+  String get hotspotPasswordLabel => 'Mot de passe';
+  @override
+  String get stopHotspot => 'Désactiver le point d\'accès';
+  @override
+  String get hotspotStopped => 'Point d\'accès désactivé';
+  @override
+  String get manualActionTitle => 'Aucun réseau Wi-Fi disponible';
+  @override
+  String get manualActionDescriptionAndroid => 'Aika n\'a pas pu activer de point d\'accès automatiquement. Activez le Wi-Fi ou un point d\'accès sur cet appareil, puis revenez ici.';
+  @override
+  String get manualActionDescriptionOther => 'Activez le Wi-Fi ou le partage de connexion sur cet appareil, puis revenez ici.';
+  @override
+  String get openSettings => 'Ouvrir les réglages';
+  @override
+  String get retry => 'Réessayer';
+  @override
+  String get waitingInSettings => 'En attente… revenez ici une fois le réseau activé.';
+  @override
+  String get expiration => 'Durée de validité';
+  @override
+  String get regenerate => 'Régénérer';
+  @override
+  String expiresIn({required Object duration}) => 'Expire dans ${duration}';
+  @override
+  String get expired => 'Expiré';
+  @override
+  String get securityNote => 'Toute personne qui scanne ce code peut voir l\'alias de cet appareil et s\'y connecter tant que le code est valide. Régénérez-le si vous l\'avez partagé par erreur.';
+}
+
+// Path: qrPairing.scan
+class _Translations$qrPairing$scan$fr extends Translations$qrPairing$scan$en {
+  _Translations$qrPairing$scan$fr._(TranslationsFr root) : this._root = root, super.internal(root);
+
+  final TranslationsFr _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String get buttonTooltip => 'Scanner un QR Code';
+  @override
+  String get title => 'Scanner un QR Code';
+  @override
+  String get hint => 'Visez le QR Code de l\'autre appareil avec la caméra';
+  @override
+  String get joiningNetwork => 'Connexion au réseau…';
+  @override
+  String get importImage => 'Importer une image';
+  @override
+  String get notFoundInImage => 'Aucun QR Code trouvé dans cette image.';
+  @override
+  String get unreachable => 'Impossible de joindre cet appareil. Vérifiez que les deux appareils sont sur le même réseau.';
+  @override
+  String get errorExpired => 'Ce QR Code a expiré. Demandez à l\'autre appareil d\'en générer un nouveau.';
+  @override
+  String get errorUnsupportedVersion => 'Ce QR Code a été généré par une version incompatible de l\'application.';
+  @override
+  String get errorMalformed => 'Ce n\'est pas un QR Code d\'appairage Aika valide.';
+  @override
+  String get noCameraOnPlatform => 'Le scan par caméra n\'est pas encore disponible sur cette plateforme. Importez plutôt une image du QR Code.';
+  @override
+  String get cameraUnavailable => 'La caméra n\'est pas disponible. Vérifiez l\'autorisation d\'accès à la caméra.';
+  @override
+  String pairedSnackbar({required Object alias}) => 'Connecté à ${alias}';
+}
+
+// Path: qrPairing.confirm
+class _Translations$qrPairing$confirm$fr extends Translations$qrPairing$confirm$en {
+  _Translations$qrPairing$confirm$fr._(TranslationsFr root) : this._root = root, super.internal(root);
+
+  final TranslationsFr _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String get title => 'Se connecter à cet appareil ?';
+  @override
+  String get description => 'La connexion a été vérifiée grâce au certificat de l\'appareil. Voulez-vous vous appairer avec lui ?';
+  @override
+  String get fingerprintMismatch => 'Attention : l\'appareil qui a répondu ne correspond pas au certificat encodé dans le QR Code. Cela peut indiquer que l\'adresse a été réattribuée à un autre appareil, ou une tentative d\'usurpation. Ne continuez que si vous êtes certain\u00b7e.';
+  @override
+  String get connect => 'Se connecter';
+  @override
+  String get connectAnyway => 'Se connecter quand même';
 }

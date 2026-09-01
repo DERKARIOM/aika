@@ -23,7 +23,7 @@ class SelectedFilesPage extends StatelessWidget {
     final selectedFiles = ref.watch(selectedSendingFilesProvider);
 
     return Scaffold(
-      appBar: basicLocalSendAppbar(t.sendTab.selection.title),
+      appBar: basicAikaAppbar(t.sendTab.selection.title),
       body: ResponsiveListView.single(
         padding: const EdgeInsets.symmetric(horizontal: 15),
         tabletPadding: const EdgeInsets.symmetric(horizontal: 15),

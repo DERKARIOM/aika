@@ -7,6 +7,7 @@ import 'package:localsend_app/model/qr_pairing_payload.dart';
 import 'package:localsend_app/provider/device_info_provider.dart';
 import 'package:localsend_app/provider/http_provider.dart';
 import 'package:localsend_app/provider/last_devices.provider.dart';
+import 'package:localsend_app/util/native/hotspot_helper.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/qr_image_decoder.dart';
 import 'package:localsend_app/widget/dialogs/error_dialog.dart';
@@ -93,6 +94,21 @@ class _QrPairingScannerPageState extends State<QrPairingScannerPage> with Refena
     final payload = decodeResult.payload!;
     await HapticFeedback.mediumImpact();
 
+    // If the QR code carries credentials for a hotspot the emitter just created (no
+    // pre-existing Wi-Fi on either side), try to join it automatically so the register
+    // call below can actually reach [payload.ip] (Android only; see [tryAutoJoinWifiNetwork]
+    // for why this never blocks or throws). If this isn't possible/fails, we silently fall
+    // back to attempting the connection as-is — which still works if the user already
+    // joined that network by hand using the SSID/password shown on the emitter's screen.
+    var joinedWifi = false;
+    if (payload.wifiSsid != null && mounted) {
+      setState(() => _statusText = t.qrPairing.scan.joiningNetwork);
+      joinedWifi = await tryAutoJoinWifiNetwork(ssid: payload.wifiSsid!, passphrase: payload.wifiPassphrase);
+      if (mounted) {
+        setState(() => _statusText = null);
+      }
+    }
+
     Device? resolvedDevice;
     Object? connectionError;
     try {
@@ -109,6 +125,13 @@ class _QrPairingScannerPageState extends State<QrPairingScannerPage> with Refena
       resolvedDevice = response.body.toDevice(payload.ip, payload.port, payload.https, HttpDiscovery(ip: payload.ip));
     } catch (e) {
       connectionError = e;
+    } finally {
+      // Unbind right after this one call, not after the whole pairing flow: the join binds
+      // the *entire app process* to the ephemeral hotspot, and holding that any longer than
+      // necessary would risk leaving the device unable to reach anything else.
+      if (joinedWifi) {
+        await unbindAutoJoinedWifiNetwork();
+      }
     }
 
     if (!mounted) {

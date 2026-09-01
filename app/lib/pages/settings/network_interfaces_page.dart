@@ -44,7 +44,7 @@ class _NetworkInterfacesPageState extends State<NetworkInterfacesPage> {
         ? context.notifier(settingsProvider).setNetworkWhitelist
         : context.notifier(settingsProvider).setNetworkBlacklist;
     return Scaffold(
-      appBar: basicLocalSendAppbar(t.networkInterfacesPage.title),
+      appBar: basicAikaAppbar(t.networkInterfacesPage.title),
       body: LocalHeroScope(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeInOut,

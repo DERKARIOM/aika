@@ -22,7 +22,7 @@ class DonationPage extends StatelessWidget {
       // [FOSS_REMOVE_END]
       builder: (context, vm) {
         return Scaffold(
-          appBar: basicLocalSendAppbar(t.donationPage.title),
+          appBar: basicAikaAppbar(t.donationPage.title),
           body: Stack(
             children: [
               ResponsiveListView(

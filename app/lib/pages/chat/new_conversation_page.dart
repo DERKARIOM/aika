@@ -20,7 +20,7 @@ class NewConversationPage extends StatelessWidget {
     final devices = context.watch(nearbyDevicesProvider.select((s) => s.devices.values.toList()));
 
     return Scaffold(
-      appBar: basicLocalSendAppbar(t.chat.newConversation),
+      appBar: basicAikaAppbar(t.chat.newConversation),
       body: ResponsiveListView(
         padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 20),
         children: [

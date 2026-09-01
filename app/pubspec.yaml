@@ -1,6 +1,6 @@
 name: localsend_app
-description: An open source cross-platform alternative to AirDrop
-homepage: https://localsend.org/
+description: A modern app for transferring and sharing data between devices
+homepage: https://aika.naniger.com/
 publish_to: "none"
 
 version: 1.0.0+1

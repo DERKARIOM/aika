@@ -238,7 +238,7 @@ class _ProgressPageState extends State<ProgressPage> with Refena {
       },
       canPop: false,
       child: Scaffold(
-        appBar: widget.showAppBar ? basicLocalSendAppbar(title) : null,
+        appBar: widget.showAppBar ? basicAikaAppbar(title) : null,
         body: Stack(
           children: [
             ListView.builder(

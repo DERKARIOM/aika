@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <assemblyIdentity version="0.0.0.0" name="aikaapp" />
+  <!-- TODO(signing): "publisher" below is still LocalSend's own Microsoft Store / MSIX
+       code-signing certificate subject (Tien Do Nam). It MUST be replaced with the exact
+       Subject Name of Aika's own code-signing certificate before this manifest is used to
+       build/install a real MSIX package — otherwise packaging/signing will not match and
+       the package will not install. This cannot be filled in without a real Aika
+       certificate, which does not exist in this sandbox. -->
+  <msix xmlns="urn:schemas-microsoft-com:msix.v1"
+          publisher="CN=Tien Do Nam, O=Tien Do Nam, S=Sachsen, C=DE"
+          packageName="com.naniger.aika"
+          applicationId="aika"
+        />
+</assembly>

@@ -20,13 +20,13 @@
       "internalID" : "6472594578",
       "localizations" : [
         {
-          "description" : "LocalSend Donation",
-          "displayName" : "LocalSend Donation",
+          "description" : "Aika Donation",
+          "displayName" : "Aika Donation",
           "locale" : "en_US"
         }
       ],
-      "productID" : "localsend_ios_donate_5",
-      "referenceName" : "LocalSend Donation (05)",
+      "productID" : "aika_ios_donate_5",
+      "referenceName" : "Aika Donation (05)",
       "type" : "NonConsumable"
     },
     {
@@ -35,13 +35,13 @@
       "internalID" : "6472594779",
       "localizations" : [
         {
-          "description" : "LocalSend Donation",
-          "displayName" : "LocalSend Donation",
+          "description" : "Aika Donation",
+          "displayName" : "Aika Donation",
           "locale" : "en_US"
         }
       ],
-      "productID" : "localsend_ios_donate_10",
-      "referenceName" : "LocalSend Donation (10)",
+      "productID" : "aika_ios_donate_10",
+      "referenceName" : "Aika Donation (10)",
       "type" : "NonConsumable"
     },
     {
@@ -50,13 +50,13 @@
       "internalID" : "6472594819",
       "localizations" : [
         {
-          "description" : "LocalSend Donation",
-          "displayName" : "LocalSend Donation",
+          "description" : "Aika Donation",
+          "displayName" : "Aika Donation",
           "locale" : "en_US"
         }
       ],
-      "productID" : "localsend_ios_donate_20",
-      "referenceName" : "LocalSend Donation (20)",
+      "productID" : "aika_ios_donate_20",
+      "referenceName" : "Aika Donation (20)",
       "type" : "NonConsumable"
     },
     {
@@ -65,19 +65,19 @@
       "internalID" : "6472595571",
       "localizations" : [
         {
-          "description" : "LocalSend Donation",
-          "displayName" : "LocalSend Donation",
+          "description" : "Aika Donation",
+          "displayName" : "Aika Donation",
           "locale" : "en_US"
         }
       ],
-      "productID" : "localsend_ios_donate_50",
-      "referenceName" : "LocalSend Donation (50)",
+      "productID" : "aika_ios_donate_50",
+      "referenceName" : "Aika Donation (50)",
       "type" : "NonConsumable"
     }
   ],
   "settings" : {
-    "_applicationInternalID" : "1661733229",
-    "_developerTeamID" : "3W7H4PYMCV",
+    "_applicationInternalID" : "",
+    "_developerTeamID" : "",
     "_failTransactionsEnabled" : false,
     "_lastSynchronizedDate" : 722042011.75185394,
     "_locale" : "en_US",

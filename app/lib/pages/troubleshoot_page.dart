@@ -20,7 +20,7 @@ class TroubleshootPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final settings = context.ref.watch(settingsProvider);
     return Scaffold(
-      appBar: basicLocalSendAppbar(t.troubleshootPage.title),
+      appBar: basicAikaAppbar(t.troubleshootPage.title),
       body: ResponsiveListView(
         padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 30),
         children: [
@@ -35,8 +35,8 @@ class TroubleshootPage extends StatelessWidget {
                 TargetPlatform.windows: _CommandFixAction(
                   adminPrivileges: true,
                   commands: [
-                    'netsh advfirewall firewall add rule name="LocalSend" dir=in action=allow protocol=TCP localport=${settings.port}',
-                    'netsh advfirewall firewall add rule name="LocalSend" dir=in action=allow protocol=UDP localport=${settings.port}',
+                    'netsh advfirewall firewall add rule name="Aika" dir=in action=allow protocol=TCP localport=${settings.port}',
+                    'netsh advfirewall firewall add rule name="Aika" dir=in action=allow protocol=UDP localport=${settings.port}',
                   ],
                 ),
               },

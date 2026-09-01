@@ -12,7 +12,7 @@ class ChangelogPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: basicLocalSendAppbar(t.changelogPage.title),
+      appBar: basicAikaAppbar(t.changelogPage.title),
       body: FutureBuilder(
         future: rootBundle.loadString(Assets.changelog), // ignore: discarded_futures
         builder: (context, data) {

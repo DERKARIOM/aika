@@ -12,7 +12,7 @@ class SecurityDebugPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final securityContext = context.ref.watch(securityProvider);
     return Scaffold(
-      appBar: basicLocalSendAppbar('Security Debugging'),
+      appBar: basicAikaAppbar('Security Debugging'),
       body: ResponsiveListView(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
         maxWidth: 700,

@@ -24,24 +24,15 @@ class AboutPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final primaryColor = Theme.of(context).colorScheme.primary;
     return Scaffold(
-      appBar: basicLocalSendAppbar(t.aboutPage.title),
+      appBar: basicAikaAppbar(t.aboutPage.title),
       body: ResponsiveListView(
         padding: const EdgeInsets.symmetric(horizontal: 15),
         children: [
           const SizedBox(height: 20),
           const LocalSendLogo(withText: true),
           Text(
-            '© ${DateTime.now().year} DERKARIOM',
+            '© ${DateTime.now().year} Bachir Abdoul Kader',
             textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 10),
-          Center(
-            child: TextButton(
-              onPressed: () async {
-                await launchUrl(Uri.parse('https://aika.com'));
-              },
-              child: const Text('aika.com'),
-            ),
           ),
           const SizedBox(height: 10),
           Text(t.aboutPage.description.join('\n\n')),
@@ -49,19 +40,25 @@ class AboutPage extends StatelessWidget {
           Text(t.aboutPage.author, style: const TextStyle(fontWeight: FontWeight.bold)),
           Text.rich(
             _buildContributor(
-              label: 'Bachir Ousseini Abdoul Kader',
+              label: 'Bachir Abdoul Kader',
               primaryColor: primaryColor,
             ),
           ),
+          const SizedBox(height: 10),
+          Text(t.aboutPage.academicContext),
+          const SizedBox(height: 20),
+          Text(t.aboutPage.openSourceTitle, style: const TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          Text(t.aboutPage.openSourceDescription),
           const SizedBox(height: 20),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               TextButton(
                 onPressed: () async {
-                  await launchUrl(Uri.parse('https://aika.org'));
+                  await launchUrl(Uri.parse('https://aika.naniger.com'));
                 },
-                child: const Text('Site Web officiel'),
+                child: const Text('aika.naniger.com'),
               ),
               TextButton(
                 onPressed: () async {

@@ -48,7 +48,7 @@ Future<void> _clear(RootIsolateToken token) async {
     checkPlatform([TargetPlatform.iOS])
         ? PathProviderFoundation()
               .getContainerPath(
-                appGroupIdentifier: 'group.org.localsend.localsendApp',
+                appGroupIdentifier: 'group.com.naniger.aika',
               )
               .then((directoryPath) async {
                 if (directoryPath == null) {

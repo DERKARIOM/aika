@@ -24,7 +24,7 @@ class DebugPage extends StatelessWidget {
     final store = SharedPreferencesStorePlatform.instance;
 
     return Scaffold(
-      appBar: basicLocalSendAppbar('Debugging'),
+      appBar: basicAikaAppbar('Debugging'),
       body: ListView(
         padding: const EdgeInsets.only(left: 20, right: 20, top: 10, bottom: 30),
         children: [

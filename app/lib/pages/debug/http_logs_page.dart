@@ -15,7 +15,7 @@ class HttpLogsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final logs = context.ref.watch(httpLogsProvider);
     return Scaffold(
-      appBar: basicLocalSendAppbar('HTTP Logs'),
+      appBar: basicAikaAppbar('HTTP Logs'),
       body: ResponsiveListView(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
         children: [

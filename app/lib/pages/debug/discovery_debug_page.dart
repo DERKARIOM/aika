@@ -17,7 +17,7 @@ class DiscoveryDebugPage extends StatelessWidget {
     final ref = context.ref;
     final logs = ref.watch(discoveryLoggerProvider);
     return Scaffold(
-      appBar: basicLocalSendAppbar('Discovery Debugging'),
+      appBar: basicAikaAppbar('Discovery Debugging'),
       body: ResponsiveListView(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
         children: [
