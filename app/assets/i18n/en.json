@@ -593,7 +593,7 @@
     }
   },
   "chat": {
-    "title": "Chat",
+    "title": "Messages",
     "newConversation": "New conversation",
     "empty": "No conversations yet.\nStart one from the + button.",
     "noMessagesYet": "No messages yet. Say hello!",

@@ -1983,8 +1983,8 @@ class Translations$chat$en {
   // Translations
   late final Translations$chat$newContact$en newContact = Translations$chat$newContact$en.internal(_root);
 
-  /// en: 'Chat'
-  String get title => 'Chat';
+  /// en: 'Messages'
+  String get title => 'Messages';
 
   /// en: 'New conversation'
   String get newConversation => 'New conversation';

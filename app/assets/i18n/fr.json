@@ -523,7 +523,7 @@
     }
   },
   "chat": {
-    "title": "Discussions",
+    "title": "Messages",
     "newConversation": "Nouvelle discussion",
     "empty": "Aucune discussion pour le moment.\nDémarrez-en une avec le bouton +.",
     "noMessagesYet": "Aucun message pour le moment. Dites bonjour !",

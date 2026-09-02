@@ -89,6 +89,8 @@ class TranslationsFr extends Translations with BaseTranslations<AppLocale, Trans
   late final _Translations$networkInterfacesPage$fr networkInterfacesPage = _Translations$networkInterfacesPage$fr._(_root);
   @override
   late final _Translations$qrPairing$fr qrPairing = _Translations$qrPairing$fr._(_root);
+  @override
+  late final _Translations$chat$fr chat = _Translations$chat$fr._(_root);
 }
 
 // Path: general
@@ -1585,4 +1587,101 @@ class _Translations$qrPairing$confirm$fr extends Translations$qrPairing$confirm$
   String get connect => 'Se connecter';
   @override
   String get connectAnyway => 'Se connecter quand même';
+}
+
+// Path: chat
+class _Translations$chat$fr extends Translations$chat$en {
+  _Translations$chat$fr._(TranslationsFr root) : this._root = root, super.internal(root);
+
+  final TranslationsFr _root; // ignore: unused_field
+
+  // Translations
+  @override
+  late final _Translations$chat$newContact$fr newContact = _Translations$chat$newContact$fr._(_root);
+
+  /// fr: 'Messages'
+  @override
+  String get title => 'Messages';
+
+  /// fr: 'Nouvelle discussion'
+  @override
+  String get newConversation => 'Nouvelle discussion';
+
+  /// fr: 'Aucune discussion pour le moment.\nDémarrez-en une avec le bouton +.'
+  @override
+  String get empty => 'Aucune discussion pour le moment.\nDémarrez-en une avec le bouton +.';
+
+  /// fr: 'Aucun message pour le moment. Dites bonjour !'
+  @override
+  String get noMessagesYet => 'Aucun message pour le moment. Dites bonjour !';
+
+  /// fr: 'en train d\'écrire…'
+  @override
+  String get typing => 'en train d\'écrire…';
+
+  /// fr: 'En ligne'
+  @override
+  String get online => 'En ligne';
+
+  /// fr: 'Hors ligne'
+  @override
+  String get offline => 'Hors ligne';
+
+  /// fr: 'Message'
+  @override
+  String get messageHint => 'Message';
+
+  /// fr: 'Pièce jointe'
+  @override
+  String get attachment => 'Pièce jointe';
+
+  /// fr: 'Exporter la discussion'
+  @override
+  String get export => 'Exporter la discussion';
+
+  /// fr: 'Supprimer la discussion'
+  @override
+  String get deleteConversation => 'Supprimer la discussion';
+
+  /// fr: 'Cela supprimera définitivement cette discussion et tous ses messages de cet appareil. Cette action est irréversible.'
+  @override
+  String get deleteConversationConfirm =>
+      'Cela supprimera définitivement cette discussion et tous ses messages de cet appareil. Cette action est irréversible.';
+
+  /// fr: 'Bloquer cet appareil'
+  @override
+  String get block => 'Bloquer cet appareil';
+
+  /// fr: 'Débloquer cet appareil'
+  @override
+  String get unblock => 'Débloquer cet appareil';
+
+  /// fr: 'Vous avez bloqué cet appareil. Débloquez-le pour pouvoir échanger à nouveau.'
+  @override
+  String get blockedNotice => 'Vous avez bloqué cet appareil. Débloquez-le pour pouvoir échanger à nouveau.';
+}
+
+// Path: chat.newContact
+class _Translations$chat$newContact$fr extends Translations$chat$newContact$en {
+  _Translations$chat$newContact$fr._(TranslationsFr root) : this._root = root, super.internal(root);
+
+  final TranslationsFr _root; // ignore: unused_field
+
+  // Translations
+  /// fr: 'Nouvelle demande de discussion'
+  @override
+  String get title => 'Nouvelle demande de discussion';
+
+  /// fr: 'Cet appareil n\'est pas encore un contact connu. Accepter démarrera une discussion et acceptera automatiquement ses futurs messages.'
+  @override
+  String get description =>
+      'Cet appareil n\'est pas encore un contact connu. Accepter démarrera une discussion et acceptera automatiquement ses futurs messages.';
+
+  /// fr: 'Accepter'
+  @override
+  String get accept => 'Accepter';
+
+  /// fr: 'Bloquer'
+  @override
+  String get block => 'Bloquer';
 }

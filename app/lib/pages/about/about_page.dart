@@ -56,9 +56,9 @@ class AboutPage extends StatelessWidget {
             children: [
               TextButton(
                 onPressed: () async {
-                  await launchUrl(Uri.parse('https://aika.naniger.com'));
+                  await launchUrl(Uri.parse('https://naniger.com'));
                 },
-                child: const Text('aika.naniger.com'),
+                child: const Text('naniger.com'),
               ),
               TextButton(
                 onPressed: () async {

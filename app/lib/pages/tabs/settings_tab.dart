@@ -510,7 +510,7 @@ class SettingsTab extends StatelessWidget {
                         buttonLabel: t.general.open,
                         onTap: () async {
                           await launchUrl(
-                            Uri.parse('https://aika.naniger.com/privacy'),
+                            Uri.parse('https://naniger.com/privacy'),
                             mode: LaunchMode.externalApplication,
                           );
                         },
