@@ -41,8 +41,30 @@ class $AssetsImgGen {
   /// File path: assets/img/logo.ico
   String get logo => 'assets/img/logo.ico';
 
+  /// File path: assets/img/logo-nita.png
+  AssetGenImage get logoNita => const AssetGenImage('assets/img/logo-nita.png');
+
+  /// File path: assets/img/logo-amana.png
+  AssetGenImage get logoAmana => const AssetGenImage('assets/img/logo-amana.png');
+
+  /// File path: assets/img/logo-wave.png
+  AssetGenImage get logoWave => const AssetGenImage('assets/img/logo-wave.png');
+
   /// List of all assets
-  List<dynamic> get values => [logo128, logo256, logo32Black, logo32White, logo32, logo512White, logo512, logo512Legacy, logo];
+  List<dynamic> get values => [
+    logo128,
+    logo256,
+    logo32Black,
+    logo32White,
+    logo32,
+    logo512White,
+    logo512,
+    logo512Legacy,
+    logo,
+    logoNita,
+    logoAmana,
+    logoWave,
+  ];
 }
 
 class $AssetsWebGen {

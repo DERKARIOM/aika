@@ -286,7 +286,14 @@
     "info": "Aika is free and open-source. If you like the app, you can support its development.",
     "donate": "Donate {amount}",
     "thanks": "Thank you very much!",
-    "restore": "Restore purchase"
+    "restore": "Restore purchase",
+    "freeTitle": "Aika is 100% free ❤️",
+    "freeMessage": "Aika is and will remain a free app. If you enjoy the app and want to help it grow, you can support its development with a contribution of your choice.",
+    "supportMessage": "Every contribution, big or small, helps me keep developing Aika, improve the user experience, and add new features.",
+    "methodsIntro": "You can contribute as you like via:",
+    "copyNumber": "Copy number",
+    "numberCopied": "Number copied!",
+    "footerThanks": "Thank you to everyone who supports Aika and contributes to its growth. 🙏🏽"
   },
   "changelogPage": {
     "title": "Changelog"

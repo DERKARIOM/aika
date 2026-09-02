@@ -484,6 +484,22 @@ class _Translations$donationPage$fr extends Translations$donationPage$en {
   String get thanks => 'Merci beaucoup !';
   @override
   String get restore => 'Restaurer les achats';
+  @override
+  String get freeTitle => 'Aika est 100 % gratuit ❤️';
+  @override
+  String get freeMessage =>
+      'Aika est et restera une application gratuite. Si vous appréciez l\'application et souhaitez m\'aider à la faire évoluer, vous pouvez soutenir son développement avec une contribution de votre choix.';
+  @override
+  String get supportMessage =>
+      'Chaque contribution, petite ou grande, m\'aide à continuer à développer Aika, améliorer l\'expérience utilisateur et proposer de nouvelles fonctionnalités.';
+  @override
+  String get methodsIntro => 'Vous pouvez contribuer selon votre choix via :';
+  @override
+  String get copyNumber => 'Copier le numéro';
+  @override
+  String get numberCopied => 'Numéro copié !';
+  @override
+  String get footerThanks => 'Merci à toutes les personnes qui soutiennent Aika et contribuent à son évolution. 🙏🏽';
 }
 
 // Path: changelogPage

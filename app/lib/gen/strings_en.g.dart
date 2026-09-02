@@ -588,6 +588,27 @@ class Translations$donationPage$en {
 
   /// en: 'Restore purchase'
   String get restore => 'Restore purchase';
+
+  /// en: 'Aika is 100% free ❤️'
+  String get freeTitle => 'Aika is 100% free ❤️';
+
+  /// en: 'Aika is and will remain a free app. If you enjoy the app and want to help it grow, you can support its development with a contribution of your choice.'
+  String get freeMessage => 'Aika is and will remain a free app. If you enjoy the app and want to help it grow, you can support its development with a contribution of your choice.';
+
+  /// en: 'Every contribution, big or small, helps me keep developing Aika, improve the user experience, and add new features.'
+  String get supportMessage => 'Every contribution, big or small, helps me keep developing Aika, improve the user experience, and add new features.';
+
+  /// en: 'You can contribute as you like via:'
+  String get methodsIntro => 'You can contribute as you like via:';
+
+  /// en: 'Copy number'
+  String get copyNumber => 'Copy number';
+
+  /// en: 'Number copied!'
+  String get numberCopied => 'Number copied!';
+
+  /// en: 'Thank you to everyone who supports Aika and contributes to its growth. 🙏🏽'
+  String get footerThanks => 'Thank you to everyone who supports Aika and contributes to its growth. 🙏🏽';
 }
 
 // Path: changelogPage
