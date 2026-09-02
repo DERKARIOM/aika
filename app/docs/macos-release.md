@@ -21,7 +21,7 @@ Pour l'obtenir :
 2. Cliquez sur « + » → « Developer ID Application ». Xcode le génère et l'installe dans votre trousseau (Keychain).
 3. Vérifiez qu'il apparaît : `security find-identity -v -p codesigning` doit lister une entrée `Developer ID Application: <Votre nom/organisation> (MM9Z35FS2F)`.
 
-Le projet (`macos/Runner.xcodeproj/project.pbxproj`) a déjà été mis à jour pour utiliser cette identité en configuration **Release** (pour la cible `Runner` et la cible `ShareExtension`), tout en gardant `Apple Development` pour `Debug`/`Profile` — pas de changement supplémentaire nécessaire ici.
+Important : ne changez **pas** `CODE_SIGN_IDENTITY` vers « Developer ID Application » dans les réglages du projet Xcode tant que `CODE_SIGN_STYLE` reste `Automatic` (c'est le cas ici, et ça doit le rester pour que `flutter build macos --release` fonctionne en ligne de commande). Xcode refuse cette combinaison lors d'un build normal (« conflicting provisioning settings ») — l'erreur a été rencontrée et corrigée pendant cette session. Le projet garde donc `Apple Development` pour toutes les configurations (Debug, Profile **et** Release) : la signature de distribution ne se fait pas via ce réglage, mais via la commande `codesign` manuelle de l'étape 4 ci-dessous, appliquée à l'app déjà construite.
 
 ### 2.2 Mot de passe d'application (pour la notarisation)
 
