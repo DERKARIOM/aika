@@ -119,6 +119,19 @@
             </intent-filter>
         </service>
 
+        <!-- "Partager Aika": exposes Aika's own installed APK (see MainActivity.shareOwnApk)
+             as a content:// URI so it can be handed to Android's native Sharesheet
+             (Bluetooth, Nearby Share, etc.), without granting broader access than that. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

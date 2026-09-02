@@ -74,6 +74,7 @@ class Translations with BaseTranslations<AppLocale, Translations> {
   late final Translations$assetPicker$en assetPicker = Translations$assetPicker$en.internal(_root);
   late final Translations$qrPairing$en qrPairing = Translations$qrPairing$en.internal(_root);
   late final Translations$chat$en chat = Translations$chat$en.internal(_root);
+  late final Translations$shareAikaPage$en shareAikaPage = Translations$shareAikaPage$en.internal(_root);
 }
 
 // Path: general
@@ -548,7 +549,8 @@ class Translations$aboutPage$en {
   String get author => 'Author';
 
   /// en: 'Aika is a project developed by Bachir Abdoul Kader as part of his research work for a Master's degree in Fundamental and Applied Computer Science.'
-  String get academicContext => 'Aika is a project developed by Bachir Abdoul Kader as part of his research work for a Master\'s degree in Fundamental and Applied Computer Science.';
+  String get academicContext =>
+      'Aika is a project developed by Bachir Abdoul Kader as part of his research work for a Master\'s degree in Fundamental and Applied Computer Science.';
 
   /// en: 'Contributors'
   String get contributors => 'Contributors';
@@ -563,7 +565,8 @@ class Translations$aboutPage$en {
   String get openSourceTitle => 'Open Source';
 
   /// en: 'Aika is built on and derived from open-source components, distributed under the Apache License 2.0. You can review the licenses and attributions of the open-source components used by Aika below.'
-  String get openSourceDescription => 'Aika is built on and derived from open-source components, distributed under the Apache License 2.0. You can review the licenses and attributions of the open-source components used by Aika below.';
+  String get openSourceDescription =>
+      'Aika is built on and derived from open-source components, distributed under the Apache License 2.0. You can review the licenses and attributions of the open-source components used by Aika below.';
 }
 
 // Path: donationPage
@@ -593,7 +596,8 @@ class Translations$donationPage$en {
   String get freeTitle => 'Aika is 100% free ❤️';
 
   /// en: 'Aika is and will remain a free app. If you enjoy the app and want to help it grow, you can support its development with a contribution of your choice.'
-  String get freeMessage => 'Aika is and will remain a free app. If you enjoy the app and want to help it grow, you can support its development with a contribution of your choice.';
+  String get freeMessage =>
+      'Aika is and will remain a free app. If you enjoy the app and want to help it grow, you can support its development with a contribution of your choice.';
 
   /// en: 'Every contribution, big or small, helps me keep developing Aika, improve the user experience, and add new features.'
   String get supportMessage => 'Every contribution, big or small, helps me keep developing Aika, improve the user experience, and add new features.';
@@ -904,6 +908,115 @@ class Translations$assetPicker$en {
   String get sUnitAssetCountLabel => 'count';
 }
 
+// Path: qrPairing
+class Translations$qrPairing$en {
+  Translations$qrPairing$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+  late final Translations$qrPairing$display$en display = Translations$qrPairing$display$en.internal(_root);
+  late final Translations$qrPairing$scan$en scan = Translations$qrPairing$scan$en.internal(_root);
+  late final Translations$qrPairing$confirm$en confirm = Translations$qrPairing$confirm$en.internal(_root);
+}
+
+// Path: chat
+class Translations$chat$en {
+  Translations$chat$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+
+  /// en: 'Messages'
+  String get title => 'Messages';
+
+  /// en: 'New conversation'
+  String get newConversation => 'New conversation';
+
+  /// en: 'No conversations yet. Start one from the + button.'
+  String get empty => 'No conversations yet.\nStart one from the + button.';
+
+  /// en: 'No messages yet. Say hello!'
+  String get noMessagesYet => 'No messages yet. Say hello!';
+
+  /// en: 'typing…'
+  String get typing => 'typing…';
+
+  /// en: 'Online'
+  String get online => 'Online';
+
+  /// en: 'Offline'
+  String get offline => 'Offline';
+
+  /// en: 'Message'
+  String get messageHint => 'Message';
+
+  /// en: 'Attachment'
+  String get attachment => 'Attachment';
+
+  /// en: 'Export conversation'
+  String get export => 'Export conversation';
+
+  /// en: 'Delete conversation'
+  String get deleteConversation => 'Delete conversation';
+
+  /// en: 'This will permanently delete this conversation and all its messages from this device. This cannot be undone.'
+  String get deleteConversationConfirm =>
+      'This will permanently delete this conversation and all its messages from this device. This cannot be undone.';
+
+  /// en: 'Block this device'
+  String get block => 'Block this device';
+
+  /// en: 'Unblock this device'
+  String get unblock => 'Unblock this device';
+
+  /// en: 'You blocked this device. Unblock it to send messages again.'
+  String get blockedNotice => 'You blocked this device. Unblock it to send messages again.';
+
+  late final Translations$chat$newContact$en newContact = Translations$chat$newContact$en.internal(_root);
+}
+
+// Path: shareAikaPage
+class Translations$shareAikaPage$en {
+  Translations$shareAikaPage$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+
+  /// en: 'Share Aika'
+  String get title => 'Share Aika';
+
+  /// en: 'Send Aika to a nearby device, even if it doesn't have the app installed yet.'
+  String get description => 'Send Aika to a nearby device, even if it doesn\'t have the app installed yet.';
+
+  /// en: 'You'll be able to choose Bluetooth, Nearby Share, or any other compatible app to send it.'
+  String get bluetoothUnavailableNotice => 'You\'ll be able to choose Bluetooth, Nearby Share, or any other compatible app to send it.';
+
+  /// en: 'Share Aika'
+  String get shareButton => 'Share Aika';
+
+  /// en: 'Preparing Aika's installation file...'
+  String get preparing => 'Preparing Aika\'s installation file...';
+
+  /// en: 'Send Aika to this device?'
+  String get confirmTitle => 'Send Aika to this device?';
+
+  /// en: 'Aika's installation file (APK) will be shared through Bluetooth, Nearby Share, or another app you choose. The recipient will need to allow installing apps from that source, just like for any file received this way.'
+  String get confirmBody =>
+      'Aika\'s installation file (APK) will be shared through Bluetooth, Nearby Share, or another app you choose. The recipient will need to allow installing apps from that source, just like for any file received this way.';
+
+  /// en: 'Send'
+  String get confirmCta => 'Send';
+
+  /// en: 'Aika was shared. On the other device, open the received file to install it.'
+  String get shared => 'Aika was shared. On the other device, open the received file to install it.';
+
+  /// en: 'Could not share Aika. Please try again.'
+  String get error => 'Could not share Aika. Please try again.';
+}
+
 // Path: receiveTab.infoBox
 class Translations$receiveTab$infoBox$en {
   Translations$receiveTab$infoBox$en.internal(this._root);
@@ -1186,6 +1299,9 @@ class Translations$settingsTab$other$en {
 
   /// en: 'Terms of Use'
   String get termsOfUse => 'Terms of Use';
+
+  /// en: 'Share Aika'
+  String get shareAika => 'Share Aika';
 }
 
 // Path: troubleshootPage.firewall
@@ -1725,99 +1841,6 @@ class Translations$dialogs$zoom$en {
   String get title => 'URL';
 }
 
-// Path: settingsTab.general.brightnessOptions
-class Translations$settingsTab$general$brightnessOptions$en {
-  Translations$settingsTab$general$brightnessOptions$en.internal(this._root);
-
-  final Translations _root; // ignore: unused_field
-
-  // Translations
-
-  /// en: 'System'
-  String get system => 'System';
-
-  /// en: 'Dark'
-  String get dark => 'Dark';
-
-  /// en: 'Light'
-  String get light => 'Light';
-}
-
-// Path: settingsTab.general.colorOptions
-class Translations$settingsTab$general$colorOptions$en {
-  Translations$settingsTab$general$colorOptions$en.internal(this._root);
-
-  final Translations _root; // ignore: unused_field
-
-  // Translations
-
-  /// en: 'System'
-  String get system => 'System';
-
-  /// en: 'OLED'
-  String get oled => 'OLED';
-}
-
-// Path: settingsTab.general.languageOptions
-class Translations$settingsTab$general$languageOptions$en {
-  Translations$settingsTab$general$languageOptions$en.internal(this._root);
-
-  final Translations _root; // ignore: unused_field
-
-  // Translations
-
-  /// en: 'System'
-  String get system => 'System';
-}
-
-// Path: settingsTab.network.networkOptions
-class Translations$settingsTab$network$networkOptions$en {
-  Translations$settingsTab$network$networkOptions$en.internal(this._root);
-
-  final Translations _root; // ignore: unused_field
-
-  // Translations
-
-  /// en: 'All'
-  String get all => 'All';
-
-  /// en: 'Filtered'
-  String get filtered => 'Filtered';
-}
-
-// Path: progressPage.total.title
-class Translations$progressPage$total$title$en {
-  Translations$progressPage$total$title$en.internal(this._root);
-
-  final Translations _root; // ignore: unused_field
-
-  // Translations
-
-  /// en: 'Total progress ({time})'
-  String sending({required Object time}) => 'Total progress (${time})';
-
-  /// en: 'Finished with error'
-  String get finishedError => 'Finished with error';
-
-  /// en: 'Canceled by sender'
-  String get canceledSender => 'Canceled by sender';
-
-  /// en: 'Canceled by receiver'
-  String get canceledReceiver => 'Canceled by receiver';
-}
-
-// Path: qrPairing
-class Translations$qrPairing$en {
-  Translations$qrPairing$en.internal(this._root);
-
-  final Translations _root; // ignore: unused_field
-
-  // Translations
-  late final Translations$qrPairing$display$en display = Translations$qrPairing$display$en.internal(_root);
-  late final Translations$qrPairing$scan$en scan = Translations$qrPairing$scan$en.internal(_root);
-  late final Translations$qrPairing$confirm$en confirm = Translations$qrPairing$confirm$en.internal(_root);
-}
-
 // Path: qrPairing.display
 class Translations$qrPairing$display$en {
   Translations$qrPairing$display$en.internal(this._root);
@@ -1974,62 +1997,6 @@ class Translations$qrPairing$confirm$en {
   String get connectAnyway => 'Connect anyway';
 }
 
-// Path: chat
-class Translations$chat$en {
-  Translations$chat$en.internal(this._root);
-
-  final Translations _root; // ignore: unused_field
-
-  // Translations
-  late final Translations$chat$newContact$en newContact = Translations$chat$newContact$en.internal(_root);
-
-  /// en: 'Messages'
-  String get title => 'Messages';
-
-  /// en: 'New conversation'
-  String get newConversation => 'New conversation';
-
-  /// en: 'No conversations yet.\nStart one from the + button.'
-  String get empty => 'No conversations yet.\nStart one from the + button.';
-
-  /// en: 'No messages yet. Say hello!'
-  String get noMessagesYet => 'No messages yet. Say hello!';
-
-  /// en: 'typing…'
-  String get typing => 'typing…';
-
-  /// en: 'Online'
-  String get online => 'Online';
-
-  /// en: 'Offline'
-  String get offline => 'Offline';
-
-  /// en: 'Message'
-  String get messageHint => 'Message';
-
-  /// en: 'Attachment'
-  String get attachment => 'Attachment';
-
-  /// en: 'Export conversation'
-  String get export => 'Export conversation';
-
-  /// en: 'Delete conversation'
-  String get deleteConversation => 'Delete conversation';
-
-  /// en: 'This will permanently delete this conversation and all its messages from this device. This cannot be undone.'
-  String get deleteConversationConfirm =>
-      'This will permanently delete this conversation and all its messages from this device. This cannot be undone.';
-
-  /// en: 'Block this device'
-  String get block => 'Block this device';
-
-  /// en: 'Unblock this device'
-  String get unblock => 'Unblock this device';
-
-  /// en: 'You blocked this device. Unblock it to send messages again.'
-  String get blockedNotice => 'You blocked this device. Unblock it to send messages again.';
-}
-
 // Path: chat.newContact
 class Translations$chat$newContact$en {
   Translations$chat$newContact$en.internal(this._root);
@@ -2050,4 +2017,85 @@ class Translations$chat$newContact$en {
 
   /// en: 'Block'
   String get block => 'Block';
+}
+
+// Path: settingsTab.general.brightnessOptions
+class Translations$settingsTab$general$brightnessOptions$en {
+  Translations$settingsTab$general$brightnessOptions$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+
+  /// en: 'System'
+  String get system => 'System';
+
+  /// en: 'Dark'
+  String get dark => 'Dark';
+
+  /// en: 'Light'
+  String get light => 'Light';
+}
+
+// Path: settingsTab.general.colorOptions
+class Translations$settingsTab$general$colorOptions$en {
+  Translations$settingsTab$general$colorOptions$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+
+  /// en: 'System'
+  String get system => 'System';
+
+  /// en: 'OLED'
+  String get oled => 'OLED';
+}
+
+// Path: settingsTab.general.languageOptions
+class Translations$settingsTab$general$languageOptions$en {
+  Translations$settingsTab$general$languageOptions$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+
+  /// en: 'System'
+  String get system => 'System';
+}
+
+// Path: settingsTab.network.networkOptions
+class Translations$settingsTab$network$networkOptions$en {
+  Translations$settingsTab$network$networkOptions$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+
+  /// en: 'All'
+  String get all => 'All';
+
+  /// en: 'Filtered'
+  String get filtered => 'Filtered';
+}
+
+// Path: progressPage.total.title
+class Translations$progressPage$total$title$en {
+  Translations$progressPage$total$title$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+
+  /// en: 'Total progress ({time})'
+  String sending({required Object time}) => 'Total progress (${time})';
+
+  /// en: 'Finished with error'
+  String get finishedError => 'Finished with error';
+
+  /// en: 'Canceled by sender'
+  String get canceledSender => 'Canceled by sender';
+
+  /// en: 'Canceled by receiver'
+  String get canceledReceiver => 'Canceled by receiver';
 }

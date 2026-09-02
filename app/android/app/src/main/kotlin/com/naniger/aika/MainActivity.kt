@@ -18,10 +18,12 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.DocumentsContract
 import android.provider.Settings
+import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
 
 
 private const val CHANNEL = "com.naniger.aika/localsend"
@@ -102,6 +104,8 @@ class MainActivity : FlutterActivity() {
                 "joinWifiNetwork" -> joinWifiNetwork(call, result)
 
                 "unbindWifiNetwork" -> unbindWifiNetwork(result)
+
+                "shareOwnApk" -> shareOwnApk(result)
 
                 else -> result.notImplemented()
             }
@@ -341,6 +345,66 @@ class MainActivity : FlutterActivity() {
             unbindWifiNetworkInternal(it)
         }
         super.onDestroy()
+    }
+
+    // --- "Partager Aika": share Aika's own installed APK via Android's native Sharesheet ---
+    //
+    // Lets a user who already has Aika send its APK to a nearby device that doesn't have
+    // it yet (e.g. via Bluetooth or Nearby Share), so it can be installed there. Aika never
+    // talks to the Bluetooth stack itself: it only resolves its own currently installed
+    // APK (name, version, path) via PackageManager — a self-lookup that needs no special
+    // permission, unlike enumerating other apps — wraps it in a content:// URI via the
+    // FileProvider declared in AndroidManifest.xml, and hands it to Android's own
+    // ACTION_SEND chooser. Android itself then presents whatever nearby-sharing targets are
+    // actually available on this device (Bluetooth, Nearby Share/Quick Share, etc.); Aika
+    // never claims a specific transport is available, since only Android can know that.
+    private fun shareOwnApk(result: MethodChannel.Result) {
+        try {
+            val pm = packageManager
+            val appInfo = pm.getApplicationInfo(packageName, 0)
+            val packageInfo = pm.getPackageInfo(packageName, 0)
+            val apkFile = File(appInfo.sourceDir)
+            if (!apkFile.exists()) {
+                result.error("APK_NOT_FOUND", "Could not locate Aika's own installed APK file", null)
+                return
+            }
+
+            val versionName = packageInfo.versionName ?: "?"
+            val versionCode: Long = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                packageInfo.longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                packageInfo.versionCode.toLong()
+            }
+            val displayName = "Aika-v$versionName.apk"
+
+            val authority = "$packageName.fileprovider"
+            val apkUri: Uri = FileProvider.getUriForFile(this, authority, apkFile)
+
+            val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/vnd.android.package-archive"
+                putExtra(Intent.EXTRA_STREAM, apkUri)
+                putExtra(Intent.EXTRA_SUBJECT, displayName)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+
+            val chooser = Intent.createChooser(sendIntent, "Partager Aika").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(chooser)
+
+            result.success(
+                mapOf(
+                    "appName" to pm.getApplicationLabel(appInfo).toString(),
+                    "versionName" to versionName,
+                    "versionCode" to versionCode,
+                    "sizeBytes" to apkFile.length(),
+                    "fileName" to displayName,
+                )
+            )
+        } catch (e: Exception) {
+            result.error("SHARE_FAILED", e.message ?: "Failed to share Aika's APK", null)
+        }
     }
 
     private fun isAnimationsEnabled() : Boolean {

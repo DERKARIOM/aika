@@ -12,6 +12,7 @@ import 'package:localsend_app/pages/changelog_page.dart';
 import 'package:localsend_app/pages/donation/donation_page.dart';
 import 'package:localsend_app/pages/language_page.dart';
 import 'package:localsend_app/pages/settings/network_interfaces_page.dart';
+import 'package:localsend_app/pages/share_aika_page.dart';
 import 'package:localsend_app/pages/tabs/settings_tab_controller.dart';
 import 'package:localsend_app/provider/network/server/server_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
@@ -491,6 +492,14 @@ class SettingsTab extends StatelessWidget {
                     title: t.settingsTab.other.title,
                     padding: const EdgeInsets.only(bottom: 0),
                     children: [
+                      if (checkPlatform([TargetPlatform.android]))
+                        _ButtonEntry(
+                          label: t.settingsTab.other.shareAika,
+                          buttonLabel: t.general.open,
+                          onTap: () async {
+                            await context.push(() => const ShareAikaPage());
+                          },
+                        ),
                       _ButtonEntry(
                         label: t.aboutPage.title,
                         buttonLabel: t.general.open,

@@ -91,6 +91,8 @@ class TranslationsFr extends Translations with BaseTranslations<AppLocale, Trans
   late final _Translations$qrPairing$fr qrPairing = _Translations$qrPairing$fr._(_root);
   @override
   late final _Translations$chat$fr chat = _Translations$chat$fr._(_root);
+  @override
+  late final _Translations$shareAikaPage$fr shareAikaPage = _Translations$shareAikaPage$fr._(_root);
 }
 
 // Path: general
@@ -714,6 +716,94 @@ class _Translations$networkInterfacesPage$fr extends Translations$networkInterfa
   String get blacklist => 'Liste noire';
 }
 
+// Path: qrPairing
+class _Translations$qrPairing$fr extends Translations$qrPairing$en {
+  _Translations$qrPairing$fr._(TranslationsFr root) : this._root = root, super.internal(root);
+
+  final TranslationsFr _root; // ignore: unused_field
+
+  // Translations
+  @override
+  late final _Translations$qrPairing$display$fr display = _Translations$qrPairing$display$fr._(_root);
+  @override
+  late final _Translations$qrPairing$scan$fr scan = _Translations$qrPairing$scan$fr._(_root);
+  @override
+  late final _Translations$qrPairing$confirm$fr confirm = _Translations$qrPairing$confirm$fr._(_root);
+}
+
+// Path: chat
+class _Translations$chat$fr extends Translations$chat$en {
+  _Translations$chat$fr._(TranslationsFr root) : this._root = root, super.internal(root);
+
+  final TranslationsFr _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String get title => 'Messages';
+  @override
+  String get newConversation => 'Nouvelle discussion';
+  @override
+  String get empty => 'Aucune discussion pour le moment.\nDémarrez-en une avec le bouton +.';
+  @override
+  String get noMessagesYet => 'Aucun message pour le moment. Dites bonjour !';
+  @override
+  String get typing => 'en train d\'écrire…';
+  @override
+  String get online => 'En ligne';
+  @override
+  String get offline => 'Hors ligne';
+  @override
+  String get messageHint => 'Message';
+  @override
+  String get attachment => 'Pièce jointe';
+  @override
+  String get export => 'Exporter la discussion';
+  @override
+  String get deleteConversation => 'Supprimer la discussion';
+  @override
+  String get deleteConversationConfirm =>
+      'Cela supprimera définitivement cette discussion et tous ses messages de cet appareil. Cette action est irréversible.';
+  @override
+  String get block => 'Bloquer cet appareil';
+  @override
+  String get unblock => 'Débloquer cet appareil';
+  @override
+  String get blockedNotice => 'Vous avez bloqué cet appareil. Débloquez-le pour pouvoir échanger à nouveau.';
+  @override
+  late final _Translations$chat$newContact$fr newContact = _Translations$chat$newContact$fr._(_root);
+}
+
+// Path: shareAikaPage
+class _Translations$shareAikaPage$fr extends Translations$shareAikaPage$en {
+  _Translations$shareAikaPage$fr._(TranslationsFr root) : this._root = root, super.internal(root);
+
+  final TranslationsFr _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String get title => 'Partager Aika';
+  @override
+  String get description => 'Envoyez Aika à un appareil à proximité, même s\'il n\'a pas encore l\'application installée.';
+  @override
+  String get bluetoothUnavailableNotice =>
+      'Vous pourrez choisir Bluetooth, Partage à proximité, ou une autre application compatible pour l\'envoyer.';
+  @override
+  String get shareButton => 'Partager Aika';
+  @override
+  String get preparing => 'Préparation du fichier d\'installation d\'Aika...';
+  @override
+  String get confirmTitle => 'Envoyer Aika à cet appareil ?';
+  @override
+  String get confirmBody =>
+      'Le fichier d\'installation d\'Aika (APK) sera partagé via Bluetooth, Partage à proximité, ou une autre application de votre choix. La personne qui le reçoit devra autoriser l\'installation d\'applications depuis cette source, comme pour tout fichier reçu de cette façon.';
+  @override
+  String get confirmCta => 'Envoyer';
+  @override
+  String get shared => 'Aika a été partagée. Sur l\'autre appareil, ouvrez le fichier reçu pour l\'installer.';
+  @override
+  String get error => 'Impossible de partager Aika. Merci de réessayer.';
+}
+
 // Path: receiveTab.infoBox
 class _Translations$receiveTab$infoBox$fr extends Translations$receiveTab$infoBox$en {
   _Translations$receiveTab$infoBox$fr._(TranslationsFr root) : this._root = root, super.internal(root);
@@ -934,6 +1024,8 @@ class _Translations$settingsTab$other$fr extends Translations$settingsTab$other$
   String get privacyPolicy => 'Politique de confidentialité';
   @override
   String get termsOfUse => 'Conditions d\'utilisation';
+  @override
+  String get shareAika => 'Partager Aika';
 }
 
 // Path: troubleshootPage.firewall
@@ -1395,6 +1487,138 @@ class _Translations$dialogs$zoom$fr extends Translations$dialogs$zoom$en {
   String get title => 'URL';
 }
 
+// Path: qrPairing.display
+class _Translations$qrPairing$display$fr extends Translations$qrPairing$display$en {
+  _Translations$qrPairing$display$fr._(TranslationsFr root) : this._root = root, super.internal(root);
+
+  final TranslationsFr _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String get title => 'Mon QR Code';
+  @override
+  String get buttonTooltip => 'Coupler par QR Code';
+  @override
+  String get offline => 'Démarrez d\'abord la réception (Wi-Fi activé, réception en cours) pour générer un code d\'appairage.';
+  @override
+  String get preparingNetwork => 'Préparation de votre réseau…';
+  @override
+  String get activatingHotspot => 'Activation d\'un point d\'accès Wi-Fi…';
+  @override
+  String get waitingForNetwork => 'Recherche de votre réseau…';
+  @override
+  String get networkReady => 'Votre réseau est prêt';
+  @override
+  String get hotspotPanelTitle => 'Point d\'accès créé';
+  @override
+  String get hotspotPanelInstructions => 'Connectez d\'abord l\'autre appareil à ce réseau Wi-Fi, puis scannez le code ci-dessous.';
+  @override
+  String get hotspotSsidLabel => 'Réseau';
+  @override
+  String get hotspotPasswordLabel => 'Mot de passe';
+  @override
+  String get stopHotspot => 'Désactiver le point d\'accès';
+  @override
+  String get hotspotStopped => 'Point d\'accès désactivé';
+  @override
+  String get manualActionTitle => 'Aucun réseau Wi-Fi disponible';
+  @override
+  String get manualActionDescriptionAndroid =>
+      'Aika n\'a pas pu activer de point d\'accès automatiquement. Activez le Wi-Fi ou un point d\'accès sur cet appareil, puis revenez ici.';
+  @override
+  String get manualActionDescriptionOther => 'Activez le Wi-Fi ou le partage de connexion sur cet appareil, puis revenez ici.';
+  @override
+  String get openSettings => 'Ouvrir les réglages';
+  @override
+  String get retry => 'Réessayer';
+  @override
+  String get waitingInSettings => 'En attente… revenez ici une fois le réseau activé.';
+  @override
+  String get expiration => 'Durée de validité';
+  @override
+  String get regenerate => 'Régénérer';
+  @override
+  String expiresIn({required Object duration}) => 'Expire dans ${duration}';
+  @override
+  String get expired => 'Expiré';
+  @override
+  String get securityNote =>
+      'Toute personne qui scanne ce code peut voir l\'alias de cet appareil et s\'y connecter tant que le code est valide. Régénérez-le si vous l\'avez partagé par erreur.';
+}
+
+// Path: qrPairing.scan
+class _Translations$qrPairing$scan$fr extends Translations$qrPairing$scan$en {
+  _Translations$qrPairing$scan$fr._(TranslationsFr root) : this._root = root, super.internal(root);
+
+  final TranslationsFr _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String get buttonTooltip => 'Scanner un QR Code';
+  @override
+  String get title => 'Scanner un QR Code';
+  @override
+  String get hint => 'Visez le QR Code de l\'autre appareil avec la caméra';
+  @override
+  String get joiningNetwork => 'Connexion au réseau…';
+  @override
+  String get importImage => 'Importer une image';
+  @override
+  String get notFoundInImage => 'Aucun QR Code trouvé dans cette image.';
+  @override
+  String get unreachable => 'Impossible de joindre cet appareil. Vérifiez que les deux appareils sont sur le même réseau.';
+  @override
+  String get errorExpired => 'Ce QR Code a expiré. Demandez à l\'autre appareil d\'en générer un nouveau.';
+  @override
+  String get errorUnsupportedVersion => 'Ce QR Code a été généré par une version incompatible de l\'application.';
+  @override
+  String get errorMalformed => 'Ce n\'est pas un QR Code d\'appairage Aika valide.';
+  @override
+  String get noCameraOnPlatform => 'Le scan par caméra n\'est pas encore disponible sur cette plateforme. Importez plutôt une image du QR Code.';
+  @override
+  String get cameraUnavailable => 'La caméra n\'est pas disponible. Vérifiez l\'autorisation d\'accès à la caméra.';
+  @override
+  String pairedSnackbar({required Object alias}) => 'Connecté à ${alias}';
+}
+
+// Path: qrPairing.confirm
+class _Translations$qrPairing$confirm$fr extends Translations$qrPairing$confirm$en {
+  _Translations$qrPairing$confirm$fr._(TranslationsFr root) : this._root = root, super.internal(root);
+
+  final TranslationsFr _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String get title => 'Se connecter à cet appareil ?';
+  @override
+  String get description => 'La connexion a été vérifiée grâce au certificat de l\'appareil. Voulez-vous vous appairer avec lui ?';
+  @override
+  String get fingerprintMismatch =>
+      'Attention : l\'appareil qui a répondu ne correspond pas au certificat encodé dans le QR Code. Cela peut indiquer que l\'adresse a été réattribuée à un autre appareil, ou une tentative d\'usurpation. Ne continuez que si vous êtes certain·e.';
+  @override
+  String get connect => 'Se connecter';
+  @override
+  String get connectAnyway => 'Se connecter quand même';
+}
+
+// Path: chat.newContact
+class _Translations$chat$newContact$fr extends Translations$chat$newContact$en {
+  _Translations$chat$newContact$fr._(TranslationsFr root) : this._root = root, super.internal(root);
+
+  final TranslationsFr _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String get title => 'Nouvelle demande de discussion';
+  @override
+  String get description =>
+      'Cet appareil n\'est pas encore un contact connu. Accepter démarrera une discussion et acceptera automatiquement ses futurs messages.';
+  @override
+  String get accept => 'Accepter';
+  @override
+  String get block => 'Bloquer';
+}
+
 // Path: settingsTab.general.brightnessOptions
 class _Translations$settingsTab$general$brightnessOptions$fr extends Translations$settingsTab$general$brightnessOptions$en {
   _Translations$settingsTab$general$brightnessOptions$fr._(TranslationsFr root) : this._root = root, super.internal(root);
@@ -1462,226 +1686,4 @@ class _Translations$progressPage$total$title$fr extends Translations$progressPag
   String get canceledSender => 'Annulé par l\'expéditeur';
   @override
   String get canceledReceiver => 'Annulé par le destinataire';
-}
-// Path: qrPairing
-class _Translations$qrPairing$fr extends Translations$qrPairing$en {
-  _Translations$qrPairing$fr._(TranslationsFr root) : this._root = root, super.internal(root);
-
-  final TranslationsFr _root; // ignore: unused_field
-
-  // Translations
-  @override
-  late final _Translations$qrPairing$display$fr display = _Translations$qrPairing$display$fr._(_root);
-  @override
-  late final _Translations$qrPairing$scan$fr scan = _Translations$qrPairing$scan$fr._(_root);
-  @override
-  late final _Translations$qrPairing$confirm$fr confirm = _Translations$qrPairing$confirm$fr._(_root);
-}
-
-// Path: qrPairing.display
-class _Translations$qrPairing$display$fr extends Translations$qrPairing$display$en {
-  _Translations$qrPairing$display$fr._(TranslationsFr root) : this._root = root, super.internal(root);
-
-  final TranslationsFr _root; // ignore: unused_field
-
-  // Translations
-  @override
-  String get title => 'Mon QR Code';
-  @override
-  String get buttonTooltip => 'Coupler par QR Code';
-  @override
-  String get offline => 'Démarrez d\'abord la réception (Wi-Fi activé, réception en cours) pour générer un code d\'appairage.';
-  @override
-  String get preparingNetwork => 'Préparation de votre réseau…';
-  @override
-  String get activatingHotspot => 'Activation d\'un point d\'accès Wi-Fi…';
-  @override
-  String get waitingForNetwork => 'Recherche de votre réseau…';
-  @override
-  String get networkReady => 'Votre réseau est prêt';
-  @override
-  String get hotspotPanelTitle => 'Point d\'accès créé';
-  @override
-  String get hotspotPanelInstructions => 'Connectez d\'abord l\'autre appareil à ce réseau Wi-Fi, puis scannez le code ci-dessous.';
-  @override
-  String get hotspotSsidLabel => 'Réseau';
-  @override
-  String get hotspotPasswordLabel => 'Mot de passe';
-  @override
-  String get stopHotspot => 'Désactiver le point d\'accès';
-  @override
-  String get hotspotStopped => 'Point d\'accès désactivé';
-  @override
-  String get manualActionTitle => 'Aucun réseau Wi-Fi disponible';
-  @override
-  String get manualActionDescriptionAndroid => 'Aika n\'a pas pu activer de point d\'accès automatiquement. Activez le Wi-Fi ou un point d\'accès sur cet appareil, puis revenez ici.';
-  @override
-  String get manualActionDescriptionOther => 'Activez le Wi-Fi ou le partage de connexion sur cet appareil, puis revenez ici.';
-  @override
-  String get openSettings => 'Ouvrir les réglages';
-  @override
-  String get retry => 'Réessayer';
-  @override
-  String get waitingInSettings => 'En attente… revenez ici une fois le réseau activé.';
-  @override
-  String get expiration => 'Durée de validité';
-  @override
-  String get regenerate => 'Régénérer';
-  @override
-  String expiresIn({required Object duration}) => 'Expire dans ${duration}';
-  @override
-  String get expired => 'Expiré';
-  @override
-  String get securityNote => 'Toute personne qui scanne ce code peut voir l\'alias de cet appareil et s\'y connecter tant que le code est valide. Régénérez-le si vous l\'avez partagé par erreur.';
-}
-
-// Path: qrPairing.scan
-class _Translations$qrPairing$scan$fr extends Translations$qrPairing$scan$en {
-  _Translations$qrPairing$scan$fr._(TranslationsFr root) : this._root = root, super.internal(root);
-
-  final TranslationsFr _root; // ignore: unused_field
-
-  // Translations
-  @override
-  String get buttonTooltip => 'Scanner un QR Code';
-  @override
-  String get title => 'Scanner un QR Code';
-  @override
-  String get hint => 'Visez le QR Code de l\'autre appareil avec la caméra';
-  @override
-  String get joiningNetwork => 'Connexion au réseau…';
-  @override
-  String get importImage => 'Importer une image';
-  @override
-  String get notFoundInImage => 'Aucun QR Code trouvé dans cette image.';
-  @override
-  String get unreachable => 'Impossible de joindre cet appareil. Vérifiez que les deux appareils sont sur le même réseau.';
-  @override
-  String get errorExpired => 'Ce QR Code a expiré. Demandez à l\'autre appareil d\'en générer un nouveau.';
-  @override
-  String get errorUnsupportedVersion => 'Ce QR Code a été généré par une version incompatible de l\'application.';
-  @override
-  String get errorMalformed => 'Ce n\'est pas un QR Code d\'appairage Aika valide.';
-  @override
-  String get noCameraOnPlatform => 'Le scan par caméra n\'est pas encore disponible sur cette plateforme. Importez plutôt une image du QR Code.';
-  @override
-  String get cameraUnavailable => 'La caméra n\'est pas disponible. Vérifiez l\'autorisation d\'accès à la caméra.';
-  @override
-  String pairedSnackbar({required Object alias}) => 'Connecté à ${alias}';
-}
-
-// Path: qrPairing.confirm
-class _Translations$qrPairing$confirm$fr extends Translations$qrPairing$confirm$en {
-  _Translations$qrPairing$confirm$fr._(TranslationsFr root) : this._root = root, super.internal(root);
-
-  final TranslationsFr _root; // ignore: unused_field
-
-  // Translations
-  @override
-  String get title => 'Se connecter à cet appareil ?';
-  @override
-  String get description => 'La connexion a été vérifiée grâce au certificat de l\'appareil. Voulez-vous vous appairer avec lui ?';
-  @override
-  String get fingerprintMismatch => 'Attention : l\'appareil qui a répondu ne correspond pas au certificat encodé dans le QR Code. Cela peut indiquer que l\'adresse a été réattribuée à un autre appareil, ou une tentative d\'usurpation. Ne continuez que si vous êtes certain\u00b7e.';
-  @override
-  String get connect => 'Se connecter';
-  @override
-  String get connectAnyway => 'Se connecter quand même';
-}
-
-// Path: chat
-class _Translations$chat$fr extends Translations$chat$en {
-  _Translations$chat$fr._(TranslationsFr root) : this._root = root, super.internal(root);
-
-  final TranslationsFr _root; // ignore: unused_field
-
-  // Translations
-  @override
-  late final _Translations$chat$newContact$fr newContact = _Translations$chat$newContact$fr._(_root);
-
-  /// fr: 'Messages'
-  @override
-  String get title => 'Messages';
-
-  /// fr: 'Nouvelle discussion'
-  @override
-  String get newConversation => 'Nouvelle discussion';
-
-  /// fr: 'Aucune discussion pour le moment.\nDémarrez-en une avec le bouton +.'
-  @override
-  String get empty => 'Aucune discussion pour le moment.\nDémarrez-en une avec le bouton +.';
-
-  /// fr: 'Aucun message pour le moment. Dites bonjour !'
-  @override
-  String get noMessagesYet => 'Aucun message pour le moment. Dites bonjour !';
-
-  /// fr: 'en train d\'écrire…'
-  @override
-  String get typing => 'en train d\'écrire…';
-
-  /// fr: 'En ligne'
-  @override
-  String get online => 'En ligne';
-
-  /// fr: 'Hors ligne'
-  @override
-  String get offline => 'Hors ligne';
-
-  /// fr: 'Message'
-  @override
-  String get messageHint => 'Message';
-
-  /// fr: 'Pièce jointe'
-  @override
-  String get attachment => 'Pièce jointe';
-
-  /// fr: 'Exporter la discussion'
-  @override
-  String get export => 'Exporter la discussion';
-
-  /// fr: 'Supprimer la discussion'
-  @override
-  String get deleteConversation => 'Supprimer la discussion';
-
-  /// fr: 'Cela supprimera définitivement cette discussion et tous ses messages de cet appareil. Cette action est irréversible.'
-  @override
-  String get deleteConversationConfirm =>
-      'Cela supprimera définitivement cette discussion et tous ses messages de cet appareil. Cette action est irréversible.';
-
-  /// fr: 'Bloquer cet appareil'
-  @override
-  String get block => 'Bloquer cet appareil';
-
-  /// fr: 'Débloquer cet appareil'
-  @override
-  String get unblock => 'Débloquer cet appareil';
-
-  /// fr: 'Vous avez bloqué cet appareil. Débloquez-le pour pouvoir échanger à nouveau.'
-  @override
-  String get blockedNotice => 'Vous avez bloqué cet appareil. Débloquez-le pour pouvoir échanger à nouveau.';
-}
-
-// Path: chat.newContact
-class _Translations$chat$newContact$fr extends Translations$chat$newContact$en {
-  _Translations$chat$newContact$fr._(TranslationsFr root) : this._root = root, super.internal(root);
-
-  final TranslationsFr _root; // ignore: unused_field
-
-  // Translations
-  /// fr: 'Nouvelle demande de discussion'
-  @override
-  String get title => 'Nouvelle demande de discussion';
-
-  /// fr: 'Cet appareil n\'est pas encore un contact connu. Accepter démarrera une discussion et acceptera automatiquement ses futurs messages.'
-  @override
-  String get description =>
-      'Cet appareil n\'est pas encore un contact connu. Accepter démarrera une discussion et acceptera automatiquement ses futurs messages.';
-
-  /// fr: 'Accepter'
-  @override
-  String get accept => 'Accepter';
-
-  /// fr: 'Bloquer'
-  @override
-  String get block => 'Bloquer';
 }

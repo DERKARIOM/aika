@@ -152,7 +152,8 @@
       "support": "Soutenir Aika",
       "donate": "Faire une donation",
       "privacyPolicy": "Politique de confidentialité",
-      "termsOfUse": "Conditions d'utilisation"
+      "termsOfUse": "Conditions d'utilisation",
+      "shareAika": "Partager Aika"
     },
     "advancedSettings": "Paramètres avancés"
   },
@@ -544,5 +545,17 @@
       "accept": "Accepter",
       "block": "Bloquer"
     }
+  },
+  "shareAikaPage": {
+    "title": "Partager Aika",
+    "description": "Envoyez Aika à un appareil à proximité, même s'il n'a pas encore l'application installée.",
+    "bluetoothUnavailableNotice": "Vous pourrez choisir Bluetooth, Partage à proximité, ou une autre application compatible pour l'envoyer.",
+    "shareButton": "Partager Aika",
+    "preparing": "Préparation du fichier d'installation d'Aika...",
+    "confirmTitle": "Envoyer Aika à cet appareil ?",
+    "confirmBody": "Le fichier d'installation d'Aika (APK) sera partagé via Bluetooth, Partage à proximité, ou une autre application de votre choix. La personne qui le reçoit devra autoriser l'installation d'applications depuis cette source, comme pour tout fichier reçu de cette façon.",
+    "confirmCta": "Envoyer",
+    "shared": "Aika a été partagée. Sur l'autre appareil, ouvrez le fichier reçu pour l'installer.",
+    "error": "Impossible de partager Aika. Merci de réessayer."
   }
 }

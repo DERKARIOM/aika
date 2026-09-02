@@ -230,6 +230,54 @@ Future<void> unbindWifiNetworkAndroid() async {
 }
 
 @MappableClass()
+/// Result of a successful [shareOwnApkAndroid] call — everything is resolved dynamically
+/// from the currently installed app on the native side (see MainActivity.shareOwnApk),
+/// never hardcoded, so it automatically reflects whichever Aika version is running.
+class OwnApkShareResult {
+  final String appName;
+  final String versionName;
+  final int versionCode;
+  final int sizeBytes;
+  final String fileName;
+
+  const OwnApkShareResult({
+    required this.appName,
+    required this.versionName,
+    required this.versionCode,
+    required this.sizeBytes,
+    required this.fileName,
+  });
+}
+
+/// "Partager Aika": triggers Android's native Sharesheet (`ACTION_SEND`) with Aika's own
+/// currently installed APK, so the user can send it to a nearby device — via Bluetooth,
+/// Nearby Share/Quick Share, or any other app Android offers — including a device that
+/// does not have Aika installed yet.
+///
+/// Aika deliberately does not manage Bluetooth (or any other transport) itself here: the
+/// recipient device does not have Aika, so there would be no Aika process on that side to
+/// speak a custom protocol to. Handing the file to Android's own Sharesheet lets the
+/// system's own built-in receivers (which exist independently of whether Aika is
+/// installed) take over, and it naturally surfaces whichever nearby-sharing option is
+/// actually available on this device — Aika never claims a specific transport works when
+/// Android doesn't actually offer it.
+///
+/// Throws on failure (e.g. [PlatformException] with code "APK_NOT_FOUND" if the running
+/// app's own APK file could not be located, or "SHARE_FAILED" for any other native error).
+Future<OwnApkShareResult> shareOwnApkAndroid() async {
+  final result = await _methodChannel.invokeMethod<Map>('shareOwnApk');
+  if (result == null) {
+    throw StateError("Could not resolve or share Aika's own APK");
+  }
+  return OwnApkShareResult(
+    appName: result['appName'] as String,
+    versionName: result['versionName'] as String,
+    versionCode: result['versionCode'] as int,
+    sizeBytes: result['sizeBytes'] as int,
+    fileName: result['fileName'] as String,
+  );
+}
+
 class PickDirectoryResult with PickDirectoryResultMappable {
   final String directoryUri;
   final List<FileInfo> files;

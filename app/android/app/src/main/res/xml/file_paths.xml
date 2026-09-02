@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res-android">
+    <!-- Exposes the whole filesystem as a possible FileProvider root. This is required
+         because Aika's own installed APK (ApplicationInfo.sourceDir) lives outside any
+         app-private directory (e.g. /data/app/~~.../com.naniger.aika-.../base.apk), so no
+         narrower "files-path"/"cache-path" declaration would cover it. This declaration
+         only allows FileProvider to build a content:// URI when our own code explicitly
+         asks for one (see MainActivity.shareOwnApk) — it does not expose anything by
+         itself, and the provider stays android:exported="false". Used by the "Partager
+         Aika" feature to hand Aika's own APK to Android's native Sharesheet (Bluetooth,
+         Nearby Share, etc.) so it can be installed on a device that doesn't have Aika yet. -->
+    <root-path name="root" path="." />
+</paths>
