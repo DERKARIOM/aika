@@ -42,18 +42,26 @@ class ChatTab extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         if (conversations.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 60),
-            child: Column(
-              children: [
-                Icon(Icons.chat_bubble_outline_rounded, size: 56, color: Theme.of(context).colorScheme.outline),
-                const SizedBox(height: 16),
-                Text(
-                  t.chat.empty,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
-                ),
-              ],
+          // Centré verticalement dans la zone visible (et pas juste collé sous
+          // l'en-tête) : la liste est dans un SingleChildScrollView qui ne
+          // contraint pas sa hauteur, donc on impose nous-mêmes une hauteur
+          // minimale (une bonne partie de l'écran) pour que le Center ait de
+          // quoi centrer son contenu.
+          ConstrainedBox(
+            constraints: BoxConstraints(minHeight: MediaQuery.of(context).size.height * 0.55),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.chat_bubble_outline_rounded, size: 56, color: Theme.of(context).colorScheme.outline),
+                  const SizedBox(height: 16),
+                  Text(
+                    t.chat.empty,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  ),
+                ],
+              ),
             ),
           )
         else
