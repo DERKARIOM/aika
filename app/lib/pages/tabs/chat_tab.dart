@@ -141,7 +141,10 @@ class _ConversationTile extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     if (conversation.lastMessageAt != null)
-                      Text(_formatTime(conversation.lastMessageAt!), style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                      Text(
+                        _formatTime(conversation.lastMessageAt!),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      ),
                     const SizedBox(height: 6),
                     if (conversation.unreadCount > 0)
                       Container(

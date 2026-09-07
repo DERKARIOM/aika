@@ -35,9 +35,9 @@ class DeviceListTile extends StatelessWidget {
       title: Text(nameOverride ?? device.alias, style: const TextStyle(fontSize: 20)),
       trailing: onFavoriteTap != null
           ? IconButton(
-        icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
-        onPressed: onFavoriteTap,
-      )
+              icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
+              onPressed: onFavoriteTap,
+            )
           : null,
       subTitle: Wrap(
         runSpacing: 10,
@@ -51,25 +51,25 @@ class DeviceListTile extends StatelessWidget {
               child: CustomProgressBar(progress: progress!),
             )
           else ...[
-              if (device.ip != null)
-                DeviceBadge(
-                  backgroundColor: badgeColor,
-                  foregroundColor: Theme.of(context).colorScheme.onSecondaryContainer,
-                  label: 'LAN • HTTP',
-                )
-              else
-                DeviceBadge(
-                  backgroundColor: badgeColor,
-                  foregroundColor: Theme.of(context).colorScheme.onSecondaryContainer,
-                  label: 'WebRTC',
-                ),
-              if (device.deviceModel != null)
-                DeviceBadge(
-                  backgroundColor: badgeColor,
-                  foregroundColor: Theme.of(context).colorScheme.onSecondaryContainer,
-                  label: device.deviceModel!,
-                ),
-            ],
+            if (device.ip != null)
+              DeviceBadge(
+                backgroundColor: badgeColor,
+                foregroundColor: Theme.of(context).colorScheme.onSecondaryContainer,
+                label: 'LAN • HTTP',
+              )
+            else
+              DeviceBadge(
+                backgroundColor: badgeColor,
+                foregroundColor: Theme.of(context).colorScheme.onSecondaryContainer,
+                label: 'WebRTC',
+              ),
+            if (device.deviceModel != null)
+              DeviceBadge(
+                backgroundColor: badgeColor,
+                foregroundColor: Theme.of(context).colorScheme.onSecondaryContainer,
+                label: device.deviceModel!,
+              ),
+          ],
         ],
       ),
       onTap: onTap,

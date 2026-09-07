@@ -277,13 +277,14 @@ class ChatDatabase extends _$ChatDatabase {
   /// Ids of incoming messages that have not been marked as read yet, used
   /// to send a batch of read receipts when the user opens a conversation.
   Future<List<String>> unreadIncomingMessageIds(String conversationId) async {
-    final rows = await (select(chatMessages)..where(
-          (t) =>
-              t.conversationId.equals(conversationId) &
-              t.direction.equalsValue(ChatMessageDirectionColumn.incoming) &
-              t.status.equalsValue(ChatMessageStatusColumn.read).not(),
-        ))
-        .get();
+    final rows =
+        await (select(chatMessages)..where(
+              (t) =>
+                  t.conversationId.equals(conversationId) &
+                  t.direction.equalsValue(ChatMessageDirectionColumn.incoming) &
+                  t.status.equalsValue(ChatMessageStatusColumn.read).not(),
+            ))
+            .get();
     return rows.map((r) => r.id).toList();
   }
 
@@ -291,12 +292,15 @@ class ChatDatabase extends _$ChatDatabase {
   /// message last, suitable for the "export conversation" feature.
   Future<String> exportConversationAsText(String conversationId) async {
     final conversation = await getConversation(conversationId);
-    final rows = await (select(chatMessages)
-          ..where((t) => t.conversationId.equals(conversationId))
-          ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
-        .get();
+    final rows =
+        await (select(chatMessages)
+              ..where((t) => t.conversationId.equals(conversationId))
+              ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
+            .get();
 
-    final buffer = StringBuffer()..writeln('Conversation avec ${conversation?.peerAlias ?? conversationId}')..writeln();
+    final buffer = StringBuffer()
+      ..writeln('Conversation avec ${conversation?.peerAlias ?? conversationId}')
+      ..writeln();
     for (final m in rows) {
       final who = m.direction == ChatMessageDirectionColumn.outgoing ? 'Moi' : (conversation?.peerAlias ?? 'Contact');
       final body = m.body ?? (m.attachmentFileName != null ? '[${m.contentType}] ${m.attachmentFileName}' : '[${m.contentType}]');

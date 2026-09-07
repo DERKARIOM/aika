@@ -291,7 +291,10 @@ class _TopBar extends StatelessWidget {
             onPressed: () => context.pop(),
           ),
           const Spacer(),
-          Text(t.qrPairing.scan.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+          Text(
+            t.qrPairing.scan.title,
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+          ),
           const Spacer(),
           if (onTorchTap != null)
             IconButton(
@@ -320,7 +323,11 @@ class _StatusBanner extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white24),
       ),
-      child: Text(text, style: const TextStyle(color: Colors.white), textAlign: TextAlign.center),
+      child: Text(
+        text,
+        style: const TextStyle(color: Colors.white),
+        textAlign: TextAlign.center,
+      ),
     );
   }
 }

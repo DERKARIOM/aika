@@ -31,10 +31,10 @@ class CustomDropdownButton<T> extends StatelessWidget {
         onChanged: onChanged == null
             ? null
             : (value) {
-          if (value != null) {
-            onChanged!(value);
-          }
-        },
+                if (value != null) {
+                  onChanged!(value);
+                }
+              },
       ),
     );
   }

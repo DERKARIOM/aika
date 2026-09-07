@@ -78,8 +78,8 @@ ThemeData getTheme(ColorMode colorMode, Brightness brightness, DynamicColors? dy
     useMaterial3: true,
     navigationBarTheme: colorScheme.brightness == Brightness.dark
         ? NavigationBarThemeData(
-      iconTheme: WidgetStateProperty.all(const IconThemeData(color: Colors.white)),
-    )
+            iconTheme: WidgetStateProperty.all(const IconThemeData(color: Colors.white)),
+          )
         : null,
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
@@ -212,9 +212,7 @@ ColorScheme _determineColorScheme(ColorMode mode, Brightness brightness, Dynamic
 
 ThemeData _getYaruTheme(Brightness brightness) {
   final baseTheme = brightness == Brightness.light ? yaru.yaruLight : yaru.yaruDark;
-  final colorScheme = brightness == Brightness.dark
-      ? baseTheme.colorScheme.copyWith(surface: darkBackgroundColor)
-      : baseTheme.colorScheme;
+  final colorScheme = brightness == Brightness.dark ? baseTheme.colorScheme.copyWith(surface: darkBackgroundColor) : baseTheme.colorScheme;
 
   final lightInputBorder = OutlineInputBorder(
     borderSide: BorderSide(color: colorScheme.secondaryContainer),
@@ -232,8 +230,8 @@ ThemeData _getYaruTheme(Brightness brightness) {
     colorScheme: colorScheme,
     navigationBarTheme: colorScheme.brightness == Brightness.dark
         ? NavigationBarThemeData(
-      iconTheme: WidgetStateProperty.all(const IconThemeData(color: Colors.white)),
-    )
+            iconTheme: WidgetStateProperty.all(const IconThemeData(color: Colors.white)),
+          )
         : null,
     inputDecorationTheme: InputDecorationTheme(
       filled: true,

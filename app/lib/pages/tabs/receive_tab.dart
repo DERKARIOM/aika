@@ -75,20 +75,16 @@ class ReceiveTab extends StatelessWidget {
                           delay: const Duration(milliseconds: 500),
                           child: vm.serverState == null
                               ? Text(
-                            t.general.offline,
-                            style: const TextStyle(fontSize: 18),
-                            textAlign: TextAlign.center,
-                          )
+                                  t.general.offline,
+                                  style: const TextStyle(fontSize: 18),
+                                  textAlign: TextAlign.center,
+                                )
                               : Wrap(
-                            alignment: WrapAlignment.center,
-                            spacing: 10,
-                            runSpacing: 10,
-                            children: vm.localIps
-                                .map((ip) => '${ip.visualId}')
-                                .toSet()
-                                .map((id) => _IdChip(id: id))
-                                .toList(),
-                          ),
+                                  alignment: WrapAlignment.center,
+                                  spacing: 10,
+                                  runSpacing: 10,
+                                  children: vm.localIps.map((ip) => '${ip.visualId}').toSet().map((id) => _IdChip(id: id)).toList(),
+                                ),
                         ),
                       ],
                     ),
@@ -236,6 +232,7 @@ class _QuickSaveSpinner extends StatelessWidget {
     );
   }
 }
+
 class _IdChip extends StatelessWidget {
   final String id;
 

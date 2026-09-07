@@ -82,8 +82,7 @@ class QrNetworkPrepState {
 
   const QrNetworkPrepState.readyFlash() : this(status: QrNetworkPrepStatus.readyFlash);
 
-  const QrNetworkPrepState.needsManualAction({String? reason})
-    : this(status: QrNetworkPrepStatus.needsManualAction, reason: reason);
+  const QrNetworkPrepState.needsManualAction({String? reason}) : this(status: QrNetworkPrepStatus.needsManualAction, reason: reason);
 
   const QrNetworkPrepState.waitingForUserInSettings() : this(status: QrNetworkPrepStatus.waitingForUserInSettings);
 

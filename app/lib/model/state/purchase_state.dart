@@ -19,8 +19,7 @@ enum PurchaseItem {
   donate50(
     androidId: 'aika_android_donate_50',
     iosId: 'aika_ios_donate_50',
-  )
-  ;
+  );
 
   const PurchaseItem({
     required this.androidId,

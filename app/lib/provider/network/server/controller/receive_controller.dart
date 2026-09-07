@@ -292,9 +292,7 @@ class ReceiveController {
       }
     }
 
-    final acceptedIds = await server.ref
-        .notifier(chatProvider)
-        .handleIncomingEnvelope(sender: sender, envelope: envelope, allFilesInBatch: files);
+    final acceptedIds = await server.ref.notifier(chatProvider).handleIncomingEnvelope(sender: sender, envelope: envelope, allFilesInBatch: files);
 
     server.ref.redux(parentIsolateProvider).dispatch(IsolateHttpServerPrepareUploadDecisionAction(acceptedFileIds: acceptedIds.toList()));
 

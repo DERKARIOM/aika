@@ -279,9 +279,7 @@ class _QrPairingDisplayPageState extends State<QrPairingDisplayPage> with Refena
     final currentInfo = ref.watch(deviceFullInfoProvider);
     final payload = _payload;
     final readyStatus = _networkState.status == QrNetworkPrepStatus.ready || _networkState.status == QrNetworkPrepStatus.hotspotReady;
-    if (readyStatus &&
-        payload != null &&
-        (currentInfo.ip != payload.ip || currentInfo.port != payload.port || currentInfo.https != payload.https)) {
+    if (readyStatus && payload != null && (currentInfo.ip != payload.ip || currentInfo.port != payload.port || currentInfo.https != payload.https)) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _regenerate());
     }
 

@@ -101,7 +101,10 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
                   Text(device.alias, style: const TextStyle(fontSize: 16)),
                   Text(
                     typing ? t.chat.typing : (online ? t.chat.online : t.chat.offline),
-                    style: TextStyle(fontSize: 12, color: typing ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: typing ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
@@ -215,7 +218,11 @@ class _Composer extends StatelessWidget {
     if (blocked) {
       return Padding(
         padding: const EdgeInsets.all(16),
-        child: Text(t.chat.blockedNotice, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant), textAlign: TextAlign.center),
+        child: Text(
+          t.chat.blockedNotice,
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+          textAlign: TextAlign.center,
+        ),
       );
     }
 

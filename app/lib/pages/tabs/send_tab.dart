@@ -1,4 +1,3 @@
-
 import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
@@ -88,88 +87,88 @@ class SendTab extends StatelessWidget {
                     }).toList(),
                   ),
                 ] else ...[
-                    _GlassContainer(
-                      margin: const EdgeInsets.only(bottom: 10, left: _horizontalPadding, right: _horizontalPadding),
-                      padding: const EdgeInsetsDirectional.only(start: 15, top: 5, bottom: 15, end: 15),
-                      child: Column(
+                  _GlassContainer(
+                    margin: const EdgeInsets.only(bottom: 10, left: _horizontalPadding, right: _horizontalPadding),
+                    padding: const EdgeInsetsDirectional.only(start: 15, top: 5, bottom: 15, end: 15),
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                          Row(
-                            children: [
-                              Text(
-                                t.sendTab.selection.title,
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                              const Spacer(),
-                              CustomIconButton(
-                                onPressed: () => ref.redux(selectedSendingFilesProvider).dispatch(ClearSelectionAction()),
-                                child: Icon(Icons.close, color: Theme.of(context).colorScheme.secondary),
-                              ),
-                              const SizedBox(width: 5),
-                            ],
+                        Row(
+                          children: [
+                            Text(
+                              t.sendTab.selection.title,
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            const Spacer(),
+                            CustomIconButton(
+                              onPressed: () => ref.redux(selectedSendingFilesProvider).dispatch(ClearSelectionAction()),
+                              child: Icon(Icons.close, color: Theme.of(context).colorScheme.secondary),
+                            ),
+                            const SizedBox(width: 5),
+                          ],
+                        ),
+                        const SizedBox(height: 5),
+                        Text(t.sendTab.selection.files(files: vm.selectedFiles.length)),
+                        Text(t.sendTab.selection.size(size: vm.selectedFiles.fold(0, (prev, curr) => prev + curr.size).asReadableFileSize)),
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          height: defaultThumbnailSize,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: vm.selectedFiles.length,
+                            itemBuilder: (context, index) {
+                              final file = vm.selectedFiles[index];
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 10),
+                                child: SmartFileThumbnail.fromCrossFile(file),
+                              );
+                            },
                           ),
-                          const SizedBox(height: 5),
-                          Text(t.sendTab.selection.files(files: vm.selectedFiles.length)),
-                          Text(t.sendTab.selection.size(size: vm.selectedFiles.fold(0, (prev, curr) => prev + curr.size).asReadableFileSize)),
-                          const SizedBox(height: 10),
-                          SizedBox(
-                            height: defaultThumbnailSize,
-                            child: ListView.builder(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: vm.selectedFiles.length,
-                              itemBuilder: (context, index) {
-                                final file = vm.selectedFiles[index];
-                                return Padding(
-                                  padding: const EdgeInsets.only(right: 10),
-                                  child: SmartFileThumbnail.fromCrossFile(file),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            TextButton(
+                              style: TextButton.styleFrom(
+                                foregroundColor: Theme.of(context).colorScheme.onSurface,
+                              ),
+                              onPressed: () async {
+                                await context.push(() => const SelectedFilesPage());
+                              },
+                              child: Text(t.general.edit),
+                            ),
+                            const SizedBox(width: 15),
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Theme.of(context).colorScheme.primary,
+                                foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                              ),
+                              onPressed: () async {
+                                if (_options.length == 1) {
+                                  // open directly
+                                  await ref.global.dispatchAsync(
+                                    PickFileAction(
+                                      option: _options.first,
+                                      context: context,
+                                    ),
+                                  );
+                                  return;
+                                }
+                                await AddFileDialog.open(
+                                  context: context,
+                                  options: _options,
                                 );
                               },
+                              icon: const Icon(Icons.add),
+                              label: Text(t.general.add),
                             ),
-                          ),
-                          const SizedBox(height: 10),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              TextButton(
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Theme.of(context).colorScheme.onSurface,
-                                ),
-                                onPressed: () async {
-                                  await context.push(() => const SelectedFilesPage());
-                                },
-                                child: Text(t.general.edit),
-                              ),
-                              const SizedBox(width: 15),
-                              ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Theme.of(context).colorScheme.primary,
-                                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                                ),
-                                onPressed: () async {
-                                  if (_options.length == 1) {
-                                    // open directly
-                                    await ref.global.dispatchAsync(
-                                      PickFileAction(
-                                        option: _options.first,
-                                        context: context,
-                                      ),
-                                    );
-                                    return;
-                                  }
-                                  await AddFileDialog.open(
-                                    context: context,
-                                    options: _options,
-                                  );
-                                },
-                                icon: const Icon(Icons.add),
-                                label: Text(t.general.add),
-                              ),
-                              const SizedBox(width: 15),
-                            ],
-                          ),
+                            const SizedBox(width: 15),
+                          ],
+                        ),
                       ],
-                      ),
                     ),
+                  ),
                 ],
                 Row(
                   children: [
@@ -226,19 +225,19 @@ class SendTab extends StatelessWidget {
                       tag: 'device-${device.ip}',
                       child: vm.sendMode == SendMode.multiple
                           ? _MultiSendDeviceListTile(
-                        device: device,
-                        isFavorite: favoriteEntry != null,
-                        nameOverride: favoriteEntry?.alias,
-                        vm: vm,
-                      )
+                              device: device,
+                              isFavorite: favoriteEntry != null,
+                              nameOverride: favoriteEntry?.alias,
+                              vm: vm,
+                            )
                           : DeviceListTile(
-                        device: device,
-                        isFavorite: favoriteEntry != null,
-                        nameOverride: favoriteEntry?.alias,
-                        glass: true, // ajouté
-                        onFavoriteTap: () async => await vm.onToggleFavorite(context, device),
-                        onTap: () async => await vm.onTapDevice(context, device),
-                      ),
+                              device: device,
+                              isFavorite: favoriteEntry != null,
+                              nameOverride: favoriteEntry?.alias,
+                              glass: true, // ajouté
+                              onFavoriteTap: () async => await vm.onToggleFavorite(context, device),
+                              onTap: () async => await vm.onTapDevice(context, device),
+                            ),
                     ),
                   );
                 }),

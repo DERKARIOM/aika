@@ -275,7 +275,9 @@ class _ProgressPageState extends State<ProgressPage> with Refena {
                                   TextSpan(
                                     text: receiveSession.destinationDirectory,
                                     style: TextStyle(
-                                      color: checkPlatform([TargetPlatform.iOS]) ? Theme.of(context).colorScheme.onSurfaceVariant : Theme.of(context).colorScheme.primary,
+                                      color: checkPlatform([TargetPlatform.iOS])
+                                          ? Theme.of(context).colorScheme.onSurfaceVariant
+                                          : Theme.of(context).colorScheme.primary,
                                     ),
                                     recognizer: checkPlatform([TargetPlatform.iOS])
                                         ? null

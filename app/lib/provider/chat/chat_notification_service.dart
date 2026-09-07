@@ -65,16 +65,18 @@ class ChatNotificationService {
         // AndroidNotificationDetails with this channel id/name/description
         // to show() below lazily creates the channel on first use, which
         // keeps this code resilient to the plugin's channel-API churn.
-        await _plugin
-            .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-            ?.requestNotificationsPermission();
+        await _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.requestNotificationsPermission();
       } else if (Platform.isIOS || Platform.isMacOS) {
-        await _plugin
-            .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
-            ?.requestPermissions(alert: true, badge: true, sound: true);
-        await _plugin
-            .resolvePlatformSpecificImplementation<MacOSFlutterLocalNotificationsPlugin>()
-            ?.requestPermissions(alert: true, badge: true, sound: true);
+        await _plugin.resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()?.requestPermissions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+        await _plugin.resolvePlatformSpecificImplementation<MacOSFlutterLocalNotificationsPlugin>()?.requestPermissions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
       }
     } catch (e, st) {
       // Notifications are a nice-to-have on top of the chat feature, not a

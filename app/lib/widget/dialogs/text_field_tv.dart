@@ -82,11 +82,11 @@ class _TextFieldTvState extends State<TextFieldTv> with Refena {
           ),
           suffixIcon: widget.onDelete != null
               ? IconButton(
-            icon: Icon(Icons.clear, color: colorScheme.onSurfaceVariant),
-            onPressed: () {
-              widget.onDelete?.call();
-            },
-          )
+                  icon: Icon(Icons.clear, color: colorScheme.onSurfaceVariant),
+                  onPressed: () {
+                    widget.onDelete?.call();
+                  },
+                )
               : null,
         ),
       );

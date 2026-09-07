@@ -201,7 +201,10 @@ class ChatService extends Notifier<ChatUiState> {
     unawaited(
       Future(() async {
         try {
-          await _trySend(target: target, envelope: ChatEnvelope.typing(isTyping: isTyping));
+          await _trySend(
+            target: target,
+            envelope: ChatEnvelope.typing(isTyping: isTyping),
+          );
         } catch (e) {
           _logger.fine('Typing signal not delivered (ignored): $e');
         }
@@ -222,7 +225,10 @@ class ChatService extends Notifier<ChatUiState> {
       unawaited(
         Future(() async {
           try {
-            await _trySend(target: target, envelope: ChatEnvelope.receipt(messageId: messageId, status: ChatReceiptStatus.read));
+            await _trySend(
+              target: target,
+              envelope: ChatEnvelope.receipt(messageId: messageId, status: ChatReceiptStatus.read),
+            );
           } catch (e) {
             _logger.fine('Read receipt not delivered (ignored): $e');
           }
@@ -310,7 +316,10 @@ class ChatService extends Notifier<ChatUiState> {
         unawaited(
           Future(() async {
             try {
-              await _trySend(target: sender, envelope: ChatEnvelope.receipt(messageId: envelope.messageId, status: ChatReceiptStatus.delivered));
+              await _trySend(
+                target: sender,
+                envelope: ChatEnvelope.receipt(messageId: envelope.messageId, status: ChatReceiptStatus.delivered),
+              );
             } catch (_) {}
           }),
         );
@@ -495,7 +504,8 @@ class ChatService extends Notifier<ChatUiState> {
         .values
         .any((s) => s.target.fingerprint == target.fingerprint && occupiedStates.contains(s.status));
     final activeSession = ref.read(serverProvider)?.session;
-    final activeIncomingRealTransfer = activeSession != null && activeSession.sender.fingerprint == target.fingerprint && occupiedStates.contains(activeSession.status);
+    final activeIncomingRealTransfer =
+        activeSession != null && activeSession.sender.fingerprint == target.fingerprint && occupiedStates.contains(activeSession.status);
     if (activeOutgoingRealTransfer || activeIncomingRealTransfer) {
       return const _ChatSendOutcome.failure(_ChatSendFailureReason.deferred, 'Un transfert de fichier est en cours avec cet appareil.');
     }
@@ -574,21 +584,23 @@ class ChatService extends Notifier<ChatUiState> {
     }
 
     final remoteSessionId = response.response?.sessionId;
-    final taskResult = ref.redux(parentIsolateProvider).dispatchTakeResult(
-      IsolateHttpUploadFilesAction(
-        remoteSessionId: remoteSessionId,
-        files: [
-          HttpUploadFile(
-            remoteFileToken: token,
-            fileId: mediaFileId,
-            filePath: media.path,
-            fileBytes: media.bytes,
-            fileSize: media.size,
+    final taskResult = ref
+        .redux(parentIsolateProvider)
+        .dispatchTakeResult(
+          IsolateHttpUploadFilesAction(
+            remoteSessionId: remoteSessionId,
+            files: [
+              HttpUploadFile(
+                remoteFileToken: token,
+                fileId: mediaFileId,
+                filePath: media.path,
+                fileBytes: media.bytes,
+                fileSize: media.size,
+              ),
+            ],
+            device: target,
           ),
-        ],
-        device: target,
-      ),
-    );
+        );
 
     try {
       await for (final event in taskResult.events) {
@@ -604,7 +616,9 @@ class ChatService extends Notifier<ChatUiState> {
   }
 
   Future<void> _touchConversation(Device target) {
-    return ref.read(chatDatabaseProvider).upsertConversation(
+    return ref
+        .read(chatDatabaseProvider)
+        .upsertConversation(
           peerFingerprint: target.fingerprint,
           peerAlias: target.alias,
           peerDeviceModel: target.deviceModel,
