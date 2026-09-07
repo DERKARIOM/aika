@@ -36,8 +36,12 @@ push tag vX.Y.Z
       ▼
    validate        — vérifie le format du tag (vX.Y.Z strict), compare sa version à
  (ubuntu-24.04)       app/pubspec.yaml (échoue si différent), lance flutter analyze + flutter
-      │               test une seule fois, génère le code (build_runner) et le partage aux 3
-      │               jobs suivants (évite de régénérer 3x)
+      │               test une seule fois. Utilise le code généré déjà commité dans le dépôt
+      │               (comme ci.yml) plutôt que de le régénérer : une régénération via
+      │               `build_runner` dans ce job a produit, lors du premier run réel, un
+      │               `android_channel.mapper.dart` incomplet (symboles "undefined" en
+      │               aval) alors que le fichier commité est correct — régénérer en CI s'est
+      │               donc avéré plus risqué que de faire confiance au code déjà généré.
       │
   ┌───┼──────────────┬──────────────────┐
   │                  │                  │
@@ -122,8 +126,12 @@ run réel :
   ces deux plateformes.
 - **cargokit (Rust)** : aucune étape d'installation explicite de Rust n'a été ajoutée dans les jobs de
   build, sur la foi que `packages/localsend_isolates/rust_builder/cargokit` s'auto-provisionne (comme le
-  suggère `ci.yml`, qui ne configure pas Rust explicitement). Si un job de build échoue sur une erreur liée
-  à `cargo`/`rustc` introuvable, c'est le point à corriger en premier (ajouter un `actions-rs/toolchain`
+  suggère `ci.yml`, qui ne configure pas Rust explicitement). Chaque job de build (validate, build-linux,
+  build-windows, build-macos) lance quand même `flutter pub get` dans
+  `packages/localsend_isolates/rust_builder/cargokit/build_tool`, exactement comme `ci.yml` — sans cette
+  étape (absente d'une version antérieure de ce fichier sur les jobs de build desktop), un job de build
+  échouerait presque certainement sur `cargo`/`rustc` introuvable au moment de compiler l'extension
+  native. Si ça échoue quand même, c'est le point à corriger en premier (ajouter un `actions-rs/toolchain`
   comme le faisait l'ancien `release.yml`).
 
 ## 7. Divergence de version Flutter restante

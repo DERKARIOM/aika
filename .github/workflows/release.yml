@@ -59,10 +59,6 @@ jobs:
         working-directory: packages/localsend_isolates/rust_builder/cargokit/build_tool
         run: flutter pub get
 
-      - name: Generate code (build_runner)
-        working-directory: app
-        run: dart run build_runner build -d
-
       - name: Analyze
         working-directory: app
         run: flutter analyze
@@ -71,23 +67,12 @@ jobs:
         working-directory: app
         run: flutter test
 
-      - name: Upload generated lib/ for platform build jobs
-        uses: actions/upload-artifact@v6
-        with:
-          name: generated-lib
-          path: app/lib/*
-
   build-linux:
     needs: validate
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
 
-      - name: Download generated lib/
-        uses: actions/download-artifact@v7
-        with:
-          name: generated-lib
-          path: app/lib
 
       - name: Install system dependencies
         run: |
@@ -101,6 +86,10 @@ jobs:
 
       - name: Dependencies (app)
         working-directory: app
+        run: flutter pub get
+
+      - name: Dependencies (cargokit - rust_builder)
+        working-directory: packages/localsend_isolates/rust_builder/cargokit/build_tool
         run: flutter pub get
 
       - name: Build Linux
@@ -149,11 +138,6 @@ jobs:
 
       - uses: actions/checkout@v6
 
-      - name: Download generated lib/
-        uses: actions/download-artifact@v7
-        with:
-          name: generated-lib
-          path: app/lib
 
       - uses: subosito/flutter-action@v2
         with:
@@ -162,6 +146,10 @@ jobs:
 
       - name: Dependencies (app)
         working-directory: app
+        run: flutter pub get
+
+      - name: Dependencies (cargokit - rust_builder)
+        working-directory: packages/localsend_isolates/rust_builder/cargokit/build_tool
         run: flutter pub get
 
       - name: Build Windows
@@ -226,11 +214,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Download generated lib/
-        uses: actions/download-artifact@v7
-        with:
-          name: generated-lib
-          path: app/lib
 
       - uses: subosito/flutter-action@v2
         with:
@@ -239,6 +222,10 @@ jobs:
 
       - name: Dependencies (app)
         working-directory: app
+        run: flutter pub get
+
+      - name: Dependencies (cargokit - rust_builder)
+        working-directory: packages/localsend_isolates/rust_builder/cargokit/build_tool
         run: flutter pub get
 
       - name: Build macOS
