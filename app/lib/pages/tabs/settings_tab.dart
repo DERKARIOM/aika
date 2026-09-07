@@ -580,6 +580,21 @@ class SettingsTab extends StatelessWidget {
                       label: Text(t.changelogPage.title),
                     ),
                   ),
+                  if (checkPlatform([TargetPlatform.android])) ...[
+                    const SizedBox(height: 8),
+                    Center(
+                      child: TextButton.icon(
+                        style: TextButton.styleFrom(
+                          foregroundColor: Theme.of(context).colorScheme.onSurface,
+                        ),
+                        onPressed: () async {
+                          await context.push(() => const ShareAikaPage());
+                        },
+                        icon: const Icon(Icons.share_rounded),
+                        label: Text(t.shareAikaPage.title),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 80),
                 ],
               ),

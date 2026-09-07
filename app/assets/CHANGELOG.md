@@ -1,3 +1,8 @@
+## 1.0.1
+
+- Nouvelle fonctionnalité « Partager Aika » : envoyez Aika à un appareil à proximité qui ne l'a pas encore installée (via Bluetooth, Partage à proximité, ou une autre application), pour qu'il puisse l'installer facilement.
+- Corrections et améliorations diverses.
+
 ## 1.0.0
 
 Version initiale d'Aika.
