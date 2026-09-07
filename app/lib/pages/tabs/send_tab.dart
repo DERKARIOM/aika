@@ -607,13 +607,11 @@ class _GlassContainer extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry? margin;
   final EdgeInsetsGeometry padding;
-  final double borderRadius;
 
   const _GlassContainer({
     required this.child,
     this.margin,
     this.padding = const EdgeInsets.all(15),
-    this.borderRadius = 18,
   });
 
   @override
@@ -622,12 +620,12 @@ class _GlassContainer extends StatelessWidget {
     return Container(
       margin: margin,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(borderRadius),
+        borderRadius: BorderRadius.circular(18),
         child: Container(
           padding: padding,
           decoration: BoxDecoration(
             color: colorScheme.surfaceContainerHigh,
-            borderRadius: BorderRadius.circular(borderRadius),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(
               color: colorScheme.outlineVariant,
               width: 1,

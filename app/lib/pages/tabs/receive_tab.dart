@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'package:flutter/material.dart';
 import 'package:localsend_app/gen/strings.g.dart';
@@ -83,7 +81,7 @@ class ReceiveTab extends StatelessWidget {
                                   alignment: WrapAlignment.center,
                                   spacing: 10,
                                   runSpacing: 10,
-                                  children: vm.localIps.map((ip) => '${ip.visualId}').toSet().map((id) => _IdChip(id: id)).toList(),
+                                  children: vm.localIps.map((ip) => ip.visualId).toSet().map((id) => _IdChip(id: id)).toList(),
                                 ),
                         ),
                       ],

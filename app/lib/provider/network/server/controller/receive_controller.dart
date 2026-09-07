@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:collection/collection.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:localsend_app/model/chat/chat_envelope.dart';
 import 'package:localsend_app/model/state/server/receive_session_state.dart';
@@ -277,8 +276,8 @@ class ReceiveController {
 
     if (!hasExistingConversation && !isFavorite) {
       // First message ever from this device: ask once, explicitly.
-      // ignore: use_build_context_synchronously
       final accepted = await showDialog<bool>(
+        // ignore: use_build_context_synchronously
         context: Routerino.context,
         builder: (_) => ChatNewContactDialog(sender: sender),
       );

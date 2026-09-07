@@ -54,19 +54,19 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
 
   @override
   void dispose() {
-    _messagesSub?.cancel();
+    unawaited(_messagesSub?.cancel());
     final chatService = ref.notifier(chatProvider);
     if (chatService.currentlyOpenConversationFingerprint == widget.peerFingerprint) {
       chatService.currentlyOpenConversationFingerprint = null;
     }
     // Best-effort: let the peer know we stopped typing when leaving the screen.
-    chatService.setTyping(target: _resolveDevice(ref), isTyping: false);
+    unawaited(chatService.setTyping(target: _resolveDevice(ref), isTyping: false));
     _textController.dispose();
     super.dispose();
   }
 
   void _markRead(Ref ref) {
-    ref.notifier(chatProvider).markConversationRead(_resolveDevice(ref));
+    unawaited(ref.notifier(chatProvider).markConversationRead(_resolveDevice(ref)));
   }
 
   Device _resolveDevice(Ref ref) {
@@ -163,11 +163,11 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
             _Composer(
               controller: _textController,
               blocked: blocked,
-              onChanged: (text) => ref.notifier(chatProvider).setTyping(target: device, isTyping: text.isNotEmpty),
+              onChanged: (text) => unawaited(ref.notifier(chatProvider).setTyping(target: device, isTyping: text.isNotEmpty)),
               onSendText: () {
                 final text = _textController.text;
                 _textController.clear();
-                ref.notifier(chatProvider).sendText(target: device, text: text);
+                unawaited(ref.notifier(chatProvider).sendText(target: device, text: text));
               },
               onSendFile: () async {
                 final file = await openFile();

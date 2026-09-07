@@ -97,7 +97,7 @@ class _AttachmentPreview extends StatelessWidget {
     if (isImage && path != null) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: Image.file(File(path), width: 220, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _placeholder(context)),
+        child: Image.file(File(path), width: 220, fit: BoxFit.cover, errorBuilder: (_, _, _) => _placeholder(context)),
       );
     }
 

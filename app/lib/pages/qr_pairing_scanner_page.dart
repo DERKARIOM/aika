@@ -52,7 +52,7 @@ class _QrPairingScannerPageState extends State<QrPairingScannerPage> with Refena
 
   @override
   void dispose() {
-    _controller?.dispose();
+    unawaited(_controller?.dispose());
     super.dispose();
   }
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/chat/chat_database.dart';
@@ -166,7 +168,7 @@ class _ConversationTile extends StatelessWidget {
   }
 
   void _showQuickActions(BuildContext context, Ref ref) {
-    showModalBottomSheet(
+    unawaited(showModalBottomSheet(
       context: context,
       builder: (_) => SafeArea(
         child: Column(
@@ -179,6 +181,7 @@ class _ConversationTile extends StatelessWidget {
                 Navigator.of(context).pop();
                 final device = resolveConversationDevice(ref, conversation);
                 final text = await ref.notifier(chatProvider).exportConversation(device);
+                if (!context.mounted) return;
                 _showExportPreview(context, text);
               },
             ),
@@ -197,7 +200,7 @@ class _ConversationTile extends StatelessWidget {
           ],
         ),
       ),
-    );
+    ));
   }
 
   void _showExportPreview(BuildContext context, String text) {

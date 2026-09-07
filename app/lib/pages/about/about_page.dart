@@ -1,4 +1,3 @@
-import 'package:collection/collection.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:localsend_app/gen/strings.g.dart';
@@ -8,12 +7,6 @@ import 'package:localsend_app/widget/local_send_logo.dart';
 import 'package:localsend_app/widget/responsive_list_view.dart';
 import 'package:routerino/routerino.dart';
 import 'package:url_launcher/url_launcher.dart';
-
-part 'contributors.dart';
-
-part 'packagers.dart';
-
-part 'translators.dart';
 
 final _translatorWithGithubRegex = RegExp(r'(.+) \(@([\w\-_]+)\)');
 

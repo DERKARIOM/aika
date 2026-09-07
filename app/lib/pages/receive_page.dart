@@ -150,7 +150,7 @@ class _ReceivePageState extends State<ReceivePage> with Refena {
                                             backgroundColor: Theme.of(context).colorScheme.onSecondaryContainer,
                                             foregroundColor: Theme.of(context).colorScheme.onInverseSurface,
                                             label: switch (vm.sender.ip) {
-                                              String ip => _showFullIp ? ip : '${ip.visualId}',
+                                              String ip => _showFullIp ? ip : ip.visualId,
                                               null => 'WebRTC',
                                             },
                                           ),
