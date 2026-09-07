@@ -204,7 +204,7 @@ class _ConversationTile extends StatelessWidget {
   }
 
   void _showExportPreview(BuildContext context, String text) {
-    showDialog(
+    unawaited(showDialog(
       context: context,
       builder: (_) => AlertDialog(
         title: Text(t.chat.export),
@@ -213,7 +213,7 @@ class _ConversationTile extends StatelessWidget {
           TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(t.general.close)),
         ],
       ),
-    );
+    ));
   }
 }
 
