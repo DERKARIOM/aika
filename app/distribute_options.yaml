@@ -1,0 +1,15 @@
+# Configuration for flutter_distributor (https://distributor.leanflutter.dev/).
+#
+# Not strictly required by the `flutter_distributor package` subcommand used
+# in .github/workflows/release.yml (which discovers linux/packaging/deb/
+# make_config.yaml by convention on its own), but documents explicitly which
+# packaging targets this project supports and gives a stable entry point for
+# `flutter_distributor release` if that's ever adopted later.
+output: dist/
+releases:
+  - name: aika
+    jobs:
+      - name: release-linux-deb
+        package:
+          platform: linux
+          target: deb

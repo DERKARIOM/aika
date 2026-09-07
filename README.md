@@ -94,6 +94,16 @@ Read more about [distribution channels][].
 | Windows  | 10              | The last version to support Windows 7 is v1.15.4. There might be backports of newer versions for Windows 7 in the future.   |
 | Linux    | N.A.            | Deps: Gnome: `xdg-desktop-portal` and `xdg-desktop-portal-gtk`, KDE: `xdg-desktop-portal` and `xdg-desktop-portal-kde`      |
 
+## Releases (Aika desktop builds)
+
+Official Aika builds for Linux (`.deb`), Windows (installer) and macOS (`.dmg`) are published as
+[GitHub Releases](https://github.com/DERKARIOM/aika/releases) by an automated pipeline triggered on every
+`vX.Y.Z` tag. See [`app/docs/github-actions-release.md`](app/docs/github-actions-release.md) for how the
+pipeline works, how to cut a release, and its current limitations (builds are not code-signed yet).
+
+The table below (Winget, Homebrew, Flathub, app stores, etc.) describes the upstream LocalSend
+distribution channels and does not apply to Aika.
+
 ## Setup
 
 In most cases, LocalSend should work out of the box. However, if you are having trouble sending or receiving files, you may need to configure your firewall to allow LocalSend to communicate over your local network.

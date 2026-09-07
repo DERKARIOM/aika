@@ -1,575 +1,347 @@
-name: Release Draft
+name: Release
+
+# Builds and publishes a draft GitHub Release for Aika on Linux (.deb),
+# Windows (Inno Setup installer, unsigned) and macOS (.dmg, unsigned).
+#
+# Triggered by pushing a tag in the strict `vX.Y.Z` format (no pre-release
+# suffixes yet). The tag's version must match app/pubspec.yaml exactly, or
+# the `validate` job fails fast before any platform build runs.
+#
+# This replaces the workflow_dispatch-triggered, LocalSend-branded
+# release.yml inherited from upstream (Android APK, self-hosted-arm64 .deb,
+# AppImage, Windows .zip) — see app/docs/github-actions-release.md for why.
 
 on:
-  workflow_dispatch:
+  push:
+    tags:
+      - "v*.*.*"
 
 env:
-  FLUTTER_VERSION: "3.41.9"
-  RUST_VERSION: "1.84.1"
-  APK_BUILD_DIR: "/tmp/build"
+  FLUTTER_VERSION: "3.44.0"
 
 jobs:
-  build:
+  validate:
     runs-on: ubuntu-24.04
     outputs:
-      version: ${{ steps.get_version.outputs.version }}
-
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v6
 
-      - name: Get version from pubspec.yaml
-        id: get_version
+      - name: Check tag format
         run: |
-          VERSION=$(sed -n 's/^version: \([0-9]*\.[0-9]*\.[0-9]*\).*/\1/p' app/pubspec.yaml)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          TAG="${{ github.ref_name }}"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag '$TAG' does not match the required vX.Y.Z format (pre-release/build suffixes are not supported yet)."
+            exit 1
+          fi
 
-  build_apk:
-    needs: build
-    runs-on: ubuntu-22.04
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Remove proprietary dependencies
-        run: sh support/scripts/remove_proprietary_dependencies.sh
-
-      - name: Copy files to env.APK_BUILD_DIR
+      - name: Compare tag version with pubspec.yaml
+        id: version
         run: |
-          mkdir -p $APK_BUILD_DIR
-          cp -r . $APK_BUILD_DIR
-
-      - name: Decode key.properties file
-        working-directory: ${{ env.APK_BUILD_DIR }}
-        env:
-          ENCODED_STRING: ${{ secrets.ANDROID_KEY_PROPERTIES }}
-        run: echo $ENCODED_STRING | base64 -di > app/android/key.properties
-
-      - name: Decode android-keystore.jks file
-        working-directory: ${{ env.APK_BUILD_DIR }}
-        env:
-          ENCODED_STRING: ${{ secrets.ANDROID_KEY_STORE }}
-        run: mkdir secrets && echo $ENCODED_STRING | base64 -di > secrets/android-keystore.jks
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v5
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: Install Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: ${{ env.RUST_VERSION }}
-
-      - name: Check rust-toolchain.toml
-        working-directory: ${{ env.APK_BUILD_DIR }}/packages/localsend_isolates
-        run: rustup show
-
-      - name: Dependencies
-        working-directory: ${{ env.APK_BUILD_DIR }}/app
-        run: flutter pub get
-
-      - name: Build APK
-        working-directory: ${{ env.APK_BUILD_DIR }}/app
-        run: flutter build apk --split-per-abi
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v6
-        with:
-          name: apk-result
-          path: |
-            ${{ env.APK_BUILD_DIR }}/app/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
-            ${{ env.APK_BUILD_DIR }}/app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-            ${{ env.APK_BUILD_DIR }}/app/build/app/outputs/flutter-apk/app-x86_64-release.apk
-
-  build_tar_x86_64:
-    needs: build
-    runs-on: ubuntu-24.04
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang cmake libgtk-3-dev ninja-build libayatana-appindicator3-dev
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PUBSPEC_VERSION=$(grep '^version: ' app/pubspec.yaml | sed 's/version: //' | sed 's/\+.*//')
+          if [ "$TAG_VERSION" != "$PUBSPEC_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match app/pubspec.yaml version ($PUBSPEC_VERSION). Bump pubspec.yaml (and support/scripts/compile_windows_exe-inno.iss) first."
+            exit 1
+          fi
+          echo "version=$PUBSPEC_VERSION" >> "$GITHUB_OUTPUT"
 
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: "stable"
 
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: ${{ env.RUST_VERSION }}
-
-      - name: Check rust-toolchain.toml
-        working-directory: packages/localsend_isolates
-        run: rustup show
-
-      - name: Dependencies
+      - name: Dependencies (app)
         working-directory: app
         run: flutter pub get
 
-      - name: Compile linux
-        working-directory: app
-        run: flutter build linux
-
-      - name: Create tar.gz archive
-        run: |
-          cd app/build/linux/x64/release/bundle
-          tar -czvf ../../../../../result.tar.gz *
-
-      - name: Upload tar.gz archive
-        uses: actions/upload-artifact@v6
-        with:
-          name: tar-gz-x86-64-result
-          path: ./app/*.tar.gz
-
-  # Manage the Flutter version on the self-hosted runner manually!
-  # Flutter currently doesn't provide Linux ARM64 binaries.
-  build_tar_arm_64:
-    needs: build
-    runs-on: [ self-hosted, linux, arm64 ]
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang cmake libgtk-3-dev ninja-build libayatana-appindicator3-dev
-
-      - name: Dependencies
-        working-directory: app
+      - name: Dependencies (cargokit - rust_builder)
+        working-directory: packages/localsend_isolates/rust_builder/cargokit/build_tool
         run: flutter pub get
 
-      - name: Compile linux
+      - name: Generate code (build_runner)
         working-directory: app
-        run: flutter build linux
+        run: dart run build_runner build -d
 
-      - name: Create tar.gz archive
-        run: |
-          cd app/build/linux/arm64/release/bundle
-          tar -czvf ../../../../../result.tar.gz *
+      - name: Analyze
+        working-directory: app
+        run: flutter analyze
 
-      - name: Upload tar.gz archive
+      - name: Test
+        working-directory: app
+        run: flutter test
+
+      - name: Upload generated lib/ for platform build jobs
         uses: actions/upload-artifact@v6
         with:
-          name: tar-gz-arm-64-result
-          path: ./app/*.tar.gz
+          name: generated-lib
+          path: app/lib/*
 
-  build_deb_x86_64:
-    needs: build
+  build-linux:
+    needs: validate
     runs-on: ubuntu-24.04
-
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install dependencies
+      - name: Download generated lib/
+        uses: actions/download-artifact@v7
+        with:
+          name: generated-lib
+          path: app/lib
+
+      - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang cmake libgtk-3-dev ninja-build libayatana-appindicator3-dev
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libayatana-appindicator3-dev dpkg-dev
 
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: "stable"
 
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: ${{ env.RUST_VERSION }}
+      - name: Dependencies (app)
+        working-directory: app
+        run: flutter pub get
 
-      - name: Check rust-toolchain.toml
-        working-directory: packages/localsend_isolates
-        run: rustup show
+      - name: Build Linux
+        working-directory: app
+        run: flutter build linux --release
 
-      - name: Enable dart_distributor
-        run: dart pub global activate flutter_distributor
+      - name: Verify build output
+        run: |
+          if [ ! -f app/build/linux/x64/release/bundle/aika ]; then
+            echo "::error::app/build/linux/x64/release/bundle/aika not found — flutter build linux produced no output."
+            exit 1
+          fi
 
-      - name: Update PATH
-        run: echo 'export PATH="$PATH:$HOME/.pub-cache/bin"' >> ~/.bashrc
+      - name: Enable flutter_distributor
+        run: |
+          dart pub global activate flutter_distributor
+          echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
 
-      - name: Build deb package
+      - name: Build .deb package
         working-directory: app
         run: flutter_distributor package --platform linux --targets deb
 
-      - name: Find deb file
+      - name: Find and rename .deb
         id: find_deb
         run: |
-          VERSION=${{ needs.build.outputs.version }}
-          DEB_PATH=$(find app/dist -name "localsend_app-$VERSION*-linux.deb")
-          echo "deb_path=$DEB_PATH" >> $GITHUB_OUTPUT
-
-      - name: Check if deb file exists
-        id: check_file
-        run: |
-          if [[ ! -f "${{ steps.find_deb.outputs.deb_path }}" ]]; then
-            echo "File not found: ${{ steps.find_deb.outputs.deb_path }}"
+          DEB_PATH=$(find app/dist -name "*.deb" | head -n1)
+          if [ -z "$DEB_PATH" ]; then
+            echo "::error::No .deb file found under app/dist/ after flutter_distributor package."
             exit 1
           fi
+          mkdir -p app/dist/release
+          cp "$DEB_PATH" "app/dist/release/Aika-v${{ needs.validate.outputs.version }}-linux-x86-64.deb"
 
-      - name: Upload deb file
+      - name: Upload .deb artifact
         uses: actions/upload-artifact@v6
         with:
-          name: deb-x86-64-result
-          path: ${{ steps.find_deb.outputs.deb_path }}
+          name: linux-deb
+          path: app/dist/release/Aika-v*.deb
 
-  # Manage the Flutter version on the self-hosted runner manually!
-  # Flutter currently doesn't provide Linux ARM64 binaries.
-  build_deb_arm_64:
-    needs: build
-    runs-on: [ self-hosted, linux, arm64 ]
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang cmake libgtk-3-dev ninja-build libayatana-appindicator3-dev
-
-      - name: Enable dart_distributor
-        run: dart pub global activate flutter_distributor
-
-      - name: Build deb package
-        working-directory: app
-        run: PATH="$PATH:$HOME/.pub-cache/bin" flutter_distributor package --platform linux --targets deb
-
-      - name: Find deb file
-        id: find_deb
-        run: |
-          VERSION=${{ needs.build.outputs.version }}
-          DEB_PATH=$(find app/dist -name "localsend_app-$VERSION*-linux.deb")
-          echo "deb_path=$DEB_PATH" >> $GITHUB_OUTPUT
-
-      - name: Check if deb file exists
-        id: check_file
-        run: |
-          if [[ ! -f "${{ steps.find_deb.outputs.deb_path }}" ]]; then
-            echo "File not found: ${{ steps.find_deb.outputs.deb_path }}"
-            exit 1
-          fi
-
-      - name: Upload deb file
-        uses: actions/upload-artifact@v6
-        with:
-          name: deb-arm-64-result
-          path: ${{ steps.find_deb.outputs.deb_path }}
-
-  build_appimage_x86_64:
-    needs: build
-    runs-on: ubuntu-24.04
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang cmake libgtk-3-dev ninja-build libayatana-appindicator3-dev libfuse2
-
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: "stable"
-
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: ${{ env.RUST_VERSION }}
-
-      - name: Check rust-toolchain.toml
-        working-directory: packages/localsend_isolates
-        run: rustup show
-
-      - name: Dependencies
-        working-directory: app
-        run: flutter pub get
-
-      - name: Compile linux
-        working-directory: app
-        run: flutter build linux
-
-      - name: Copy compiled linux files
-        run: |
-          mkdir AppDir
-          cp -r app/build/linux/x64/release/bundle/* AppDir/
-
-      - name: Copy logo to AppDir
-        run: |
-          mkdir -p AppDir/usr/share/icons/hicolor/32x32/apps
-          cp app/assets/img/logo-32.png AppDir/usr/share/icons/hicolor/32x32/apps/localsend.png
-          mkdir -p AppDir/usr/share/icons/hicolor/128x128/apps
-          cp app/assets/img/logo-128.png AppDir/usr/share/icons/hicolor/128x128/apps/localsend.png
-          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
-          cp app/assets/img/logo-256.png AppDir/usr/share/icons/hicolor/256x256/apps/localsend.png
-
-      - name: Copy Recipe to correct location
-        run: cp support/build/appimage/AppImageBuilder_x86_64.yml AppImageBuilder.yml
-
-      - name: Build AppImage
-        uses: AppImageCrafters/build-appimage@57c3bc6963f870ce3be103117de5b5e33ffbaeb6
-        with:
-          recipe: ./AppImageBuilder.yml
-
-      - name: Upload AppImage file
-        uses: actions/upload-artifact@v6
-        with:
-          name: appimage-x86-64-result
-          path: ./*.AppImage
-
-  build_windows_zip_x86_64:
-    needs: build
+  build-windows:
+    needs: validate
     runs-on: windows-latest
-
     steps:
       - name: Fix long file paths
         run: git config --system core.longpaths true
 
-      - name: Checkout repository
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
+
+      - name: Download generated lib/
+        uses: actions/download-artifact@v7
+        with:
+          name: generated-lib
+          path: app/lib
 
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: "stable"
 
-      - name: Dependencies
+      - name: Dependencies (app)
         working-directory: app
         run: flutter pub get
 
-      - name: Compile for Windows
+      - name: Build Windows
         working-directory: app
-        run: flutter build windows
+        run: flutter build windows --release
+
+      - name: Verify build output
+        shell: bash
+        run: |
+          if [ ! -f "app/build/windows/x64/runner/Release/aika.exe" ]; then
+            echo "::error::app/build/windows/x64/runner/Release/aika.exe not found — flutter build windows produced no output."
+            exit 1
+          fi
+
+      - name: Bundle Visual C++ runtime DLLs
+        shell: pwsh
+        run: |
+          Copy-Item support\build\windows\x64\msvcp140.dll app\build\windows\x64\runner\Release\
+          Copy-Item support\build\windows\x64\vcruntime140.dll app\build\windows\x64\runner\Release\
+          Copy-Item support\build\windows\x64\vcruntime140_1.dll app\build\windows\x64\runner\Release\
 
       - name: Create empty settings.json
-        working-directory: app
-        run: echo {} > build/windows/x64/runner/Release/settings.json
+        shell: pwsh
+        run: '"{}" | Out-File -Encoding utf8 app\build\windows\x64\runner\Release\settings.json'
 
-      - name: Add DLL files
-        working-directory: app
+      - name: Set Inno Setup version to match this release
+        shell: pwsh
         run: |
-          Copy-Item ../support/build/windows/x64/msvcp140.dll build/windows/x64/runner/Release/
-          Copy-Item ../support/build/windows/x64/vcruntime140.dll build/windows/x64/runner/Release/
-          Copy-Item ../support/build/windows/x64/vcruntime140_1.dll build/windows/x64/runner/Release/
+          $version = "${{ needs.validate.outputs.version }}"
+          (Get-Content support\scripts\compile_windows_exe-inno.iss) -replace '#define MyAppVersion ".*"', "#define MyAppVersion `"$version`"" | Set-Content support\scripts\compile_windows_exe-inno.iss
 
-      - name: Zip compiled files
-        working-directory: app
-        run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath LocalSend.zip
+      - name: Ensure Inno Setup is installed
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) {
+            choco install innosetup -y
+          }
 
-      - name: Upload zip
+      - name: Compile installer (Inno Setup)
+        shell: cmd
+        run: '"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" support\scripts\compile_windows_exe-inno.iss'
+
+      - name: Verify installer exists
+        shell: bash
+        run: |
+          if [ ! -f "dist/Aika-v${{ needs.validate.outputs.version }}-windows-x64-setup.exe" ]; then
+            echo "::error::Expected installer not found in dist/"
+            ls -la dist || true
+            exit 1
+          fi
+
+      - name: Upload installer artifact
         uses: actions/upload-artifact@v6
         with:
-          name: windows-zip-x86-64-result
-          path: app/LocalSend.zip
+          name: windows-installer
+          path: dist/Aika-v*-windows-x64-setup.exe
 
-  release:
-    needs:
-      - build
-      - build_apk
-      - build_tar_x86_64
-      - build_tar_arm_64
-      - build_deb_x86_64
-      - build_deb_arm_64
-      - build_appimage_x86_64
-      - build_windows_zip_x86_64
-    runs-on: ubuntu-24.04
-
+  build-macos:
+    needs: validate
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v6
 
-      - name: Draft release
-        id: draft_release
-        uses: release-drafter/release-drafter@v6
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag: v${{ needs.build.outputs.version }}
-          name: v${{ needs.build.outputs.version }}
-
-      # APK
-      - name: Download apk file
+      - name: Download generated lib/
         uses: actions/download-artifact@v7
         with:
-          name: apk-result
-          path: apk-result
+          name: generated-lib
+          path: app/lib
 
-      - name: Copy apk file to root
-        run: cp apk-result/*.apk .
-
-      - name: Upload Release Asset (arm32v7)
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: subosito/flutter-action@v2
         with:
-          upload_url: ${{ steps.draft_release.outputs.upload_url }}
-          asset_path: app-armeabi-v7a-release.apk
-          asset_name: LocalSend-${{ needs.build.outputs.version }}-android-arm32v7.apk
-          asset_content_type: application/vnd.android.package-archive
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: "stable"
 
-      - name: Upload Release Asset (arm64v8)
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.draft_release.outputs.upload_url }}
-          asset_path: app-arm64-v8a-release.apk
-          asset_name: LocalSend-${{ needs.build.outputs.version }}-android-arm64v8.apk
-          asset_content_type: application/vnd.android.package-archive
+      - name: Dependencies (app)
+        working-directory: app
+        run: flutter pub get
 
-      - name: Upload Release Asset (x64)
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.draft_release.outputs.upload_url }}
-          asset_path: app-x86_64-release.apk
-          asset_name: LocalSend-${{ needs.build.outputs.version }}-android-x64.apk
-          asset_content_type: application/vnd.android.package-archive
+      - name: Build macOS
+        working-directory: app
+        run: flutter build macos --release
 
-      # TAR.GZ (x86_64)
-      - name: Download tar.gz file
-        uses: actions/download-artifact@v7
-        with:
-          name: tar-gz-x86-64-result
-          path: tar-gz-x86-64-result
-
-      - name: List files in tar.gz-directory
-        run: ls -l tar-gz-x86-64-result
-
-      - name: Copy tar.gz file to root
-        run: cp tar-gz-x86-64-result/* result.tar.gz
-
-      - name: Upload Release Asset (tar.gz)
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.draft_release.outputs.upload_url }}
-          asset_path: result.tar.gz
-          asset_name: LocalSend-${{ needs.build.outputs.version }}-linux-x86-64.tar.gz
-          asset_content_type: application/gzip
-
-      # TAR.GZ (arm_64)
-      - name: Download tar.gz file
-        uses: actions/download-artifact@v7
-        with:
-          name: tar-gz-arm-64-result
-          path: tar-gz-arm-64-result
-
-      - name: List files in tar.gz-directory
-        run: ls -l tar-gz-arm-64-result
-
-      - name: Copy tar.gz file to root
-        run: cp tar-gz-arm-64-result/* result.tar.gz
-
-      - name: Upload Release Asset (tar.gz)
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.draft_release.outputs.upload_url }}
-          asset_path: result.tar.gz
-          asset_name: LocalSend-${{ needs.build.outputs.version }}-linux-arm-64.tar.gz
-          asset_content_type: application/gzip
-
-      # DEB (x86_64)
-      - name: Download deb file
-        uses: actions/download-artifact@v7
-        with:
-          name: deb-x86-64-result
-          path: deb-x86-64-result
-
-      - name: Copy deb file to root
-        run: cp deb-x86-64-result/*.deb result.deb
-
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.draft_release.outputs.upload_url }}
-          asset_path: result.deb
-          asset_name: LocalSend-${{ needs.build.outputs.version }}-linux-x86-64.deb
-          asset_content_type: application/vnd.debian.binary-package
-
-      # DEB (arm_64)
-      - name: Download deb file
-        uses: actions/download-artifact@v7
-        with:
-          name: deb-arm-64-result
-          path: deb-arm-64-result
-
-      - name: Copy deb file to root
-        run: cp deb-arm-64-result/*.deb result.deb
-
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.draft_release.outputs.upload_url }}
-          asset_path: result.deb
-          asset_name: LocalSend-${{ needs.build.outputs.version }}-linux-arm-64.deb
-          asset_content_type: application/vnd.debian.binary-package
-
-      # APPIMAGE (x86_64)
-      - name: Download AppImage file
-        uses: actions/download-artifact@v7
-        with:
-          name: appimage-x86-64-result
-          path: appimage-x86-64-result
-
-      - name: List files in appimage-directory
-        run: ls -l appimage-x86-64-result
-
-      - name: Copy AppImage file to root
+      - name: Verify universal (arm64 + x86_64) binary
         run: |
-          for file in appimage-x86-64-result/*; do
-            if [[ $file == *.AppImage && $file != *.AppImage.zsync ]]; then
-              cp "$file" result.AppImage
-            fi
-          done
+          APP="app/build/macos/Build/Products/Release/Aika.app"
+          if [ ! -d "$APP" ]; then
+            echo "::error::$APP not found — flutter build macos produced no output."
+            exit 1
+          fi
+          EXE_NAME=$(defaults read "$(pwd)/$APP/Contents/Info.plist" CFBundleExecutable)
+          BIN="$APP/Contents/MacOS/$EXE_NAME"
+          echo "Architectures ($BIN):"
+          lipo -info "$BIN"
+          if ! lipo -info "$BIN" | grep -q "x86_64" || ! lipo -info "$BIN" | grep -q "arm64"; then
+            echo "::error::Expected a universal (arm64 + x86_64) binary, got: $(lipo -info "$BIN")"
+            exit 1
+          fi
 
-      - name: Upload Release Asset (AppImage)
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Build .dmg (unsigned)
+        working-directory: app
+        run: ./macos/scripts/build_dmg.sh
+
+      - name: Rename .dmg to release convention
+        run: mv app/dist/Aika.dmg "app/dist/Aika-v${{ needs.validate.outputs.version }}-macos-universal.dmg"
+
+      - name: Verify .dmg exists
+        run: |
+          if [ ! -f "app/dist/Aika-v${{ needs.validate.outputs.version }}-macos-universal.dmg" ]; then
+            echo "::error::Expected .dmg not found"
+            exit 1
+          fi
+
+      - name: Upload .dmg artifact
+        uses: actions/upload-artifact@v6
         with:
-          upload_url: ${{ steps.draft_release.outputs.upload_url }}
-          asset_path: result.AppImage
-          asset_name: LocalSend-${{ needs.build.outputs.version }}-linux-x86-64.AppImage
-          asset_content_type: application/x-appimage
+          name: macos-dmg
+          path: app/dist/Aika-v*-macos-universal.dmg
 
-      # WINDOWS ZIP (x86_64)
-      - name: Download windows zip file
-        uses: actions/download-artifact@v7
+  checksums:
+    needs: [validate, build-linux, build-windows, build-macos]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v7
         with:
-          name: windows-zip-x86-64-result
-          path: windows-zip-x86-64-result
+          path: artifacts
 
-      - name: Copy zip file to root
-        run: cp windows-zip-x86-64-result/*.zip result.zip
+      - name: Collect assets and compute SHA256SUMS
+        run: |
+          mkdir -p release-assets
+          find artifacts -maxdepth 2 -type f \( -name "*.deb" -o -name "*.exe" -o -name "*.dmg" \) -exec cp {} release-assets/ \;
+          cd release-assets
+          if [ -z "$(ls -A .)" ]; then
+            echo "::error::No release assets found — a platform build must have failed silently."
+            exit 1
+          fi
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
 
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload release assets + checksums
+        uses: actions/upload-artifact@v6
         with:
-          upload_url: ${{ steps.draft_release.outputs.upload_url }}
-          asset_path: result.zip
-          asset_name: LocalSend-${{ needs.build.outputs.version }}-windows-x86-64.zip
-          asset_content_type: application/zip
+          name: release-assets
+          path: release-assets/
+
+  publish-release:
+    needs: [validate, checksums]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: release-assets
+          path: release-assets
+
+      - name: Create draft GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Aika v${{ needs.validate.outputs.version }}
+          draft: true
+          files: release-assets/*
+          body: |
+            ## Aika v${{ needs.validate.outputs.version }}
+
+            Voir le [CHANGELOG](https://github.com/DERKARIOM/aika/blob/main/CHANGELOG.md) pour le détail des changements.
+
+            ### Installation
+            - **Linux (.deb)** : `sudo apt install ./Aika-v${{ needs.validate.outputs.version }}-linux-x86-64.deb`
+            - **Windows** : téléchargez et lancez `Aika-v${{ needs.validate.outputs.version }}-windows-x64-setup.exe`. Non signé : Windows SmartScreen affichera un avertissement au premier lancement (« Informations complémentaires » → « Exécuter quand même »).
+            - **macOS** : téléchargez et ouvrez le `.dmg`, glissez Aika dans Applications. Non signé/notarié : au premier lancement, faites un clic droit sur Aika.app puis « Ouvrir » pour contourner Gatekeeper.
+
+            ### Vérification (SHA-256)
+            Voir `SHA256SUMS.txt` ci-joint.
+
+            ---
+            Cette release est créée en brouillon (draft) : vérifiez les binaires avant de la publier.
