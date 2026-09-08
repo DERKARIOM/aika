@@ -1,3 +1,7 @@
+## 1.0.2
+
+- Correction d'un plantage au premier lancement sur Windows lorsque l'application est installée dans un dossier protégé (ex. `C:\Program Files`) : l'app tentait d'écrire ses réglages au mauvais endroit et se fermait immédiatement avec une erreur d'accès refusé.
+
 ## 1.0.0
 
 Version initiale d'Aika.
