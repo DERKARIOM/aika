@@ -85,12 +85,22 @@ set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}")
 install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
   COMPONENT Runtime)
 
+# aika_msix_helper.msix is a local packaging artifact (see
+# support/scripts/compile_windows_msix_helper.ps1 / MakeAppx.exe) that is
+# gitignored and only produced by a manual MSIX packaging step. That step is
+# blocked on a real Aika Microsoft Store certificate (see
+# app/docs/cicd-audit-2026-09.md) and is not run by this CI build, so the
+# file legitimately does not exist on a fresh checkout. OPTIONAL keeps this
+# install rule from hard-failing the whole build (CMake Error: "file INSTALL
+# cannot find ... aika_msix_helper.msix") while still installing it when a
+# developer has built it locally.
 install(FILES
   "${BINARY_NAME}.exe.manifest"
   "aika_msix_helper.msix"
   "install_msix_helper.ps1"
   DESTINATION "${CMAKE_INSTALL_PREFIX}"
-  COMPONENT Runtime)
+  COMPONENT Runtime
+  OPTIONAL)
 
 install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   COMPONENT Runtime)
