@@ -33,10 +33,25 @@ function(apply_cargokit target manifest_dir lib_name any_symbol_name)
         set(CARGOKIT_TARGET_PLATFORM "windows-x64")
     endif()
 
+    # CMAKE_CURRENT_SOURCE_DIR here is the directory containing this plugin's
+    # windows/CMakeLists.txt, which Flutter reaches through an ephemeral
+    # symlink (windows/flutter/ephemeral/.plugin_symlinks/<plugin>/windows).
+    # On Linux/macOS the OS resolves symlinks transparently while walking the
+    # path, so a relative manifest_dir like "../../rust" correctly lands in
+    # the plugin's real directory. Windows does not do this (see the
+    # REALPATH workaround above), so a relative "manifest_dir" would be
+    # collapsed against the symlinked path instead of the real one and miss
+    # the actual Cargo.toml. Resolve to the real path first so manifest_dir
+    # can stay identical across platforms.
+    set(CARGOKIT_MANIFEST_BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+    if (WIN32)
+        execute_process(COMMAND powershell -ExecutionPolicy Bypass -File "${cargokit_cmake_root}/cmake/resolve_symlinks.ps1" "${CMAKE_CURRENT_SOURCE_DIR}" OUTPUT_VARIABLE CARGOKIT_MANIFEST_BASE_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
+    endif()
+
     set(CARGOKIT_ENV
         "CARGOKIT_CMAKE=${CMAKE_COMMAND}"
         "CARGOKIT_CONFIGURATION=$<CONFIG>"
-        "CARGOKIT_MANIFEST_DIR=${CMAKE_CURRENT_SOURCE_DIR}/${manifest_dir}"
+        "CARGOKIT_MANIFEST_DIR=${CARGOKIT_MANIFEST_BASE_DIR}/${manifest_dir}"
         "CARGOKIT_TARGET_TEMP_DIR=${CARGOKIT_TEMP_DIR}"
         "CARGOKIT_OUTPUT_DIR=${CARGOKIT_OUTPUT_DIR}"
         "CARGOKIT_TARGET_PLATFORM=${CARGOKIT_TARGET_PLATFORM}"
