@@ -32,6 +32,17 @@ set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_RELEASE}")
 # Use Unicode for all projects.
 add_definitions(-DUNICODE -D_UNICODE)
 
+# The Windows CI runner image has moved to a newer Visual Studio/MSVC STL
+# that turns the old experimental-coroutine headers (<experimental/coroutine>,
+# used by the /await compiler option some plugins still rely on, e.g. gal and
+# flutter_local_notifications_windows) into a hard compile error (STL1011)
+# instead of a deprecation warning. The compiler's own error message says
+# defining this macro suppresses it; the plugins still work, they just use
+# the older coroutine model until they're updated upstream to C++20
+# <coroutine>. Defined here (before add_subdirectory) so it applies to every
+# plugin target, not just our own.
+add_definitions(-D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)
+
 # Compilation settings that should be applied to most targets.
 #
 # Be cautious about adding new options here, as plugins use this function by
