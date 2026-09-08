@@ -158,7 +158,7 @@ jobs:
         working-directory: app
         env:
           CARGOKIT_VERBOSE: "1"
-        run: flutter build windows --release
+        run: flutter build windows --release -v
 
       - name: Verify build output
         shell: bash
