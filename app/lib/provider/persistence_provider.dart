@@ -22,6 +22,7 @@ import 'package:localsend_isolates/constants.dart';
 import 'package:localsend_isolates/model/device.dart';
 import 'package:localsend_isolates/model/stored_security_context.dart';
 import 'package:logging/logging.dart';
+import 'package:path/path.dart' as p;
 import 'package:refena_flutter/refena_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
@@ -91,6 +92,27 @@ const _deviceModel = 'ls_device_model';
 const _shareViaLinkAutoAccept = 'ls_share_via_link_auto_accept';
 const _advancedSettingsKey = 'ls_advanced_settings';
 
+/// Best-effort check that the directory containing [filePath] is writable
+/// by the current process.
+///
+/// Used to avoid selecting the portable settings store (settings.json next
+/// to the executable) when the app is installed in a protected, per-machine
+/// location such as "C:\\Program Files\\Aika" without write access there —
+/// which would otherwise crash on first launch with a PathAccessException
+/// (see: the settings.json shipped empty inside the Windows installer so
+/// that portable ZIP-style installs could self-detect; on an admin-only
+/// install directory this probe now correctly steers to %APPDATA% instead).
+bool _isDirectoryWritable(String filePath) {
+  final probe = File(p.join(File(filePath).parent.path, '.aika_write_test'));
+  try {
+    probe.writeAsStringSync('');
+    probe.deleteSync();
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 final persistenceProvider = Provider<PersistenceService>((ref) {
   throw Exception('persistenceProvider not initialized');
 });
@@ -109,7 +131,9 @@ class PersistenceService {
 
     final portableStore = SharedPreferencesPortable();
     bool usingLegacyStore = false;
-    if (checkPlatform(const [TargetPlatform.windows, TargetPlatform.linux, TargetPlatform.macOS]) && portableStore.exists()) {
+    if (checkPlatform(const [TargetPlatform.windows, TargetPlatform.linux, TargetPlatform.macOS]) &&
+        portableStore.exists() &&
+        _isDirectoryWritable(portableStore.getPath())) {
       _logger.info('Using portable settings.');
       SharedPreferencesStorePlatform.instance = portableStore;
     } else if (defaultTargetPlatform == TargetPlatform.windows) {
