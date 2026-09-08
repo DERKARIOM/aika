@@ -94,6 +94,8 @@ jobs:
 
       - name: Build Linux
         working-directory: app
+        env:
+          CARGOKIT_VERBOSE: "1"
         run: flutter build linux --release
 
       - name: Verify build output
@@ -154,6 +156,8 @@ jobs:
 
       - name: Build Windows
         working-directory: app
+        env:
+          CARGOKIT_VERBOSE: "1"
         run: flutter build windows --release
 
       - name: Verify build output
@@ -230,6 +234,8 @@ jobs:
 
       - name: Build macOS
         working-directory: app
+        env:
+          CARGOKIT_VERBOSE: "1"
         run: flutter build macos --release
 
       - name: Verify universal (arm64 + x86_64) binary
