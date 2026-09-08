@@ -35,6 +35,15 @@ target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")
 # dependencies here.
 target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
 target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
+
+# winrt_ext.cpp uses C++/WinRT (winrt::Windows::ApplicationModel, DataTransfer,
+# Storage, etc. -- see windows/runner/winrt_ext.cpp) for share-target handling.
+# Those headers pull in calls to WINRT_IMPL_RoGetActivationFactory and
+# WINRT_IMPL_RoOriginateLanguageException, which live in runtimeobject.lib.
+# Other targets in this build that use C++/WinRT already link this (or the
+# windowsapp.lib superset, e.g. gal_plugin) -- the runner target itself did
+# not, causing LNK2019/LNK1120 at final link.
+target_link_libraries(${BINARY_NAME} PRIVATE "runtimeobject.lib")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.
