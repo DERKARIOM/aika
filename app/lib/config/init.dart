@@ -28,12 +28,12 @@ import 'package:localsend_app/provider/persistence_provider.dart';
 // [FOSS_REMOVE_START]
 import 'package:localsend_app/provider/purchase_provider.dart';
 // [FOSS_REMOVE_END]
-// [FOSS_REMOVE_START]
-import 'package:localsend_app/provider/update_provider.dart';
-// [FOSS_REMOVE_END]
 import 'package:localsend_app/provider/selection/selected_sending_files_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/provider/tv_provider.dart';
+// [FOSS_REMOVE_START]
+import 'package:localsend_app/provider/update_provider.dart';
+// [FOSS_REMOVE_END]
 import 'package:localsend_app/provider/window_dimensions_provider.dart';
 import 'package:localsend_app/util/i18n.dart';
 import 'package:localsend_app/util/native/autostart_helper.dart';

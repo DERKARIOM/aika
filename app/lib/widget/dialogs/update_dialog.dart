@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/provider/update_provider.dart';
@@ -49,9 +51,9 @@ class UpdateDialog extends StatelessWidget {
             onPressed: () {
               Navigator.of(context).pop();
               if (critical) {
-                context.ref.redux(updateProvider).dispatchAsync(PerformImmediateUpdateAction());
+                unawaited(context.ref.redux(updateProvider).dispatchAsync(PerformImmediateUpdateAction()));
               } else {
-                context.ref.redux(updateProvider).dispatchAsync(StartFlexibleUpdateAction());
+                unawaited(context.ref.redux(updateProvider).dispatchAsync(StartFlexibleUpdateAction()));
               }
             },
             child: Text(_t(fr: 'Mettre à jour', en: 'Update')),

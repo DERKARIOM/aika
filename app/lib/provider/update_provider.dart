@@ -6,6 +6,8 @@
 //
 // See app/docs/in-app-updates-2026-09.md for the full design write-up.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:in_app_update/in_app_update.dart';
 import 'package:localsend_app/config/update_config.dart';
@@ -51,10 +53,8 @@ void maybeCheckForUpdate(Ref ref) {
     return;
   }
 
-  // ignore: unawaited_futures
-  persistence.setLastUpdateCheckMillis(nowMillis);
-  // ignore: unawaited_futures
-  ref.redux(updateProvider).dispatchAsync(CheckForUpdateAction());
+  unawaited(persistence.setLastUpdateCheckMillis(nowMillis));
+  unawaited(ref.redux(updateProvider).dispatchAsync(CheckForUpdateAction()));
 }
 
 /// Runs a single, discreet update check against Google Play. Never blocks
@@ -130,7 +130,7 @@ class StartFlexibleUpdateAction extends AsyncReduxAction<UpdateService, UpdateSt
             text: _t(fr: 'Mise à jour prête à être installée.', en: 'Update ready to install.'),
             actionLabel: _t(fr: 'Redémarrer maintenant', en: 'Restart now'),
             onAction: () {
-              context.ref.redux(updateProvider).dispatchAsync(CompleteFlexibleUpdateAction());
+              unawaited(context.ref.redux(updateProvider).dispatchAsync(CompleteFlexibleUpdateAction()));
             },
           );
         }

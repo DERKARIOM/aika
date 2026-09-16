@@ -168,7 +168,7 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
 
   Future<void> _shareUrl(String url) async {
     // Text/URL sharing only: no native platform configuration required.
-    await Share.share(url);
+    await SharePlus.instance.share(ShareParams(text: url));
   }
 
   Future<void> _onTapScanQr(BuildContext context) async {
@@ -614,7 +614,7 @@ class _QuickAccessCard extends StatelessWidget {
                   child: PrettyQrView.data(
                     errorCorrectLevel: QrErrorCorrectLevel.Q,
                     data: url,
-                    decoration: PrettyQrDecoration(
+                    decoration: const PrettyQrDecoration(
                       shape: PrettyQrSmoothSymbol(
                         roundFactor: 0,
                         color: Colors.black,
@@ -789,7 +789,7 @@ class _FileRow extends StatelessWidget {
                   Text(file.name, maxLines: 1, overflow: TextOverflow.ellipsis),
                   Text(
                     [
-                      if (extension != null) extension,
+                      ?extension,
                       file.size.asReadableFileSize,
                     ].join(' · '),
                     style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12),
