@@ -179,7 +179,7 @@ class _HomePageState extends State<HomePage> with Refena {
                                             ),
                                           ),
                                         ),
-                                        const SizedBox(width: 10),
+                                        const SizedBox(width: 7),
                                         const Text(
                                           'Aika',
                                           style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
