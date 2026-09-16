@@ -60,6 +60,14 @@ bool checkPlatformSupportPayment() {
   return checkPlatform([TargetPlatform.android, TargetPlatform.iOS, TargetPlatform.macOS]);
 }
 
+/// This platform can use Google Play In-App Updates. Android only -- the app
+/// must additionally have been installed from Google Play and Play Services
+/// must be available, both of which are only knowable at runtime (see
+/// update_provider.dart, which handles those cases gracefully).
+bool checkPlatformSupportInAppUpdate() {
+  return checkPlatform([TargetPlatform.android]);
+}
+
 /// This platform has a `mobile_scanner`-backed live camera QR/barcode scanner.
 /// Windows and Linux are intentionally excluded: no maintained Flutter
 /// plugin currently offers live camera scanning there. On those platforms,

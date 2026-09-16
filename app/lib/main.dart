@@ -7,6 +7,9 @@ import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/persistence/color_mode.dart';
 import 'package:localsend_app/pages/home_page.dart';
 import 'package:localsend_app/provider/local_ip_provider.dart';
+// [FOSS_REMOVE_START]
+import 'package:localsend_app/provider/update_provider.dart';
+// [FOSS_REMOVE_END]
 import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/util/ui/dynamic_colors.dart';
 import 'package:localsend_app/widget/watcher/life_cycle_watcher.dart';
@@ -54,6 +57,9 @@ class LocalSendApp extends StatelessWidget {
             switch (state) {
               case AppLifecycleState.resumed:
                 ref.redux(localIpProvider).dispatch(InitLocalIpAction());
+                // [FOSS_REMOVE_START]
+                maybeCheckForUpdate(ref);
+                // [FOSS_REMOVE_END]
                 break;
               case AppLifecycleState.detached:
                 // The main isolate is only exited when all child isolates are exited.

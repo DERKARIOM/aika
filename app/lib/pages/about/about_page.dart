@@ -2,6 +2,14 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/pages/debug/debug_page.dart';
+// [FOSS_REMOVE_START]
+import 'package:localsend_app/config/update_config.dart';
+import 'package:localsend_app/model/state/update_state.dart';
+import 'package:localsend_app/provider/update_provider.dart';
+import 'package:localsend_app/util/native/platform_check.dart';
+import 'package:localsend_app/util/ui/snackbar.dart';
+import 'package:refena_flutter/refena_flutter.dart';
+// [FOSS_REMOVE_END]
 import 'package:localsend_app/widget/custom_basic_appbar.dart';
 import 'package:localsend_app/widget/local_send_logo.dart';
 import 'package:localsend_app/widget/responsive_list_view.dart';
@@ -9,6 +17,12 @@ import 'package:routerino/routerino.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 final _translatorWithGithubRegex = RegExp(r'(.+) \(@([\w\-_]+)\)');
+
+// [FOSS_REMOVE_START]
+String _t({required String fr, required String en}) {
+  return LocaleSettings.currentLocale == AppLocale.fr ? fr : en;
+}
+// [FOSS_REMOVE_END]
 
 class AboutPage extends StatelessWidget {
   const AboutPage();
@@ -71,6 +85,57 @@ class AboutPage extends StatelessWidget {
                 },
                 child: const Text('Debugging'),
               ),
+              // [FOSS_REMOVE_START]
+              if (checkPlatformSupportInAppUpdate())
+                TextButton(
+                  onPressed: () async {
+                    final result = await context.ref.redux(updateProvider).dispatchAsync(CheckForUpdateAction());
+                    if (!context.mounted) {
+                      return;
+                    }
+                    switch (result.status) {
+                      case UpdateStatus.notAvailable:
+                        context.showSnackBar(
+                          _t(
+                            fr: "Vous utilisez déjà la dernière version d'Aika.",
+                            en: 'You are already using the latest version of Aika.',
+                          ),
+                        );
+                        break;
+                      case UpdateStatus.unsupported:
+                        context.showSnackBarWithAction(
+                          text: _t(
+                            fr: "La vérification des mises à jour n'est disponible que via Google Play.",
+                            en: 'Update checking is only available through Google Play.',
+                          ),
+                          actionLabel: _t(fr: 'Ouvrir Google Play', en: 'Open Google Play'),
+                          onAction: () async {
+                            await launchUrl(Uri.parse(UpdateConfig.playStoreUrl), mode: LaunchMode.externalApplication);
+                          },
+                        );
+                        break;
+                      case UpdateStatus.failed:
+                        context.showSnackBar(
+                          _t(
+                            fr: 'Impossible de vérifier les mises à jour pour le moment.',
+                            en: 'Could not check for updates right now.',
+                          ),
+                        );
+                        break;
+                      case UpdateStatus.available:
+                      case UpdateStatus.idle:
+                      case UpdateStatus.checking:
+                      case UpdateStatus.downloading:
+                      case UpdateStatus.readyToInstall:
+                        // "available" already showed its own dialog from
+                        // CheckForUpdateAction; the others aren't reachable
+                        // as the immediate result of a fresh manual check.
+                        break;
+                    }
+                  },
+                  child: Text(_t(fr: 'Vérifier les mises à jour', en: 'Check for updates')),
+                ),
+              // [FOSS_REMOVE_END]
             ],
           ),
           const SizedBox(height: 50),

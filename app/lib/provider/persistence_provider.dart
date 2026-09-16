@@ -77,6 +77,7 @@ const _networkBlacklistKey = 'ls_network_blacklist';
 const _timeoutKey = 'ls_timeout';
 const _multicastGroupKey = 'ls_multicast_group';
 const _destinationKey = 'ls_destination';
+const _lastUpdateCheckKey = 'ls_last_update_check_millis';
 const _saveToGallery = 'ls_save_to_gallery';
 const _saveToHistory = 'ls_save_to_history';
 const _quickSave = 'ls_quick_save';
@@ -413,6 +414,17 @@ class PersistenceService {
     } else {
       await _prefs.setString(_destinationKey, destination);
     }
+  }
+
+  /// Timestamp (millisecondsSinceEpoch) of the last automatic Google Play
+  /// In-App Update check, used to throttle checks to at most once per
+  /// [UpdateConfig.minCheckInterval]. Null before the first check ever runs.
+  int? getLastUpdateCheckMillis() {
+    return _prefs.getInt(_lastUpdateCheckKey);
+  }
+
+  Future<void> setLastUpdateCheckMillis(int millis) async {
+    await _prefs.setInt(_lastUpdateCheckKey, millis);
   }
 
   bool isSaveToGallery() {

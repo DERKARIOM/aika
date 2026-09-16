@@ -28,6 +28,9 @@ import 'package:localsend_app/provider/persistence_provider.dart';
 // [FOSS_REMOVE_START]
 import 'package:localsend_app/provider/purchase_provider.dart';
 // [FOSS_REMOVE_END]
+// [FOSS_REMOVE_START]
+import 'package:localsend_app/provider/update_provider.dart';
+// [FOSS_REMOVE_END]
 import 'package:localsend_app/provider/selection/selected_sending_files_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/provider/tv_provider.dart';
@@ -310,6 +313,15 @@ Future<void> postInit(BuildContext context, Ref ref, bool appStart) async {
   if (checkPlatformSupportPayment()) {
     // ignore: unawaited_futures
     ref.redux(purchaseProvider).dispatchAsync(InitPurchaseStream());
+  }
+  // [FOSS_REMOVE_END]
+
+  // [FOSS_REMOVE_START]
+  if (appStart) {
+    // Discreet, non-blocking Google Play update check. maybeCheckForUpdate
+    // itself checks the platform, the feature flag and the last-checked
+    // throttle before doing any network call.
+    maybeCheckForUpdate(ref);
   }
   // [FOSS_REMOVE_END]
 }
