@@ -306,7 +306,11 @@ class PersistenceService {
   ThemeMode getTheme() {
     final value = _prefs.getString(_themeKey);
     if (value == null) {
-      return ThemeMode.system;
+      // No theme preference saved yet (first launch): default to Dark
+      // instead of following the system setting. Once the user picks any
+      // theme from Settings -- including Light or System -- setTheme()
+      // persists it below and this branch is never hit again for them.
+      return ThemeMode.dark;
     }
     return ThemeMode.values.firstWhereOrNull((theme) => theme.name == value) ?? ThemeMode.system;
   }
