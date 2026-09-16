@@ -25,6 +25,7 @@ import 'package:localsend_app/widget/custom_icon_button.dart';
 import 'package:localsend_app/widget/dialogs/add_file_dialog.dart';
 import 'package:localsend_app/widget/dialogs/send_mode_help_dialog.dart';
 import 'package:localsend_app/widget/file_thumbnail.dart';
+import 'package:localsend_app/widget/list_tile/custom_list_tile.dart';
 import 'package:localsend_app/widget/list_tile/device_list_tile.dart';
 import 'package:localsend_app/widget/list_tile/device_placeholder_list_tile.dart';
 import 'package:localsend_app/widget/opacity_slideshow.dart';
@@ -208,6 +209,9 @@ class SendTab extends StatelessWidget {
                       onSelect: (mode) async => vm.onTapSendMode(context, mode),
                     ),
                   ],
+                ),
+                _ShareViaLinkCard(
+                  onTap: () async => vm.onTapSendMode(context, SendMode.link),
                 ),
                 if (vm.nearbyDevices.isEmpty)
                   const Padding(
@@ -599,6 +603,43 @@ class _MultiSendDeviceListTile extends StatelessWidget {
       glass: true,
       onFavoriteTap: device.ip == null ? null : () async => await vm.onToggleFavorite(context, device),
       onTap: () async => await vm.onTapDeviceMultiSend(context, device),
+    );
+  }
+}
+
+/// A prominent, dedicated card that surfaces "Partager via un lien" (share via
+/// link) directly on the Send screen, instead of leaving it buried in the
+/// secondary send-mode menu (the gear icon). Tapping it reuses the exact same
+/// [SendTabVm.onTapSendMode] flow as the menu entry: it checks the current
+/// file selection, shows [NoFilesDialog] when empty, otherwise opens
+/// [WebSendPage]. The other send modes (single/multiple recipient) and the
+/// secondary menu are left untouched.
+class _ShareViaLinkCard extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _ShareViaLinkCard({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10, left: _horizontalPadding, right: _horizontalPadding),
+      child: CustomListTile(
+        glass: true,
+        onTap: onTap,
+        icon: const Icon(Icons.qr_code, size: 46),
+        title: Text(
+          t.sendTab.sendModes.link,
+          style: const TextStyle(fontSize: 20),
+        ),
+        subTitle: Text(
+          t.dialogs.sendModeHelp.link,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: colorScheme.onSurfaceVariant),
+        ),
+        trailing: Icon(Icons.chevron_right_rounded, color: colorScheme.onSurfaceVariant),
+      ),
     );
   }
 }
