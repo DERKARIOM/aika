@@ -153,21 +153,30 @@ class _HomePageState extends State<HomePage> with Refena {
                                     // extended mode) so the logo sits directly above the nav icons instead
                                     // of being centered in the rail -- calibrated against a real screenshot
                                     // of this sidebar (icon column start / width, gap before the label).
-                                    padding: const EdgeInsets.only(left: 15),
+                                    padding: const EdgeInsets.only(left: 16),
                                     child: Row(
                                       mainAxisAlignment: MainAxisAlignment.start,
                                       children: [
-                                        // Official transparent Aika logo mark (assets/img/logo-512.png,
-                                        // already used as-is elsewhere -- see local_send_logo.dart).
+                                        // Official transparent Aika logo mark (assets/img/logo-512-white.png).
                                         // Centered in a 56-wide box -- the same width as the
                                         // destinations' icon/indicator column -- so it sits on the same
                                         // horizontal axis as the nav icons below it. Scaled down from its
-                                        // 512x512 source for a crisp render on HiDPI/Retina screens. No
-                                        // theme tinting, matching how it's used elsewhere.
+                                        // 512x512 source for a crisp render on HiDPI/Retina screens.
+                                        // Tinted to exactly match the "Aika" text color (same technique as
+                                        // the legacy mark in local_send_logo.dart: BlendMode.srcATop keeps
+                                        // the logo's shape/alpha, replaces its color) so it's never a
+                                        // slightly-different white, and automatically stays correct in
+                                        // both Dark and Light theme since it tracks the text's own color.
                                         SizedBox(
                                           width: 56,
                                           child: Center(
-                                            child: Assets.img.logo512.image(width: 46, height: 46),
+                                            child: ColorFiltered(
+                                              colorFilter: ColorFilter.mode(
+                                                Theme.of(context).colorScheme.onSurface,
+                                                BlendMode.srcATop,
+                                              ),
+                                              child: Assets.img.logo512White.image(width: 46, height: 46),
+                                            ),
                                           ),
                                         ),
                                         const SizedBox(width: 10),
