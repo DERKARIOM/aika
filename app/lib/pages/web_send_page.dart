@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:localsend_app/config/theme.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/cross_file.dart';
+import 'package:localsend_app/model/state/send/web/web_send_session.dart';
 import 'package:localsend_app/pages/qr_pairing_scanner_page.dart';
 import 'package:localsend_app/provider/local_ip_provider.dart';
 import 'package:localsend_app/provider/network/send_provider.dart';
@@ -52,6 +53,12 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
   bool _encrypted = false;
   String? _initializedError;
 
+  // Session ids we've already queued a dialog for, so a rebuild never
+  // re-queues the same incoming request twice.
+  final Set<String> _notifiedSessionIds = {};
+  final List<WebSendSession> _pendingRequestDialogQueue = [];
+  bool _requestDialogOpen = false;
+
   @override
   void initState() {
     super.initState();
@@ -94,6 +101,48 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
   /// Web share uses unencrypted http, so we need to revert to the previous state.
   Future<void> _revertServerState() async {
     await ref.notifier(serverProvider).restartServerFromSettings();
+  }
+
+  /// Called on every build with the current sessions: queues a dialog for
+  /// any newly-pending request (an incoming request that hasn't been seen
+  /// yet), so accepting/rejecting it happens through a dialog the moment it
+  /// arrives, instead of the user having to notice and scroll to the
+  /// "Requetes" list at the bottom of the page.
+  void _handleIncomingRequests(Iterable<WebSendSession> sessions) {
+    for (final session in sessions) {
+      if (session.pending && _notifiedSessionIds.add(session.sessionId)) {
+        _pendingRequestDialogQueue.add(session);
+      }
+    }
+    _maybeShowNextRequestDialog();
+  }
+
+  void _maybeShowNextRequestDialog() {
+    if (_requestDialogOpen || _pendingRequestDialogQueue.isEmpty || !mounted) {
+      return;
+    }
+    final session = _pendingRequestDialogQueue.removeAt(0);
+    _requestDialogOpen = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) {
+        _requestDialogOpen = false;
+        return;
+      }
+      final accepted = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _IncomingRequestDialog(session: session),
+      );
+      if (accepted == true) {
+        ref.notifier(serverProvider).acceptWebSendRequest(session.sessionId);
+      } else if (accepted == false) {
+        ref.notifier(serverProvider).declineWebSendRequest(session.sessionId);
+      }
+      _requestDialogOpen = false;
+      if (mounted) {
+        _maybeShowNextRequestDialog();
+      }
+    });
   }
 
   /// Builds the plain and pin-carrying URLs for one local IP, exactly like
@@ -229,6 +278,7 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
             final networkState = context.watch(localIpProvider);
             final colorScheme = Theme.of(context).colorScheme;
             final localIps = networkState.localIps;
+            _handleIncomingRequests(webSendState.sessions.values);
 
             return ResponsiveListView(
               padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 20),
@@ -464,6 +514,42 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
           },
         ),
       ),
+    );
+  }
+}
+
+/// Shown automatically the moment a new incoming download request arrives
+/// (see [_WebSendPageState._handleIncomingRequests]), so accepting or
+/// rejecting it doesn't require noticing and scrolling to the "Requetes"
+/// list. That list is kept as-is below as a secondary, always-visible
+/// status view (and a fallback if a dialog is ever missed).
+class _IncomingRequestDialog extends StatelessWidget {
+  final WebSendSession session;
+
+  const _IncomingRequestDialog({required this.session});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return AlertDialog(
+      icon: Icon(Icons.download_for_offline_outlined, color: colorScheme.primary, size: 36),
+      title: Text(_t(fr: 'Nouvelle demande de téléchargement', en: 'New download request')),
+      content: ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const CircleAvatar(child: Icon(Icons.devices_other)),
+        title: Text(session.deviceInfo, style: Theme.of(context).textTheme.titleMedium),
+        subtitle: Text(session.ip),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => context.pop(false),
+          child: Text(t.general.decline),
+        ),
+        FilledButton(
+          onPressed: () => context.pop(true),
+          child: Text(t.general.accept),
+        ),
+      ],
     );
   }
 }
