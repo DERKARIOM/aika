@@ -74,6 +74,9 @@ dependencies:
   saf_stream: 2.0.0
   screen_retriever: 0.2.2
   share_handler: 0.0.22
+  # Native share sheet, used to share a web-send link to other apps
+  # (text/URL only, no native platform configuration required).
+  share_plus: any
   shared_preferences: 2.5.5
   shared_preferences_platform_interface: any
   slang: 4.18.0
