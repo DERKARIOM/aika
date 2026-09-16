@@ -1,11 +1,100 @@
 <!DOCTYPE html>
-<html>
+<html lang="fr">
 <head>
-    <meta charset="utf-8">
-    <title>LocalSend</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Aika</title>
+<meta name="theme-color" content="#42B998">
+<link rel="icon" type="image/png" href="data:image/png;base64,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">
+<style>
+  :root {
+    --aika-primary: #42B998;
+    --aika-bg: #F8FAF9;
+    --aika-card: #FFFFFF;
+    --aika-text: #17211D;
+    --aika-text-variant: #5F6B66;
+    --aika-outline-variant: #E1E8E4;
+    --aika-error: #BA1A1A;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --aika-bg: #0D1318;
+      --aika-card: #16211D;
+      --aika-text: #EAF3F0;
+      --aika-text-variant: #A8B6B0;
+      --aika-outline-variant: #263430;
+      --aika-error: #FFB4AB;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--aika-bg);
+    color: var(--aika-text);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .card {
+    background: var(--aika-card);
+    border: 1px solid var(--aika-outline-variant);
+    border-radius: 20px;
+    padding: 36px 28px;
+    max-width: 380px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 1px 2px rgba(23, 33, 29, 0.06), 0 4px 16px rgba(23, 33, 29, 0.05);
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 18px;
+  }
+  .brand img {
+    width: 26px;
+    height: 26px;
+  }
+  .brand span {
+    font-weight: 700;
+    font-size: 0.95rem;
+  }
+  .icon {
+    width: 44px;
+    height: 44px;
+    color: var(--aika-error);
+    margin-bottom: 12px;
+  }
+  h1 {
+    font-size: 1.15rem;
+    margin: 0 0 8px;
+  }
+  p {
+    margin: 0;
+    color: var(--aika-text-variant);
+    font-size: 0.9rem;
+  }
+</style>
 </head>
 <body>
-    <h1>403 Forbidden</h1>
-    <p>You don't have permission to access this resource.</p>
+  <div class="card">
+    <div class="brand">
+      <img src="data:image/png;base64,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" alt="Aika">
+      <span>Aika</span>
+    </div>
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M12 15v-4"/>
+      <path d="M12 8h.01"/>
+      <circle cx="12" cy="12" r="9"/>
+    </svg>
+    <h1>403 — Accès refusé</h1>
+    <p>Vous n'avez pas la permission d'accéder à cette ressource. / You don't have permission to access this resource.</p>
+  </div>
 </body>
 </html>
