@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:localsend_app/util/native/channel/android_channel.dart' as android_channel;
+import 'package:localsend_app/util/native/directories.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:logging/logging.dart';
 import 'package:open_dir/open_dir.dart';
@@ -12,6 +13,13 @@ Future<void> openFolder({
   required String folderPath,
   String? fileName,
 }) async {
+  if (folderPath == kAndroidDefaultDownloadsMarker) {
+    // MediaStore-backed default Downloads folder: no path/URI to hand to a generic
+    // file-open intent, so open the system Downloads UI instead.
+    await android_channel.openDownloadsAndroid();
+    return;
+  }
+
   if (folderPath.startsWith('content://')) {
     await android_channel.openContentUri(uri: folderPath);
     return;

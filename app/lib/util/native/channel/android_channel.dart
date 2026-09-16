@@ -14,6 +14,11 @@ final _logger = Logger('AndroidSaf');
 /// Older versions might also work but the encoded content URI is not guaranteed to work with our algorithm.
 const contentUriMinSdk = 27;
 
+/// MediaStore's "Downloads" collection (used for the default, non-manually-chosen
+/// Android destination -- see createFileInDownloadsAndroid) is only available from
+/// Android 10 (API 29 / Build.VERSION_CODES.Q) and above.
+const mediaStoreDownloadsMinSdk = 29;
+
 Future<PickDirectoryResult?> pickDirectoryAndroid() async {
   final result = await _methodChannel.invokeMethod<Map>('pickDirectory');
   if (result == null) {
@@ -108,6 +113,62 @@ Future<CreatedFileAndroid> createFileAndroid({
     uri: result['uri'] as String,
     fileDescriptor: result['fd'] as int,
   );
+}
+
+/// Creates a new file directly in the public "Downloads" collection via MediaStore
+/// (Android 10 / API 29+ only -- see [mediaStoreDownloadsMinSdk]). This backs the default
+/// (non-manually-chosen) Android destination: unlike a raw filesystem path, it needs no
+/// storage permission under Scoped Storage, and the resulting file stays visible in the
+/// Files app (and to other apps) after Aika is closed or uninstalled. [relativePath]
+/// should look like "Download/" or "Download/someSubFolder/".
+Future<CreatedFileAndroid> createFileInDownloadsAndroid({
+  required String fileName,
+  required String relativePath,
+  required String mimeType,
+}) async {
+  final result = await _methodChannel.invokeMethod<Map>('createFileInDownloads', {
+    'fileName': fileName,
+    'relativePath': relativePath,
+    'mimeType': mimeType,
+  });
+  if (result == null) {
+    throw StateError('Android could not create $fileName in $relativePath');
+  }
+  return CreatedFileAndroid(
+    uri: result['uri'] as String,
+    fileDescriptor: result['fd'] as int,
+  );
+}
+
+/// Copies an already-downloaded local file into the public "Downloads" MediaStore
+/// collection (Android 10 / API 29+ only). Narrow fallback used only when a file cached
+/// for the gallery could not be saved there and the configured destination is the
+/// MediaStore-backed default Downloads folder (see saveCachedFileToGallery), since that
+/// destination has no filesystem path to move/rename the cached file into.
+Future<String> copyFileToDownloadsAndroid({
+  required String sourcePath,
+  required String fileName,
+  required String relativePath,
+  required String mimeType,
+}) async {
+  final result = await _methodChannel.invokeMethod<Map>('copyFileToDownloads', {
+    'sourcePath': sourcePath,
+    'fileName': fileName,
+    'relativePath': relativePath,
+    'mimeType': mimeType,
+  });
+  if (result == null) {
+    throw StateError('Android could not copy $fileName to $relativePath');
+  }
+  return result['uri'] as String;
+}
+
+/// Opens the system "Downloads" UI. Used for "open destination folder" when the
+/// destination is the MediaStore-backed default Downloads folder, which has no single
+/// path/URI a generic file-open intent could point to.
+Future<void> openDownloadsAndroid() async {
+  _logger.info('Opening system Downloads');
+  await _methodChannel.invokeMethod('openDownloads');
 }
 
 Future<void> openContentUri({

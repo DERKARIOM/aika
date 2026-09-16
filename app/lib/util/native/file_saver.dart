@@ -49,6 +49,25 @@ Future<FileSaveTarget> prepareFileSaveTarget({
   required Set<String> createdDirectories,
   int? androidSdkInt,
 }) async {
+  // Android 10+ default destination: MediaStore-backed public Downloads folder, not a
+  // real directory on disk (see getDefaultDestinationDirectory in directories.dart).
+  if (!saveToGallery && destinationDirectory == kAndroidDefaultDownloadsMarker) {
+    final finalName = legalizeFilename(p.basename(fileName), os: Platform.operatingSystem);
+    final subDir = fileName.contains('/') ? fileName.parentPath() : null;
+    final relativePath = subDir == null ? 'Download/' : 'Download/$subDir/';
+    _logger.info('Using MediaStore to save file to $relativePath$finalName');
+    final createdFile = await android_channel.createFileInDownloadsAndroid(
+      fileName: finalName,
+      relativePath: relativePath,
+      mimeType: lookupMimeType(finalName) ?? (isImage ? 'image/*' : '*/*'),
+    );
+    return FileSaveTarget(
+      path: null,
+      fileDescriptor: createdFile.fileDescriptor,
+      displayPath: createdFile.uri,
+    );
+  }
+
   final parentDirectory = saveToGallery ? await getCacheDirectory() : destinationDirectory;
 
   final (destinationPath, documentUri, finalName) = await digestFilePathAndPrepareDirectory(
@@ -137,6 +156,26 @@ Future<(bool, String?)> saveCachedFileToGallery({
     isImage ? await Gal.putImage(cachedPath) : await Gal.putVideo(cachedPath);
   } on GalException catch (e) {
     _logger.warning('Could not save to gallery (${e.type.name}), moving to destination directory', e);
+
+    if (destinationDirectory == kAndroidDefaultDownloadsMarker) {
+      // No filesystem path to rename into here (see prepareFileSaveTarget above) --
+      // copy the cached bytes into a fresh MediaStore entry instead.
+      final finalName = legalizeFilename(p.basename(fileName), os: Platform.operatingSystem);
+      final subDir = fileName.contains('/') ? fileName.parentPath() : null;
+      final relativePath = subDir == null ? 'Download/' : 'Download/$subDir/';
+      final uri = await android_channel.copyFileToDownloadsAndroid(
+        sourcePath: cachedPath,
+        fileName: finalName,
+        relativePath: relativePath,
+        mimeType: lookupMimeType(finalName) ?? (isImage ? 'image/*' : '*/*'),
+      );
+      try {
+        await File(cachedPath).delete();
+      } catch (e) {
+        _logger.warning('Could not delete cached file after copying to Downloads', e);
+      }
+      return (false, uri);
+    }
 
     final (fallbackPath, _, _) = await digestFilePathAndPrepareDirectory(
       parentDirectory: destinationDirectory,

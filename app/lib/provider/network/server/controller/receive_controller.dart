@@ -684,7 +684,17 @@ class ReceiveController {
     );
 
     if (checkPlatform([TargetPlatform.android, TargetPlatform.iOS])) {
-      if (checkPlatform([TargetPlatform.android]) && !session.destinationDirectory.startsWith('/storage/emulated/0/Download')) {
+      // Legacy (pre-Scoped-Storage) permission request, historically gated on "is this
+      // path the Download folder". Left as-is for a manually-picked SAF/content:// folder
+      // (out of scope here; already harmless there, wrapped in try/catch). Extended only to
+      // also skip the request for the new MediaStore-backed default
+      // (kAndroidDefaultDownloadsMarker, see directories.dart), which needs no storage
+      // permission and previously never matched the old '/storage/emulated/0/Download'
+      // hardcoded check now that getDefaultDestinationDirectory() no longer returns it.
+      final isLegacyNonDownloadsDestination =
+          session.destinationDirectory != kAndroidDefaultDownloadsMarker &&
+          !session.destinationDirectory.startsWith('/storage/emulated/0/Download');
+      if (checkPlatform([TargetPlatform.android]) && isLegacyNonDownloadsDestination) {
         // Android requires more permission to save files outside of the Download directory
         try {
           final result = await Permission.storage.request();

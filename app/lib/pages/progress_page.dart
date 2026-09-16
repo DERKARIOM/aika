@@ -13,6 +13,7 @@ import 'package:localsend_app/provider/progress_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/util/file_size_helper.dart';
 import 'package:localsend_app/util/file_speed_helper.dart';
+import 'package:localsend_app/util/native/directories.dart';
 import 'package:localsend_app/util/native/open_file.dart';
 import 'package:localsend_app/util/native/open_folder.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
@@ -273,7 +274,9 @@ class _ProgressPageState extends State<ProgressPage> with Refena {
                                     style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                                   ),
                                   TextSpan(
-                                    text: receiveSession.destinationDirectory,
+                                    text: receiveSession.destinationDirectory == kAndroidDefaultDownloadsMarker
+                                        ? t.settingsTab.receive.downloads
+                                        : receiveSession.destinationDirectory,
                                     style: TextStyle(
                                       color: checkPlatform([TargetPlatform.iOS])
                                           ? Theme.of(context).colorScheme.onSurfaceVariant

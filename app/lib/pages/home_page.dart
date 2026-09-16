@@ -5,6 +5,7 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
 import 'package:localsend_app/config/init.dart';
 import 'package:localsend_app/config/theme.dart';
+import 'package:localsend_app/gen/assets.gen.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/pages/home_page_controller.dart';
 import 'package:localsend_app/pages/tabs/chat_tab.dart';
@@ -127,19 +128,59 @@ class _HomePageState extends State<HomePage> with Refena {
                         selectedLabelTextStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w600),
                         unselectedLabelTextStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                         leading: sizingInformation.isDesktop
-                            ? Column(
+                            ? SizedBox(
+                                // Fixed width matching NavigationRail's own default
+                                // minExtendedWidth (256, not overridden here). NavigationRail
+                                // centers its `leading` widget as a block when that block is
+                                // narrower than the rail -- CrossAxisAlignment.start/stretch
+                                // alone can't escape that (stretch is also unsafe here: extended
+                                // NavigationRail measures leading via intrinsic width, and an
+                                // infinite/stretching child in that pass throws a layout
+                                // exception). Giving the block the rail's own known width leaves
+                                // no slack to center within, so the left padding below actually
+                                // reaches the true left edge, and the width is finite so the
+                                // intrinsic-width pass stays well-defined.
+                                width: 256,
+                                child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   checkPlatform([TargetPlatform.macOS])
                                       ? // considered adding some extra space so it looks more natural
                                         SizedBox(height: 40)
                                       : SizedBox(height: 20),
-                                  const Text(
-                                    'Aika',
-                                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
-                                    textAlign: TextAlign.center,
+                                  Padding(
+                                    // Matches the destinations' own left inset (NavigationRailDestination,
+                                    // extended mode) so the logo sits directly above the nav icons instead
+                                    // of being centered in the rail -- calibrated against a real screenshot
+                                    // of this sidebar (icon column start / width, gap before the label).
+                                    padding: const EdgeInsets.only(left: 15),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.start,
+                                      children: [
+                                        // Official transparent Aika logo mark (assets/img/logo-512.png,
+                                        // already used as-is elsewhere -- see local_send_logo.dart).
+                                        // Centered in a 56-wide box -- the same width as the
+                                        // destinations' icon/indicator column -- so it sits on the same
+                                        // horizontal axis as the nav icons below it. Scaled down from its
+                                        // 512x512 source for a crisp render on HiDPI/Retina screens. No
+                                        // theme tinting, matching how it's used elsewhere.
+                                        SizedBox(
+                                          width: 56,
+                                          child: Center(
+                                            child: Assets.img.logo512.image(width: 46, height: 46),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        const Text(
+                                          'Aika',
+                                          style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                   SizedBox(height: 20),
                                 ],
+                                ),
                               )
                             : checkPlatform([TargetPlatform.macOS])
                             ? SizedBox(

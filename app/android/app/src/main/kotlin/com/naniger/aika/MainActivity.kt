@@ -2,7 +2,9 @@ package com.naniger.aika
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.DownloadManager
 import android.content.ContentResolver
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.database.Cursor
@@ -16,7 +18,9 @@ import android.net.wifi.WifiNetworkSpecifier
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.Environment
 import android.provider.DocumentsContract
+import android.provider.MediaStore
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
@@ -74,6 +78,15 @@ class MainActivity : FlutterActivity() {
                 "getFileDescriptor" -> handleGetFileDescriptor(call, result)
 
                 "createFile" -> handleCreateFile(call, result)
+
+                "createFileInDownloads" -> handleCreateFileInDownloads(call, result)
+
+                "copyFileToDownloads" -> handleCopyFileToDownloads(call, result)
+
+                "openDownloads" -> {
+                    openDownloads()
+                    result.success(null)
+                }
 
                 "openContentUri" -> {
                     openUri(context, call.argument<String>("uri")!!)
@@ -498,6 +511,130 @@ class MainActivity : FlutterActivity() {
             result.error("PERMISSION_DENIED", e.message ?: "Permission denied for content URI", null)
         } catch (e: Exception) {
             result.error("CREATE_FAILED", e.message ?: "Failed to create file", null)
+        }
+    }
+
+    /// Inserts a new row into the public "Downloads" MediaStore collection (API 29+) and
+    /// returns a writable file descriptor to it. This backs Aika's *default* Android
+    /// destination (see directories.dart / file_saver.dart on the Dart side): unlike a raw
+    /// filesystem path, it needs no storage permission and keeps working under Scoped
+    /// Storage, and the resulting file stays visible in the Files app (and to other apps)
+    /// after Aika is closed or uninstalled. If a file with the same display name already
+    /// exists at the same relative path, MediaStore automatically renames the new one to
+    /// avoid overwriting it (e.g. "photo.jpg" -> "photo (1).jpg") -- the same kind of
+    /// collision-safe behavior DocumentsContract.createDocument already provides for the
+    /// SAF path above, so no separate duplicate-checking logic is needed here.
+    private fun handleCreateFileInDownloads(call: MethodCall, result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            result.error("UNSUPPORTED", "MediaStore Downloads requires Android 10 (API 29) or higher", null)
+            return
+        }
+
+        val fileName = call.argument<String>("fileName")
+        val relativePath = call.argument<String>("relativePath") ?: "${Environment.DIRECTORY_DOWNLOADS}/"
+        val mimeType = call.argument<String>("mimeType") ?: "application/octet-stream"
+        if (fileName == null) {
+            result.error("INVALID_ARGUMENT", "Missing fileName", null)
+            return
+        }
+
+        try {
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+            }
+
+            val itemUri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            if (itemUri == null) {
+                result.error("CREATE_FAILED", "Could not create $fileName in $relativePath", null)
+                return
+            }
+
+            val parcelFileDescriptor = contentResolver.openFileDescriptor(itemUri, "w")
+            if (parcelFileDescriptor == null) {
+                result.error("OPEN_FAILED", "MediaStore did not return a file descriptor", null)
+                return
+            }
+
+            parcelFileDescriptor.use {
+                result.success(
+                    mapOf(
+                        "uri" to itemUri.toString(),
+                        "fd" to it.detachFd(),
+                    )
+                )
+            }
+        } catch (e: SecurityException) {
+            result.error("PERMISSION_DENIED", e.message ?: "Permission denied for MediaStore Downloads", null)
+        } catch (e: Exception) {
+            result.error("CREATE_FAILED", e.message ?: "Failed to create file in Downloads", null)
+        }
+    }
+
+    /// Narrow fallback for the rare case where a received image/video was cached for the
+    /// gallery (see file_saver.dart's saveCachedFileToGallery) but the gallery write
+    /// failed, and the configured destination is the MediaStore-backed default Downloads
+    /// folder. There is no filesystem path to rename into in that case, so -- unlike the
+    /// historical path-based fallback -- this copies the already-downloaded cache file's
+    /// bytes directly into a freshly created MediaStore entry, entirely on the native side.
+    private fun handleCopyFileToDownloads(call: MethodCall, result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            result.error("UNSUPPORTED", "MediaStore Downloads requires Android 10 (API 29) or higher", null)
+            return
+        }
+
+        val sourcePath = call.argument<String>("sourcePath")
+        val fileName = call.argument<String>("fileName")
+        val relativePath = call.argument<String>("relativePath") ?: "${Environment.DIRECTORY_DOWNLOADS}/"
+        val mimeType = call.argument<String>("mimeType") ?: "application/octet-stream"
+        if (sourcePath == null || fileName == null) {
+            result.error("INVALID_ARGUMENT", "Missing sourcePath or fileName", null)
+            return
+        }
+
+        try {
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+            }
+
+            val itemUri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            if (itemUri == null) {
+                result.error("CREATE_FAILED", "Could not create $fileName in $relativePath", null)
+                return
+            }
+
+            val output = contentResolver.openOutputStream(itemUri)
+            if (output == null) {
+                result.error("OPEN_FAILED", "MediaStore did not return an output stream", null)
+                return
+            }
+            output.use { out ->
+                File(sourcePath).inputStream().use { input ->
+                    input.copyTo(out)
+                }
+            }
+
+            result.success(mapOf("uri" to itemUri.toString()))
+        } catch (e: SecurityException) {
+            result.error("PERMISSION_DENIED", e.message ?: "Permission denied for MediaStore Downloads", null)
+        } catch (e: Exception) {
+            result.error("CREATE_FAILED", e.message ?: "Failed to copy file to Downloads", null)
+        }
+    }
+
+    /// Opens the system "Downloads" UI. Used for "open destination folder" when the
+    /// destination is the MediaStore-backed default Downloads folder, which -- unlike a
+    /// SAF tree or a plain path -- has no single URI/path a generic file-open intent could
+    /// point to.
+    private fun openDownloads() {
+        try {
+            startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS))
+        } catch (e: Exception) {
+            // No app can handle it on this OEM/ROM; fire-and-forget from the Dart side, so
+            // there's nothing more to do here.
         }
     }
 

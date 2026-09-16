@@ -5,6 +5,7 @@ import 'package:localsend_app/provider/network/server/server_provider.dart';
 import 'package:localsend_app/provider/selection/selected_receiving_files_provider.dart';
 import 'package:localsend_app/util/file_size_helper.dart';
 import 'package:localsend_app/util/file_type_ext.dart';
+import 'package:localsend_app/util/native/directories.dart';
 import 'package:localsend_app/util/native/pick_directory_path.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/widget/custom_dropdown_button.dart';
@@ -56,7 +57,13 @@ class ReceiveOptionsPage extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 5),
-          Text(checkPlatformWithFileSystem() ? receiveSession.destinationDirectory : t.receiveOptionsPage.appDirectory),
+          Text(
+            checkPlatformWithFileSystem()
+                ? (receiveSession.destinationDirectory == kAndroidDefaultDownloadsMarker
+                      ? t.settingsTab.receive.downloads
+                      : receiveSession.destinationDirectory)
+                : t.receiveOptionsPage.appDirectory,
+          ),
           if (checkPlatformWithGallery())
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
