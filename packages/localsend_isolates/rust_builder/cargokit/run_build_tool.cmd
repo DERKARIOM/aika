@@ -5,6 +5,18 @@ setlocal ENABLEDELAYEDEXPANSION
 
 SET BASEDIR=%~dp0
 
+REM Rust's MSVC host toolchain needs the Visual Studio linker and Windows SDK.
+REM Android Studio does not start Gradle inside a Visual Studio developer shell.
+if not defined VSCMD_VER (
+    set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+    if exist "!VSWHERE!" (
+        for /f "usebackq tokens=*" %%i in (`"!VSWHERE!" -latest -products * -property installationPath`) do set "VSINSTALL=%%i"
+        if defined VSINSTALL if exist "!VSINSTALL!\Common7\Tools\VsDevCmd.bat" (
+            call "!VSINSTALL!\Common7\Tools\VsDevCmd.bat" -no_logo -arch=x64 -host_arch=x64
+        )
+    )
+)
+
 if not exist "%CARGOKIT_TOOL_TEMP_DIR%" (
     mkdir "%CARGOKIT_TOOL_TEMP_DIR%"
 )
@@ -82,10 +94,14 @@ if not exist "%PRECOMPILED%" (
 )
 
 "%DART%" "%PRECOMPILED%" %*
+set "BUILD_TOOL_EXIT_CODE=!ERRORLEVEL!"
 
 REM 253 means invalid snapshot version.
-If %ERRORLEVEL% equ 253 (
+If !BUILD_TOOL_EXIT_CODE! equ 253 (
     "%DART%" pub get --no-precompile
     "%DART%" compile kernel bin/build_tool_runner.dart
     "%DART%" "%PRECOMPILED%" %*
+    set "BUILD_TOOL_EXIT_CODE=!ERRORLEVEL!"
 )
+
+exit /b !BUILD_TOOL_EXIT_CODE!
