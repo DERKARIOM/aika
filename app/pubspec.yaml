@@ -122,18 +122,6 @@ dependency_overrides:
     git:
       url: https://github.com/Tienisto/device_apps.git
       ref: 5dc7956d938541254d2e175766b3b84ea38bb85b
-  pasteboard:
-    # This is temporary workaround, wait upstream for update
-    git:
-      url: https://github.com/Seidko/flutter-plugins.git
-      ref: 58748dae405df5e68a131e4905d48e75d0624be2
-      path: packages/pasteboard
-  permission_handler_windows:
-    # Remove windows support as it causes trouble with Windows 7
-    # https://github.com/Baseflow/flutter-permission-handler/issues/1034
-    git:
-      url: https://github.com/localsend/permission_handler_windows_noop.git
-      ref: 2dadd8afbf81e0e3e4791d7144e689555e58f649
   # Pinned below 0.4.1 on purpose: 0.4.1+ adds StoreKit 2 "Win Back Offers"
   # support that references Product.SubscriptionInfo.winBackOffers /
   # RenewalInfo.eligibleWinBackOfferIDs / SubscriptionOffer.OfferType.winBack.
@@ -148,6 +136,18 @@ dependency_overrides:
   # quantity) that should be re-tested if in-app purchases on iOS matter
   # before a real release.
   in_app_purchase_storekit: 0.4.0
+  pasteboard:
+    # This is temporary workaround, wait upstream for update
+    git:
+      url: https://github.com/Seidko/flutter-plugins.git
+      ref: 58748dae405df5e68a131e4905d48e75d0624be2
+      path: packages/pasteboard
+  permission_handler_windows:
+    # Remove windows support as it causes trouble with Windows 7
+    # https://github.com/Baseflow/flutter-permission-handler/issues/1034
+    git:
+      url: https://github.com/localsend/permission_handler_windows_noop.git
+      ref: 2dadd8afbf81e0e3e4791d7144e689555e58f649
 
 flutter:
   uses-material-design: true
