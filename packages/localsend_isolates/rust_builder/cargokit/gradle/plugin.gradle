@@ -58,7 +58,23 @@ abstract class CargoKitBuildTask extends DefaultTask {
         def manifestDir = Paths.get(project.buildscript.sourceFile.parent, project.cargokit.manifestDir)
 
         def rootProjectDir = project.rootProject.projectDir
-        
+
+        // FLUTTER_ROOT is only exported by the `flutter` CLI. When Gradle is
+        // started from Android Studio it is missing, so fall back to the
+        // `flutter.sdk` entry of local.properties.
+        def flutterRoot = System.getenv("FLUTTER_ROOT")
+        if (flutterRoot == null || flutterRoot.isEmpty()) {
+            def localProps = new File(rootProjectDir, "local.properties")
+            if (localProps.exists()) {
+                def props = new Properties()
+                localProps.withInputStream { props.load(it) }
+                flutterRoot = props.getProperty("flutter.sdk")
+            }
+        }
+        if (flutterRoot == null || flutterRoot.isEmpty()) {
+            throw new GradleException("Flutter SDK not found: set FLUTTER_ROOT or 'flutter.sdk' in local.properties.")
+        }
+
         if (!Os.isFamily(Os.FAMILY_WINDOWS)) {
             project.exec {
                 commandLine 'chmod', '+x', path
@@ -80,6 +96,7 @@ abstract class CargoKitBuildTask extends DefaultTask {
             environment "CARGOKIT_MIN_SDK_VERSION", minSdkVersion
             environment "CARGOKIT_TARGET_PLATFORMS", targetPlatforms.join(",")
             environment "CARGOKIT_JAVA_HOME", System.properties['java.home']
+            environment "FLUTTER_ROOT", flutterRoot
         }
     }
 }

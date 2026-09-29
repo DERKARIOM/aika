@@ -23,7 +23,15 @@ if not exist "%CARGOKIT_TOOL_TEMP_DIR%" (
 cd /D "%CARGOKIT_TOOL_TEMP_DIR%"
 
 SET BUILD_TOOL_PKG_DIR=%BASEDIR%build_tool
-SET DART=%FLUTTER_ROOT%\bin\cache\dart-sdk\bin\dart
+SET DART=%FLUTTER_ROOT%\bin\cache\dart-sdk\bin\dart.exe
+if not defined FLUTTER_ROOT (
+    echo [cargokit] FLUTTER_ROOT is not set. Set it or define flutter.sdk in android\local.properties. 1>&2
+    exit /b 3
+)
+if not exist "%DART%" (
+    echo [cargokit] Dart not found at "%DART%". Run "flutter precache" or check FLUTTER_ROOT. 1>&2
+    exit /b 3
+)
 
 set BUILD_TOOL_PKG_DIR_POSIX=%BUILD_TOOL_PKG_DIR:\=/%
 
