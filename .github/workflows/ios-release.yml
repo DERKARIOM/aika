@@ -1,0 +1,320 @@
+name: iOS Release (non signé)
+
+# ─────────────────────────────────────────────────────────────────────────
+# Pipeline CI/CD iOS pour Aika — produit un .ipa NON SIGNÉ, prêt pour un
+# sideloading via Sideloadly ou AltStore (pas de compte Apple Developer
+# payant disponible actuellement).
+#
+# Déclenchement :
+#   - manuel (workflow_dispatch), version reprise de app/pubspec.yaml ;
+#   - automatique sur un tag "ios-v*" (ex: ios-v1.2.0) -> publie aussi une
+#     GitHub Release avec l'IPA en pièce jointe.
+#
+# Le préfixe "ios-v" (plutôt que "v*", déjà utilisé par
+# .github/workflows/release.yml pour Linux/Windows/macOS) est volontaire :
+# il évite qu'un tag déclenche à la fois cette pipeline et la release
+# desktop existante, et reprend exactement la convention déjà en place
+# pour macOS ("macos-v1.0.0", voir app/docs/macos-release.md §8).
+#
+# Note sur DEVELOPMENT_TEAM = MM9Z35FS2F (présent dans project.pbxproj) :
+# ce Team ID n'appartient pas à ce projet (probable reliquat du fork
+# LocalSend d'origine) et n'est de toute façon pas exploitable en CI sans
+# les identifiants de son propriétaire. Cette pipeline ne s'en sert pas :
+# `flutter build ios --no-codesign` désactive complètement la signature
+# (CODE_SIGNING_ALLOWED=NO / CODE_SIGNING_REQUIRED=NO), donc ce champ est
+# ignoré, pas modifié.
+#
+# Aucun secret Apple n'est requis dans cette version. Voir le bloc
+# "SIGNATURE FUTURE" tout en bas de ce fichier pour la marche à suivre le
+# jour où un compte payant sera disponible : rien n'est activé ici tant
+# que ces secrets n'existent pas.
+# ─────────────────────────────────────────────────────────────────────────
+
+on:
+  workflow_dispatch: {}
+  push:
+    tags:
+      - "ios-v*"
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: "3.44.0" # doit rester synchronisé avec .fvmrc à la racine du repo
+  FLUTTER_APP_DIR: app
+  CARGOKIT_BUILD_TOOL_DIR: packages/localsend_isolates/rust_builder/cargokit/build_tool
+  BUNDLE_ID_EXPECTED: com.naniger.aika
+
+jobs:
+  validate:
+    name: Valider et préparer la version
+    runs-on: ubuntu-24.04
+    outputs:
+      marketing_version: ${{ steps.version.outputs.marketing_version }}
+      build_number: ${{ steps.version.outputs.build_number }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Déterminer la version
+        id: version
+        run: |
+          set -euo pipefail
+          PUBSPEC_VERSION=$(grep -E '^version:' ${{ env.FLUTTER_APP_DIR }}/pubspec.yaml | sed 's/version:[[:space:]]*//' | cut -d '+' -f1)
+
+          if [[ "${GITHUB_REF}" == refs/tags/ios-v* ]]; then
+            TAG_VERSION="${GITHUB_REF#refs/tags/ios-v}"
+            if [[ "$TAG_VERSION" != "$PUBSPEC_VERSION" ]]; then
+              echo "::error::La version du tag (ios-v${TAG_VERSION}) ne correspond pas à app/pubspec.yaml (${PUBSPEC_VERSION}). Aligne pubspec.yaml avant de retagger."
+              exit 1
+            fi
+            MARKETING_VERSION="$TAG_VERSION"
+            echo "Déclenché par tag ios-v${TAG_VERSION} -> version validée."
+          else
+            MARKETING_VERSION="$PUBSPEC_VERSION"
+            echo "Pas de tag ios-v* (run manuel) -> version reprise de pubspec.yaml=${MARKETING_VERSION}"
+          fi
+
+          echo "marketing_version=${MARKETING_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "build_number=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: "stable"
+
+      - name: Dependencies (app)
+        working-directory: ${{ env.FLUTTER_APP_DIR }}
+        run: flutter pub get
+
+      - name: Dependencies (cargokit - rust_builder)
+        working-directory: ${{ env.CARGOKIT_BUILD_TOOL_DIR }}
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: ${{ env.FLUTTER_APP_DIR }}
+        run: flutter analyze
+
+      - name: Test
+        working-directory: ${{ env.FLUTTER_APP_DIR }}
+        run: flutter test
+
+  build:
+    name: Build .ipa non signé
+    needs: validate
+    runs-on: macos-14
+    outputs:
+      bundle_id: ${{ steps.validate_ipa.outputs.bundle_id }}
+      ipa_size_bytes: ${{ steps.validate_ipa.outputs.ipa_size_bytes }}
+      signed_status: ${{ steps.validate_ipa.outputs.signed_status }}
+      xcode_version: ${{ steps.xcode_version.outputs.version }}
+      macos_version: ${{ steps.macos_version.outputs.version }}
+      build_date: ${{ steps.meta.outputs.build_date }}
+      commit_sha: ${{ steps.meta.outputs.commit_sha }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Métadonnées du build
+        id: meta
+        run: |
+          echo "build_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> "$GITHUB_OUTPUT"
+          echo "commit_sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Version Xcode du runner
+        id: xcode_version
+        run: echo "version=$(xcodebuild -version | head -n1)" >> "$GITHUB_OUTPUT"
+
+      - name: Version macOS du runner
+        id: macos_version
+        run: echo "version=$(sw_vers -productVersion)" >> "$GITHUB_OUTPUT"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: "stable"
+
+      - name: Dependencies (app)
+        working-directory: ${{ env.FLUTTER_APP_DIR }}
+        run: flutter pub get
+
+      # rust_lib_localsend_app (cargokit) est packagé comme pod CocoaPods
+      # côté iOS — cette étape prépare cargokit exactement comme le font
+      # déjà les builds Linux/Windows/macOS de .github/workflows/release.yml.
+      - name: Dependencies (cargokit - rust_builder)
+        working-directory: ${{ env.CARGOKIT_BUILD_TOOL_DIR }}
+        run: flutter pub get
+
+      - name: pod install
+        working-directory: ${{ env.FLUTTER_APP_DIR }}/ios
+        run: pod install --repo-update
+
+      # `--no-codesign` compile Runner.app sans passer par `xcodebuild
+      # archive` (qui exige une identité de signature valide). C'est
+      # l'approche standard pour produire un binaire iOS exploitable sans
+      # compte Apple Developer payant. CARGOKIT_VERBOSE=1 pour le
+      # diagnostic si le build Rust échoue (point de risque identifié à
+      # l'audit : c'est le même sous-système que le build Android bloqué
+      # sur la machine Windows de développement).
+      - name: flutter build ios --release --no-codesign
+        working-directory: ${{ env.FLUTTER_APP_DIR }}
+        env:
+          CARGOKIT_VERBOSE: "1"
+        run: |
+          flutter build ios \
+            --release \
+            --no-codesign \
+            --build-name="${{ needs.validate.outputs.marketing_version }}" \
+            --build-number="${{ needs.validate.outputs.build_number }}"
+
+      - name: Empaqueter Aika.ipa
+        working-directory: ${{ env.FLUTTER_APP_DIR }}
+        run: |
+          set -euo pipefail
+          APP_PATH="build/ios/iphoneos/Runner.app"
+          if [[ ! -d "$APP_PATH" ]]; then
+            echo "::error::Runner.app introuvable dans build/ios/iphoneos/ — le build Flutter a probablement échoué silencieusement en amont."
+            exit 1
+          fi
+          rm -rf Payload
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          zip -r -X -q "$GITHUB_WORKSPACE/Aika.ipa" Payload
+          echo "Aika.ipa créé : $(du -h "$GITHUB_WORKSPACE/Aika.ipa" | cut -f1)"
+
+      - name: Valider l'IPA généré
+        id: validate_ipa
+        run: |
+          set -euo pipefail
+          IPA="Aika.ipa"
+
+          if [[ ! -f "$IPA" ]]; then
+            echo "::error::$IPA n'existe pas"
+            exit 1
+          fi
+
+          SIZE=$(stat -f%z "$IPA")
+          if [[ "$SIZE" -le 0 ]]; then
+            echo "::error::$IPA est vide (0 octet)"
+            exit 1
+          fi
+          echo "Taille : ${SIZE} octets ($((SIZE / 1024 / 1024)) Mo)"
+          echo "ipa_size_bytes=${SIZE}" >> "$GITHUB_OUTPUT"
+
+          if ! unzip -l "$IPA" | grep -q "Payload/Runner.app/Runner"; then
+            echo "::error::Payload/Runner.app/Runner introuvable dans l'archive — IPA invalide"
+            exit 1
+          fi
+          echo "Structure Payload/*.app confirmée."
+
+          APP_DIR="${{ env.FLUTTER_APP_DIR }}/Payload/Runner.app"
+          INFO_PLIST="$APP_DIR/Info.plist"
+          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$INFO_PLIST")
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$INFO_PLIST")
+          BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$INFO_PLIST")
+
+          echo "Bundle Identifier : ${BUNDLE_ID}"
+          echo "Version           : ${VERSION}"
+          echo "Build number      : ${BUILD}"
+          echo "bundle_id=${BUNDLE_ID}" >> "$GITHUB_OUTPUT"
+
+          if [[ "$BUNDLE_ID" != "${{ env.BUNDLE_ID_EXPECTED }}" ]]; then
+            echo "::warning::Bundle ID inattendu (${BUNDLE_ID} != ${{ env.BUNDLE_ID_EXPECTED }})"
+          fi
+
+          # Statut de signature : ne JAMAIS prétendre que l'IPA est signé
+          # s'il ne l'est pas.
+          if codesign -dv --verbose=2 "$APP_DIR" 2>&1 | grep -qi "code object is not signed at all"; then
+            echo "signed_status=Unsigned" >> "$GITHUB_OUTPUT"
+            echo "Statut de signature : NON SIGNÉ (attendu, pas de compte Apple Developer payant configuré)"
+          else
+            echo "signed_status=Signed" >> "$GITHUB_OUTPUT"
+            echo "Statut de signature : SIGNÉ"
+            codesign -dv --verbose=2 "$APP_DIR" 2>&1 || true
+          fi
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: Aika-${{ needs.validate.outputs.marketing_version }}-${{ needs.validate.outputs.build_number }}-unsigned
+          path: ${{ env.FLUTTER_APP_DIR }}/Aika.ipa
+          if-no-files-found: error
+          retention-days: 90
+
+  release:
+    name: Publier la GitHub Release
+    needs: [validate, build]
+    if: startsWith(github.ref, 'refs/tags/ios-v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: Aika-${{ needs.validate.outputs.marketing_version }}-${{ needs.validate.outputs.build_number }}-unsigned
+          path: dist
+
+      - name: Renommer pour la Release
+        run: mv "dist/Aika.ipa" "dist/Aika-${{ needs.validate.outputs.marketing_version }}.ipa"
+
+      - name: Créer la GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Aika iOS v${{ needs.validate.outputs.marketing_version }}"
+          draft: true
+          files: dist/Aika-${{ needs.validate.outputs.marketing_version }}.ipa
+          body: |
+            ## Aika iOS v${{ needs.validate.outputs.marketing_version }}
+
+            | | |
+            |---|---|
+            | **Version** | ${{ needs.validate.outputs.marketing_version }} |
+            | **Build number** | ${{ needs.validate.outputs.build_number }} |
+            | **Commit** | ${{ needs.build.outputs.commit_sha }} |
+            | **Date du build** | ${{ needs.build.outputs.build_date }} |
+            | **Xcode** | ${{ needs.build.outputs.xcode_version }} |
+            | **macOS (runner)** | ${{ needs.build.outputs.macos_version }} |
+            | **Bundle ID** | ${{ needs.build.outputs.bundle_id }} |
+            | **Signature** | ⚠️ **${{ needs.build.outputs.signed_status }}** |
+
+            ### Installation
+
+            Ce fichier `.ipa` n'est **pas signé** par Apple. Il doit être re-signé
+            localement via [Sideloadly](https://sideloadly.io/) ou
+            [AltStore](https://altstore.io/) avec un Apple ID avant de pouvoir être
+            installé sur un iPhone. Voir `app/docs/IOS_RELEASE.md` pour la marche à
+            suivre complète depuis Windows.
+
+            Cette release est créée en **brouillon (draft)** : vérifiez l'IPA avant
+            de la publier.
+
+# ═════════════════════════════════════════════════════════════════════════
+# SIGNATURE FUTURE (compte Apple Developer payant) — NON ACTIF
+# ═════════════════════════════════════════════════════════════════════════
+#
+# Rien ci-dessous n'est exécuté. Aide-mémoire pour le jour où un compte
+# Apple Developer Program payant (t'appartenant, pas MM9Z35FS2F — voir la
+# note en tête de fichier) sera disponible :
+#
+#   1. GitHub Secrets à créer (Settings > Secrets and variables > Actions) :
+#        APPLE_CERTIFICATE_BASE64        # certificat .p12 encodé en base64
+#        APPLE_CERTIFICATE_PASSWORD      # mot de passe du .p12
+#        APPLE_PROVISIONING_PROFILE_BASE64
+#        KEYCHAIN_PASSWORD               # mot de passe d'un trousseau temporaire créé en CI
+#        APPLE_TEAM_ID                   # ton propre Team ID
+#        BUNDLE_IDENTIFIER               # com.naniger.aika
+#
+#   2. Ajouter une étape avant le build qui :
+#        - crée un trousseau temporaire (security create-keychain)
+#        - importe le certificat depuis APPLE_CERTIFICATE_BASE64
+#        - installe le provisioning profile dans
+#          ~/Library/MobileDevice/Provisioning Profiles/
+#
+#   3. Remplacer `flutter build ios --no-codesign` par :
+#        flutter build ipa --release \
+#          --export-options-plist=ios/ExportOptions.plist
+#      (ExportOptions.plist référençant APPLE_TEAM_ID, méthode "ad-hoc" ou
+#      "app-store" selon le besoin)
+#
+#   4. Le statut de signature affiché passera automatiquement à "Signed"
+#      dans la validation ci-dessus (le test codesign le détecte seul).
+#
+# Aucun de ces secrets n'existe actuellement : ne pas les référencer dans
+# le workflow actif tant qu'ils ne sont pas créés, sous peine d'échec.
