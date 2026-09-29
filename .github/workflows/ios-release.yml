@@ -101,7 +101,7 @@ jobs:
   build:
     name: Build .ipa non signé
     needs: validate
-    runs-on: macos-14
+    runs-on: macos-26
     outputs:
       bundle_id: ${{ steps.validate_ipa.outputs.bundle_id }}
       ipa_size_bytes: ${{ steps.validate_ipa.outputs.ipa_size_bytes }}
@@ -112,6 +112,19 @@ jobs:
       commit_sha: ${{ steps.meta.outputs.commit_sha }}
     steps:
       - uses: actions/checkout@v6
+
+      # Certains plugins (device_info_plus 12.4.0, in_app_purchase_storekit
+      # avant l'override) référencent des symboles Apple très récents
+      # (ex. NSProcessInfo.isiOSAppOnVision, iOS 26.1+). Le runner macos-26
+      # peut avoir plusieurs Xcode installés côte à côte sans que le plus
+      # récent soit celui sélectionné par défaut — on sélectionne donc
+      # explicitement le plus récent STABLE disponible, plutôt que de
+      # deviner un numéro de version figé qui se périmera à chaque mise à
+      # jour de l'image GitHub.
+      - name: Sélectionner Xcode (dernière version stable disponible)
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
 
       - name: Métadonnées du build
         id: meta
