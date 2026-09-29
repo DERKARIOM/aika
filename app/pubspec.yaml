@@ -125,16 +125,15 @@ dependency_overrides:
   # Pinned below 0.4.1 on purpose: 0.4.1+ adds StoreKit 2 "Win Back Offers"
   # support that references Product.SubscriptionInfo.winBackOffers /
   # RenewalInfo.eligibleWinBackOfferIDs / SubscriptionOffer.OfferType.winBack.
-  # This fails to compile ("has no member") on every currently available
-  # GitHub Actions macOS runner (confirmed on macos-14, macos-15 and
-  # macos-26 alike, so it isn't an Xcode/SDK version issue) — see
-  # app/docs/IOS_RELEASE.md for the investigation. 0.4.0 is the last
-  # release before this code was added. Revisit once an upstream fix
-  # lands (check https://pub.dev/packages/in_app_purchase_storekit/changelog);
-  # this loses real fixes from 0.4.1+ (restore-transactions grouping,
-  # cancelled/pending/unverified purchase handling, real purchased
-  # quantity) that should be re-tested if in-app purchases on iOS matter
-  # before a real release.
+  # This fails to compile ("has no member") with in_app_purchase_storekit
+  # 0.4.10+1 on the GitHub Actions macOS runner used by
+  # .github/workflows/ios-release.yml — see app/docs/IOS_RELEASE.md for the
+  # investigation. 0.4.0 is the last release before this code was added.
+  # Revisit once an upstream fix lands (check
+  # https://pub.dev/packages/in_app_purchase_storekit/changelog); this loses
+  # real fixes from 0.4.1+ (restore-transactions grouping, cancelled/pending/
+  # unverified purchase handling, real purchased quantity) that should be
+  # re-tested if in-app purchases on iOS matter before a real release.
   in_app_purchase_storekit: 0.4.0
   pasteboard:
     # This is temporary workaround, wait upstream for update
@@ -148,6 +147,24 @@ dependency_overrides:
     git:
       url: https://github.com/localsend/permission_handler_windows_noop.git
       ref: 2dadd8afbf81e0e3e4791d7144e689555e58f649
+
+# Configures the sqlite3 package's Dart build hook (used transitively via
+# drift/drift_flutter). By default this hook downloads a precompiled SQLite
+# binary from GitHub Releases at build time. On iOS, that download happens
+# inside an Xcode "Run Script" build phase (the Flutter "Thin Binary"/asset
+# packaging phase), which runs without network access on GitHub Actions
+# macOS runners — it fails with "Failed host lookup: 'github.com'" before
+# ever reaching a real DNS/network problem. iOS ships libsqlite3.dylib as
+# part of the OS (the same library Core Data/Contacts use), so telling the
+# hook to load that system library instead avoids the download entirely.
+# Scoped to iOS only (via the map syntax under `source`) so Android/Windows/
+# Linux/macOS keep using the default precompiled-binary behavior unchanged.
+# See https://pub.dev/documentation/sqlite3/latest/topics/hook-topic.html
+hooks:
+  user_defines:
+    sqlite3:
+      source:
+        ios: system
 
 flutter:
   uses-material-design: true
