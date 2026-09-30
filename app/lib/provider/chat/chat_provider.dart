@@ -28,6 +28,9 @@ import 'package:uuid/uuid.dart';
 final _logger = Logger('Chat');
 const _uuid = Uuid();
 
+/// Max message ids per batched receipt, keeps each envelope a few KB.
+const _maxIdsPerReceipt = 100;
+
 /// Ephemeral (non-persisted) chat UI state: who is currently typing towards
 /// us. Everything else (conversations, messages) lives in [ChatDatabase]
 /// and is consumed reactively from there.
@@ -214,20 +217,21 @@ class ChatService extends Notifier<ChatUiState> {
 
   /// Marks every unread incoming message of this conversation as read,
   /// resets the unread badge, and best-effort notifies the peer with one
-  /// receipt per message.
+  /// batched receipt (per [_maxIdsPerReceipt] messages) instead of one
+  /// request per message.
   Future<void> markConversationRead(Device target) async {
     final db = ref.read(chatDatabaseProvider);
     await db.resetUnread(target.fingerprint);
 
-    final unreadIds = await db.unreadIncomingMessageIds(target.fingerprint);
-    for (final messageId in unreadIds) {
-      await db.updateMessageStatus(messageId, ChatMessageStatusColumn.read, readAt: DateTime.now().toUtc());
+    final readIds = await db.markIncomingAsRead(target.fingerprint, DateTime.now().toUtc());
+    for (var i = 0; i < readIds.length; i += _maxIdsPerReceipt) {
+      final chunk = readIds.sublist(i, (i + _maxIdsPerReceipt).clamp(0, readIds.length));
       unawaited(
         Future(() async {
           try {
             await _trySend(
               target: target,
-              envelope: ChatEnvelope.receipt(messageId: messageId, status: ChatReceiptStatus.read),
+              envelope: ChatEnvelope.batchReceipt(messageIds: chunk, status: ChatReceiptStatus.read),
             );
           } catch (e) {
             _logger.fine('Read receipt not delivered (ignored): $e');
@@ -273,10 +277,20 @@ class ChatService extends Notifier<ChatUiState> {
         return const {};
 
       case ChatEnvelopeKind.receipt:
-        if (envelope.receiptStatus == ChatReceiptStatus.delivered) {
-          await db.updateMessageStatus(envelope.messageId, ChatMessageStatusColumn.delivered, deliveredAt: envelope.timestamp);
-        } else if (envelope.receiptStatus == ChatReceiptStatus.read) {
-          await db.updateMessageStatus(envelope.messageId, ChatMessageStatusColumn.read, readAt: envelope.timestamp);
+        final status = switch (envelope.receiptStatus) {
+          ChatReceiptStatus.delivered => ChatMessageStatusColumn.delivered,
+          ChatReceiptStatus.read => ChatMessageStatusColumn.read,
+          null => null,
+        };
+        if (status != null) {
+          // Scoped to the sender's own conversation (its fingerprint comes
+          // from the mTLS certificate), see `ChatDatabase.applyReceipt`.
+          await db.applyReceipt(
+            conversationId: sender.fingerprint,
+            messageIds: envelope.acknowledgedMessageIds,
+            status: status,
+            at: envelope.timestamp,
+          );
         }
         return const {};
 
@@ -466,11 +480,16 @@ class ChatService extends Notifier<ChatUiState> {
     final db = ref.read(chatDatabaseProvider);
     final outcome = await _trySend(target: target, envelope: envelope, media: media);
     if (outcome.success) {
+      // No-op if the peer's "delivered" receipt was processed first.
       await db.updateMessageStatus(messageId, ChatMessageStatusColumn.sent);
       await db.removeFromOutbox(messageId);
     } else {
-      await db.updateMessageStatus(messageId, ChatMessageStatusColumn.pending, errorMessage: outcome.errorMessage);
-      await db.enqueueOutbox(messageId, nextAttemptAt: DateTime.now().toUtc().add(_backoffFor(1)));
+      final stillPending = await db.updateMessageStatus(messageId, ChatMessageStatusColumn.pending, errorMessage: outcome.errorMessage);
+      // A text message the peer already acknowledged needs no retry; a media
+      // one may still lack its attachment bytes, so it is retried anyway.
+      if (stillPending || media != null) {
+        await db.enqueueOutbox(messageId, nextAttemptAt: DateTime.now().toUtc().add(_backoffFor(1)));
+      }
     }
   }
 

@@ -81,7 +81,15 @@ class ChatEnvelope {
   /// - For [ChatEnvelopeKind.message]: the id of the new message.
   /// - For [ChatEnvelopeKind.receipt]: the id of the message being acked.
   /// - For [ChatEnvelopeKind.typing]: unused (empty string).
+  ///
+  /// For a batched receipt this is the newest acknowledged id, so a v1.0.3
+  /// peer (which only knows `mid`) still gets the most useful one.
   final String messageId;
+
+  /// Optional (wire key `mids`, added after v1.0.3): every message id a
+  /// batched [ChatEnvelopeKind.receipt] acknowledges. Old peers ignore it
+  /// and only read [messageId]. Use [acknowledgedMessageIds] to read it.
+  final List<String>? messageIds;
 
   /// Sender-side timestamp (UTC), used for ordering and display.
   final DateTime timestamp;
@@ -110,6 +118,7 @@ class ChatEnvelope {
     required this.kind,
     required this.messageId,
     required this.timestamp,
+    this.messageIds,
     this.contentType,
     this.text,
     this.attachmentFileId,
@@ -164,12 +173,40 @@ class ChatEnvelope {
     );
   }
 
+  /// One receipt acknowledging several messages at once, [messageIds]
+  /// ordered oldest first (must not be empty).
+  factory ChatEnvelope.batchReceipt({
+    required List<String> messageIds,
+    required ChatReceiptStatus status,
+  }) {
+    assert(messageIds.isNotEmpty);
+    return ChatEnvelope(
+      schemaVersion: chatEnvelopeSchemaVersion,
+      kind: ChatEnvelopeKind.receipt,
+      messageId: messageIds.last,
+      messageIds: messageIds.length > 1 ? List.unmodifiable(messageIds) : null,
+      timestamp: DateTime.now().toUtc(),
+      receiptStatus: status,
+    );
+  }
+
+  /// The ids a receipt acknowledges: [messageIds] when present (it always
+  /// includes [messageId]), otherwise just [messageId].
+  List<String> get acknowledgedMessageIds {
+    final ids = <String>{
+      ...?messageIds,
+      if (messageId.isNotEmpty) messageId,
+    };
+    return ids.toList();
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'v': schemaVersion,
       'k': kind.name,
       'mid': messageId,
       'ts': timestamp.millisecondsSinceEpoch,
+      if (messageIds != null) 'mids': messageIds,
       if (contentType != null) 'ct': contentType!.name,
       if (text != null) 'txt': text,
       if (attachmentFileId != null) 'aid': attachmentFileId,
@@ -224,18 +261,45 @@ class ChatEnvelope {
       receiptStatus = ChatReceiptStatus.values.firstWhereOrNull((s) => s.name == json['rst']);
     }
 
+    List<String>? messageIds;
+    final midsRaw = json['mids'];
+    if (midsRaw != null) {
+      if (midsRaw is! List || midsRaw.any((e) => e is! String)) {
+        return const ChatEnvelopeDecodeFailure('invalid mids');
+      }
+      messageIds = List.unmodifiable(midsRaw.cast<String>());
+    }
+
+    // Optional fields: a wrongly-typed value is a malformed envelope, not a
+    // crash of the whole receive handler.
+    final String? text;
+    final String? attachmentFileId;
+    final String? attachmentFileName;
+    final int? attachmentSize;
+    final bool? isTyping;
+    try {
+      text = json['txt'] as String?;
+      attachmentFileId = json['aid'] as String?;
+      attachmentFileName = json['aname'] as String?;
+      attachmentSize = json['asize'] as int?;
+      isTyping = json['typ'] as bool?;
+    } on TypeError {
+      return const ChatEnvelopeDecodeFailure('invalid field type');
+    }
+
     return ChatEnvelopeDecodeSuccess(
       ChatEnvelope(
         schemaVersion: version,
         kind: kind,
         messageId: messageId,
+        messageIds: messageIds,
         timestamp: DateTime.fromMillisecondsSinceEpoch(tsRaw, isUtc: true),
         contentType: contentType,
-        text: json['txt'] as String?,
-        attachmentFileId: json['aid'] as String?,
-        attachmentFileName: json['aname'] as String?,
-        attachmentSize: json['asize'] as int?,
-        isTyping: json['typ'] as bool?,
+        text: text,
+        attachmentFileId: attachmentFileId,
+        attachmentFileName: attachmentFileName,
+        attachmentSize: attachmentSize,
+        isTyping: isTyping,
         receiptStatus: receiptStatus,
       ),
     );

@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
+import 'package:localsend_app/model/chat/chat_envelope.dart';
 
 part 'chat_database.g.dart';
 
@@ -61,6 +62,29 @@ enum ChatMessageStatusColumn {
   /// outbox; mainly reserved for "blocked by peer" style failures that
   /// must not be retried).
   failed,
+}
+
+/// Progress rank of a message status: a message only ever moves forward
+/// (`pending`/`failed` < `sent` < `delivered` < `read`). `pending` and
+/// `failed` share a rank so a retry may flip between them.
+int _statusRank(ChatMessageStatusColumn status) {
+  return switch (status) {
+    ChatMessageStatusColumn.pending || ChatMessageStatusColumn.failed => 0,
+    ChatMessageStatusColumn.sent => 1,
+    ChatMessageStatusColumn.delivered => 2,
+    ChatMessageStatusColumn.read => 3,
+  };
+}
+
+/// Whether a message currently in [from] may be moved to [to].
+///
+/// Receipts and send results arrive over independent requests, so they can
+/// be processed out of order (e.g. the peer's "delivered" receipt before
+/// our own "sent" write). Refusing any backward move makes the final state
+/// independent of that order. Same-status writes stay allowed so an error
+/// message can still be refreshed.
+bool isChatStatusTransitionAllowed(ChatMessageStatusColumn from, ChatMessageStatusColumn to) {
+  return _statusRank(to) >= _statusRank(from);
 }
 
 /// One row per chat message (either direction).
@@ -246,21 +270,82 @@ class ChatDatabase extends _$ChatDatabase {
     return into(chatMessages).insert(message);
   }
 
-  Future<void> updateMessageStatus(
+  Future<ChatMessage?> getMessage(String messageId) {
+    return (select(chatMessages)..where((t) => t.id.equals(messageId))).getSingleOrNull();
+  }
+
+  /// Moves a message to [status] unless that would be a step backwards
+  /// (see [isChatStatusTransitionAllowed]). Returns whether it was written.
+  Future<bool> updateMessageStatus(
     String messageId,
     ChatMessageStatusColumn status, {
     String? errorMessage,
     DateTime? deliveredAt,
     DateTime? readAt,
   }) {
-    return (update(chatMessages)..where((t) => t.id.equals(messageId))).write(
-      ChatMessagesCompanion(
-        status: Value(status),
-        errorMessage: Value(errorMessage),
-        deliveredAt: deliveredAt != null ? Value(deliveredAt) : const Value.absent(),
-        readAt: readAt != null ? Value(readAt) : const Value.absent(),
-      ),
-    );
+    return transaction(() async {
+      final current = await getMessage(messageId);
+      if (current == null || !isChatStatusTransitionAllowed(current.status, status)) {
+        return false;
+      }
+      await (update(chatMessages)..where((t) => t.id.equals(messageId))).write(
+        ChatMessagesCompanion(
+          status: Value(status),
+          errorMessage: Value(errorMessage),
+          deliveredAt: deliveredAt != null ? Value(deliveredAt) : const Value.absent(),
+          readAt: readAt != null ? Value(readAt) : const Value.absent(),
+        ),
+      );
+      return true;
+    });
+  }
+
+  /// Applies a delivered/read receipt sent by the peer [conversationId].
+  ///
+  /// Only our own outgoing messages of that very conversation are touched:
+  /// a peer can never flip the status of a message it did not receive
+  /// (another conversation's, or one of its own incoming ones). Text
+  /// messages acknowledged this way also leave the outbox, since the peer
+  /// provably has them. Returns the ids actually updated.
+  Future<List<String>> applyReceipt({
+    required String conversationId,
+    required List<String> messageIds,
+    required ChatMessageStatusColumn status,
+    required DateTime at,
+  }) {
+    assert(status == ChatMessageStatusColumn.delivered || status == ChatMessageStatusColumn.read);
+    if (messageIds.isEmpty) {
+      return Future.value(const []);
+    }
+    return transaction(() async {
+      final rows =
+          await (select(chatMessages)..where(
+                (t) => t.id.isIn(messageIds) & t.conversationId.equals(conversationId) & t.direction.equalsValue(ChatMessageDirectionColumn.outgoing),
+              ))
+              .get();
+
+      final updated = <String>[];
+      for (final row in rows) {
+        if (row.contentType == ChatContentType.text.name) {
+          await removeFromOutbox(row.id);
+        }
+        if (!isChatStatusTransitionAllowed(row.status, status)) {
+          continue;
+        }
+        await (update(chatMessages)..where((t) => t.id.equals(row.id))).write(
+          ChatMessagesCompanion(
+            status: Value(status),
+            errorMessage: const Value(null),
+            // A read receipt implies delivery: keep deliveredAt meaningful
+            // even when the "delivered" receipt itself got lost.
+            deliveredAt: status == ChatMessageStatusColumn.delivered || row.deliveredAt == null ? Value(at) : const Value.absent(),
+            readAt: status == ChatMessageStatusColumn.read ? Value(at) : const Value.absent(),
+          ),
+        );
+        updated.add(row.id);
+      }
+      return updated;
+    });
   }
 
   Future<void> attachLocalFile(String messageId, {required String path}) {
@@ -274,18 +359,30 @@ class ChatDatabase extends _$ChatDatabase {
     return row != null;
   }
 
-  /// Ids of incoming messages that have not been marked as read yet, used
-  /// to send a batch of read receipts when the user opens a conversation.
-  Future<List<String>> unreadIncomingMessageIds(String conversationId) async {
-    final rows =
-        await (select(chatMessages)..where(
-              (t) =>
-                  t.conversationId.equals(conversationId) &
-                  t.direction.equalsValue(ChatMessageDirectionColumn.incoming) &
-                  t.status.equalsValue(ChatMessageStatusColumn.read).not(),
-            ))
-            .get();
-    return rows.map((r) => r.id).toList();
+  /// Marks every not-yet-read incoming message of [conversationId] as read
+  /// in a single transaction. Returns their ids, oldest first, so the
+  /// caller can acknowledge them all with one batched receipt.
+  Future<List<String>> markIncomingAsRead(String conversationId, DateTime at) {
+    return transaction(() async {
+      final rows =
+          await (select(chatMessages)
+                ..where(
+                  (t) =>
+                      t.conversationId.equals(conversationId) &
+                      t.direction.equalsValue(ChatMessageDirectionColumn.incoming) &
+                      t.status.equalsValue(ChatMessageStatusColumn.read).not(),
+                )
+                ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
+              .get();
+      if (rows.isEmpty) {
+        return const <String>[];
+      }
+      final ids = rows.map((r) => r.id).toList();
+      await (update(chatMessages)..where((t) => t.id.isIn(ids))).write(
+        ChatMessagesCompanion(status: const Value(ChatMessageStatusColumn.read), readAt: Value(at)),
+      );
+      return ids;
+    });
   }
 
   /// Renders the full conversation as a plain-text transcript, newest
