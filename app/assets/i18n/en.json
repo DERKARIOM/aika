@@ -625,6 +625,18 @@
     "retry": "Retry",
     "copy": "Copy text",
     "copied": "Copied",
+    "preview": {
+      "photo": "Photo",
+      "video": "Video",
+      "audio": "Audio",
+      "document": "Document"
+    },
+    "notification": {
+      "channelName": "Messages",
+      "channelDescription": "New chat messages",
+      "open": "Open",
+      "newMessages": "{count} new messages"
+    },
     "newContact": {
       "title": "New conversation request",
       "description": "This device is not a known contact yet. Accepting will start a conversation and automatically accept its future messages.",

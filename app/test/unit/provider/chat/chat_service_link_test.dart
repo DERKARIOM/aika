@@ -220,8 +220,13 @@ void main() {
     transport.receive(ChatMessageFrame(id: 'm2', timestamp: DateTime.utc(2026, 2), contentType: ChatContentType.text, text: 'b'));
     await settle();
 
+    final cleared = <String>[];
+    chat.onConversationRead = cleared.add;
     await chat.markConversationRead(_bob);
     await settle();
+
+    // Lets the notification layer clear this conversation's notification.
+    expect(cleared, [_peer]);
 
     final read = transport.sentOf<ChatAckFrame>().where((a) => a.status == ChatReceiptStatus.read).single;
     expect(read.ids, ['m1', 'm2']);

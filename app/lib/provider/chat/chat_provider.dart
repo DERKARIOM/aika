@@ -17,6 +17,7 @@ import 'package:localsend_app/provider/http_provider.dart';
 import 'package:localsend_app/provider/network/nearby_devices_provider.dart';
 import 'package:localsend_app/provider/network/send_provider.dart';
 import 'package:localsend_app/provider/network/server/server_provider.dart';
+import 'package:localsend_app/util/chat/chat_preview.dart';
 import 'package:localsend_isolates/isolate.dart';
 import 'package:localsend_isolates/model/device.dart';
 import 'package:localsend_isolates/model/dto/file_dto.dart';
@@ -80,6 +81,10 @@ class ChatService extends Notifier<ChatUiState> {
   /// messages without this service depending on notification code
   /// (keeps the module boundary clean, see `chat_notification_service.dart`).
   void Function(Device sender, ChatEnvelope envelope)? onIncomingMessage;
+
+  /// Called when the user opens (reads) a conversation, e.g. to clear its
+  /// notification.
+  void Function(String fingerprint)? onConversationRead;
 
   /// Fingerprint of the conversation currently visible on screen, if any.
   /// Set/cleared by `ChatConversationPage` itself; used by the
@@ -247,6 +252,7 @@ class ChatService extends Notifier<ChatUiState> {
   /// request per message.
   Future<void> markConversationRead(Device target) async {
     final db = ref.read(chatDatabaseProvider);
+    onConversationRead?.call(target.fingerprint);
     await db.resetUnread(target.fingerprint);
 
     final readIds = await db.markIncomingAsRead(target.fingerprint, DateTime.now().toUtc());
@@ -907,20 +913,8 @@ class ChatService extends Notifier<ChatUiState> {
   }
 }
 
-/// Short, human-readable summary of a message used in the conversation
-/// list (e.g. "📷 Photo" instead of the raw file name for media messages).
 String _previewFor(ChatContentType contentType, String? text, String? attachmentFileName) {
-  if (contentType == ChatContentType.text) {
-    return text ?? '';
-  }
-  final label = switch (contentType) {
-    ChatContentType.image => 'Photo',
-    ChatContentType.video => 'Vidéo',
-    ChatContentType.audio => 'Audio',
-    ChatContentType.document => attachmentFileName ?? 'Document',
-    ChatContentType.text => text ?? '',
-  };
-  return (text != null && text.isNotEmpty) ? '$label · $text' : label;
+  return chatPreviewText(contentType, text: text, attachmentFileName: attachmentFileName);
 }
 
 ChatContentType _fileTypeToContentType(FileType fileType) {

@@ -790,6 +790,10 @@ class _Translations$chat$fr extends Translations$chat$en {
   @override
   String get copied => 'Copié';
   @override
+  late final _Translations$chat$preview$fr preview = _Translations$chat$preview$fr._(_root);
+  @override
+  late final _Translations$chat$notification$fr notification = _Translations$chat$notification$fr._(_root);
+  @override
   late final _Translations$chat$newContact$fr newContact = _Translations$chat$newContact$fr._(_root);
 }
 
@@ -1638,6 +1642,40 @@ class _Translations$chat$status$fr extends Translations$chat$status$en {
   String get read => 'Lu';
   @override
   String get failed => 'Non envoyé';
+}
+
+// Path: chat.preview
+class _Translations$chat$preview$fr extends Translations$chat$preview$en {
+  _Translations$chat$preview$fr._(TranslationsFr root) : this._root = root, super.internal(root);
+
+  final TranslationsFr _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String get photo => 'Photo';
+  @override
+  String get video => 'Vidéo';
+  @override
+  String get audio => 'Audio';
+  @override
+  String get document => 'Document';
+}
+
+// Path: chat.notification
+class _Translations$chat$notification$fr extends Translations$chat$notification$en {
+  _Translations$chat$notification$fr._(TranslationsFr root) : this._root = root, super.internal(root);
+
+  final TranslationsFr _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String get channelName => 'Messages';
+  @override
+  String get channelDescription => 'Nouveaux messages de discussion';
+  @override
+  String get open => 'Ouvrir';
+  @override
+  String newMessages({required Object count}) => '${count} nouveaux messages';
 }
 
 // Path: chat.newContact

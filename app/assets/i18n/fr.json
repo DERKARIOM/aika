@@ -555,6 +555,18 @@
     "retry": "Réessayer",
     "copy": "Copier le texte",
     "copied": "Copié",
+    "preview": {
+      "photo": "Photo",
+      "video": "Vidéo",
+      "audio": "Audio",
+      "document": "Document"
+    },
+    "notification": {
+      "channelName": "Messages",
+      "channelDescription": "Nouveaux messages de discussion",
+      "open": "Ouvrir",
+      "newMessages": "{count} nouveaux messages"
+    },
     "newContact": {
       "title": "Nouvelle demande de discussion",
       "description": "Cet appareil n'est pas encore un contact connu. Accepter démarrera une discussion et acceptera automatiquement ses futurs messages.",

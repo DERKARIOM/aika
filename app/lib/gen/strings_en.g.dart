@@ -1003,6 +1003,8 @@ class Translations$chat$en {
   /// en: 'Copied'
   String get copied => 'Copied';
 
+  late final Translations$chat$preview$en preview = Translations$chat$preview$en.internal(_root);
+  late final Translations$chat$notification$en notification = Translations$chat$notification$en.internal(_root);
   late final Translations$chat$newContact$en newContact = Translations$chat$newContact$en.internal(_root);
 }
 
@@ -2048,6 +2050,48 @@ class Translations$chat$status$en {
 
   /// en: 'Not sent'
   String get failed => 'Not sent';
+}
+
+// Path: chat.preview
+class Translations$chat$preview$en {
+  Translations$chat$preview$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+
+  /// en: 'Photo'
+  String get photo => 'Photo';
+
+  /// en: 'Video'
+  String get video => 'Video';
+
+  /// en: 'Audio'
+  String get audio => 'Audio';
+
+  /// en: 'Document'
+  String get document => 'Document';
+}
+
+// Path: chat.notification
+class Translations$chat$notification$en {
+  Translations$chat$notification$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+
+  /// en: 'Messages'
+  String get channelName => 'Messages';
+
+  /// en: 'New chat messages'
+  String get channelDescription => 'New chat messages';
+
+  /// en: 'Open'
+  String get open => 'Open';
+
+  /// en: '{count} new messages'
+  String newMessages({required Object count}) => '${count} new messages';
 }
 
 // Path: chat.newContact
