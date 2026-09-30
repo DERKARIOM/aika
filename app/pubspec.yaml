@@ -116,6 +116,9 @@ dev_dependencies:
   drift_dev: 2.34.0
   flutter_gen_runner: 5.14.1
   flutter_lints: 6.0.0
+  # Same version as localsend_isolates: only used by
+  # test/integration/chat_hub_native_test.dart to load the native library.
+  flutter_rust_bridge: 2.12.0
   freezed: 3.2.5
   mockito: any
   refena_inspector: 2.1.1
