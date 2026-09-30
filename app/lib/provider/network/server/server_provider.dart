@@ -315,6 +315,10 @@ class ServerService extends Notifier<ServerState?> {
       case HttpServerWebFileDownloadEvent():
         // ignore: discarded_futures
         _sendController.onFileDownload(event);
+      case ChatLinkEvent():
+      case ChatLinkResultEvent():
+        // Delivered on the chat hub's own task streams, never on this one.
+        break;
     }
   }
 

@@ -1,5 +1,9 @@
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
+import 'package:localsend_app/model/chat/chat_database_encryption.dart';
+import 'package:localsend_app/model/chat/chat_envelope.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 part 'chat_database.g.dart';
 
@@ -37,6 +41,11 @@ class ChatConversations extends Table {
 
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 
+  /// Highest chat protocol version the peer announced in its WebSocket
+  /// `hello` (schema v2). Null means unknown: only the legacy
+  /// `.aika-chat.v1.json` envelope is safe to use with that peer.
+  IntColumn get peerChatProtocol => integer().nullable()();
+
   @override
   Set<Column> get primaryKey => {peerFingerprint};
 }
@@ -63,11 +72,35 @@ enum ChatMessageStatusColumn {
   failed,
 }
 
+/// Progress rank of a message status: a message only ever moves forward
+/// (`pending`/`failed` < `sent` < `delivered` < `read`). `pending` and
+/// `failed` share a rank so a retry may flip between them.
+int _statusRank(ChatMessageStatusColumn status) {
+  return switch (status) {
+    ChatMessageStatusColumn.pending || ChatMessageStatusColumn.failed => 0,
+    ChatMessageStatusColumn.sent => 1,
+    ChatMessageStatusColumn.delivered => 2,
+    ChatMessageStatusColumn.read => 3,
+  };
+}
+
+/// Whether a message currently in [from] may be moved to [to].
+///
+/// Receipts and send results arrive over independent requests, so they can
+/// be processed out of order (e.g. the peer's "delivered" receipt before
+/// our own "sent" write). Refusing any backward move makes the final state
+/// independent of that order. Same-status writes stay allowed so an error
+/// message can still be refreshed.
+bool isChatStatusTransitionAllowed(ChatMessageStatusColumn from, ChatMessageStatusColumn to) {
+  return _statusRank(to) >= _statusRank(from);
+}
+
 /// One row per chat message (either direction).
 ///
 /// `id` doubles as [ChatEnvelope.messageId] so that receipts, dedup and
 /// outbox bookkeeping can all key off the very same identifier that goes
 /// over the wire.
+@TableIndex(name: 'chat_messages_conversation_created', columns: {#conversationId, #createdAt})
 class ChatMessages extends Table {
   TextColumn get id => text()();
 
@@ -98,6 +131,10 @@ class ChatMessages extends Table {
 
   DateTimeColumn get createdAt => dateTime()();
 
+  /// When an outgoing message actually left this device (schema v2); null
+  /// while it is still pending, and for incoming messages.
+  DateTimeColumn get sentAt => dateTime().nullable()();
+
   DateTimeColumn get deliveredAt => dateTime().nullable()();
 
   DateTimeColumn get readAt => dateTime().nullable()();
@@ -111,6 +148,7 @@ class ChatMessages extends Table {
 /// `prepare-upload` call succeeds; until then it survives app restarts and
 /// is retried with an increasing backoff every time the target device
 /// reappears in discovery (see `ChatOutboxService`).
+@TableIndex(name: 'chat_outbox_next_attempt', columns: {#nextAttemptAt})
 class ChatOutboxEntries extends Table {
   TextColumn get messageId => text().references(ChatMessages, #id)();
 
@@ -137,17 +175,54 @@ class ChatBlockedDevices extends Table {
   Set<Column> get primaryKey => {fingerprint};
 }
 
+const _databaseName = 'aika_chat';
+
+/// Loads (or creates) the key, encrypts a v1.0.3 plaintext file in place if
+/// needed, then opens the database with the key applied on every
+/// connection. Same file as before encryption (`<documents>/aika_chat.sqlite`).
+Future<DatabaseConnection> _openEncrypted() async {
+  final key = await loadOrCreateChatDatabaseKey(SecureChatDatabaseKeyStore(fallbackDirectory: getApplicationSupportDirectory));
+  final path = p.join((await getApplicationDocumentsDirectory()).path, '$_databaseName.sqlite');
+  await prepareChatDatabaseFileInBackground(path, key);
+  return driftDatabase(name: _databaseName, native: _nativeOptions(path, key));
+}
+
+/// Top-level so the `setup` closure only captures [key] and stays sendable
+/// to drift's background isolate.
+DriftNativeOptions _nativeOptions(String path, String key) {
+  return DriftNativeOptions(
+    databasePath: () async => path,
+    setup: (db) => applyChatDatabaseKey(db, key),
+  );
+}
+
 @DriftDatabase(tables: [ChatConversations, ChatMessages, ChatOutboxEntries, ChatBlockedDevices])
 class ChatDatabase extends _$ChatDatabase {
   ChatDatabase(super.e);
 
-  /// Opens (or creates) the on-disk database in the platform's default app
-  /// data directory. `drift_flutter`'s `driftDatabase()` picks the right
-  /// native backend (NativeDatabase w/ background isolate) per platform.
-  ChatDatabase.defaults() : super(driftDatabase(name: 'aika_chat'));
+  /// Opens (or creates) the encrypted on-disk database in the platform's
+  /// default app data directory. `drift_flutter`'s `driftDatabase()` picks
+  /// the right native backend (NativeDatabase w/ background isolate) per
+  /// platform; the key is loaded lazily, on the first query, see
+  /// [_openEncrypted].
+  ChatDatabase.defaults() : super(DatabaseConnection.delayed(_openEncrypted()));
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration {
+    return MigrationStrategy(
+      onUpgrade: (m, from, to) async {
+        if (from < 2) {
+          await m.addColumn(chatConversations, chatConversations.peerChatProtocol);
+          await m.addColumn(chatMessages, chatMessages.sentAt);
+          await m.create(chatMessagesConversationCreated);
+          await m.create(chatOutboxNextAttempt);
+        }
+      },
+    );
+  }
 
   // ---------------------------------------------------------------------
   // Conversations
@@ -213,9 +288,23 @@ class ChatDatabase extends _$ChatDatabase {
     );
   }
 
-  Future<void> deleteConversation(String peerFingerprint) async {
-    await (delete(chatMessages)..where((t) => t.conversationId.equals(peerFingerprint))).go();
-    await (delete(chatConversations)..where((t) => t.peerFingerprint.equals(peerFingerprint))).go();
+  Future<void> deleteConversation(String peerFingerprint) {
+    return transaction(() async {
+      // Queued messages of this conversation must not be sent any more.
+      final messageIds = selectOnly(chatMessages)
+        ..addColumns([chatMessages.id])
+        ..where(chatMessages.conversationId.equals(peerFingerprint));
+      await (delete(chatOutboxEntries)..where((t) => t.messageId.isInQuery(messageIds))).go();
+      await (delete(chatMessages)..where((t) => t.conversationId.equals(peerFingerprint))).go();
+      await (delete(chatConversations)..where((t) => t.peerFingerprint.equals(peerFingerprint))).go();
+    });
+  }
+
+  /// Records the chat protocol version the peer announced (schema v2).
+  Future<void> setPeerChatProtocol(String peerFingerprint, int? version) {
+    return (update(chatConversations)..where((t) => t.peerFingerprint.equals(peerFingerprint))).write(
+      ChatConversationsCompanion(peerChatProtocol: Value(version)),
+    );
   }
 
   // ---------------------------------------------------------------------
@@ -246,21 +335,83 @@ class ChatDatabase extends _$ChatDatabase {
     return into(chatMessages).insert(message);
   }
 
-  Future<void> updateMessageStatus(
+  Future<ChatMessage?> getMessage(String messageId) {
+    return (select(chatMessages)..where((t) => t.id.equals(messageId))).getSingleOrNull();
+  }
+
+  /// Moves a message to [status] unless that would be a step backwards
+  /// (see [isChatStatusTransitionAllowed]). Returns whether it was written.
+  Future<bool> updateMessageStatus(
     String messageId,
     ChatMessageStatusColumn status, {
     String? errorMessage,
     DateTime? deliveredAt,
     DateTime? readAt,
   }) {
-    return (update(chatMessages)..where((t) => t.id.equals(messageId))).write(
-      ChatMessagesCompanion(
-        status: Value(status),
-        errorMessage: Value(errorMessage),
-        deliveredAt: deliveredAt != null ? Value(deliveredAt) : const Value.absent(),
-        readAt: readAt != null ? Value(readAt) : const Value.absent(),
-      ),
-    );
+    return transaction(() async {
+      final current = await getMessage(messageId);
+      if (current == null || !isChatStatusTransitionAllowed(current.status, status)) {
+        return false;
+      }
+      await (update(chatMessages)..where((t) => t.id.equals(messageId))).write(
+        ChatMessagesCompanion(
+          status: Value(status),
+          errorMessage: Value(errorMessage),
+          sentAt: status == ChatMessageStatusColumn.sent && current.sentAt == null ? Value(DateTime.now().toUtc()) : const Value.absent(),
+          deliveredAt: deliveredAt != null ? Value(deliveredAt) : const Value.absent(),
+          readAt: readAt != null ? Value(readAt) : const Value.absent(),
+        ),
+      );
+      return true;
+    });
+  }
+
+  /// Applies a delivered/read receipt sent by the peer [conversationId].
+  ///
+  /// Only our own outgoing messages of that very conversation are touched:
+  /// a peer can never flip the status of a message it did not receive
+  /// (another conversation's, or one of its own incoming ones). Text
+  /// messages acknowledged this way also leave the outbox, since the peer
+  /// provably has them. Returns the ids actually updated.
+  Future<List<String>> applyReceipt({
+    required String conversationId,
+    required List<String> messageIds,
+    required ChatMessageStatusColumn status,
+    required DateTime at,
+  }) {
+    assert(status == ChatMessageStatusColumn.delivered || status == ChatMessageStatusColumn.read);
+    if (messageIds.isEmpty) {
+      return Future.value(const []);
+    }
+    return transaction(() async {
+      final rows =
+          await (select(chatMessages)..where(
+                (t) => t.id.isIn(messageIds) & t.conversationId.equals(conversationId) & t.direction.equalsValue(ChatMessageDirectionColumn.outgoing),
+              ))
+              .get();
+
+      final updated = <String>[];
+      for (final row in rows) {
+        if (row.contentType == ChatContentType.text.name) {
+          await removeFromOutbox(row.id);
+        }
+        if (!isChatStatusTransitionAllowed(row.status, status)) {
+          continue;
+        }
+        await (update(chatMessages)..where((t) => t.id.equals(row.id))).write(
+          ChatMessagesCompanion(
+            status: Value(status),
+            errorMessage: const Value(null),
+            // A read receipt implies delivery: keep deliveredAt meaningful
+            // even when the "delivered" receipt itself got lost.
+            deliveredAt: status == ChatMessageStatusColumn.delivered || row.deliveredAt == null ? Value(at) : const Value.absent(),
+            readAt: status == ChatMessageStatusColumn.read ? Value(at) : const Value.absent(),
+          ),
+        );
+        updated.add(row.id);
+      }
+      return updated;
+    });
   }
 
   Future<void> attachLocalFile(String messageId, {required String path}) {
@@ -274,18 +425,30 @@ class ChatDatabase extends _$ChatDatabase {
     return row != null;
   }
 
-  /// Ids of incoming messages that have not been marked as read yet, used
-  /// to send a batch of read receipts when the user opens a conversation.
-  Future<List<String>> unreadIncomingMessageIds(String conversationId) async {
-    final rows =
-        await (select(chatMessages)..where(
-              (t) =>
-                  t.conversationId.equals(conversationId) &
-                  t.direction.equalsValue(ChatMessageDirectionColumn.incoming) &
-                  t.status.equalsValue(ChatMessageStatusColumn.read).not(),
-            ))
-            .get();
-    return rows.map((r) => r.id).toList();
+  /// Marks every not-yet-read incoming message of [conversationId] as read
+  /// in a single transaction. Returns their ids, oldest first, so the
+  /// caller can acknowledge them all with one batched receipt.
+  Future<List<String>> markIncomingAsRead(String conversationId, DateTime at) {
+    return transaction(() async {
+      final rows =
+          await (select(chatMessages)
+                ..where(
+                  (t) =>
+                      t.conversationId.equals(conversationId) &
+                      t.direction.equalsValue(ChatMessageDirectionColumn.incoming) &
+                      t.status.equalsValue(ChatMessageStatusColumn.read).not(),
+                )
+                ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
+              .get();
+      if (rows.isEmpty) {
+        return const <String>[];
+      }
+      final ids = rows.map((r) => r.id).toList();
+      await (update(chatMessages)..where((t) => t.id.isIn(ids))).write(
+        ChatMessagesCompanion(status: const Value(ChatMessageStatusColumn.read), readAt: Value(at)),
+      );
+      return ids;
+    });
   }
 
   /// Renders the full conversation as a plain-text transcript, newest
@@ -328,6 +491,21 @@ class ChatDatabase extends _$ChatDatabase {
         nextAttemptAt: Value(nextAttemptAt),
         attempts: Value(attempts),
       ),
+    );
+  }
+
+  /// Makes the queued messages of [conversationId] that were not sent yet
+  /// due now, e.g. because the peer just came online. Messages already
+  /// sent and waiting for their ack keep their own timer.
+  Future<void> makeOutboxDueNow(String conversationId, DateTime now) {
+    final messageIds = selectOnly(chatMessages)
+      ..addColumns([chatMessages.id])
+      ..where(
+        chatMessages.conversationId.equals(conversationId) &
+            chatMessages.status.isInValues([ChatMessageStatusColumn.pending, ChatMessageStatusColumn.failed]),
+      );
+    return (update(chatOutboxEntries)..where((t) => t.messageId.isInQuery(messageIds))).write(
+      ChatOutboxEntriesCompanion(nextAttemptAt: Value(now)),
     );
   }
 

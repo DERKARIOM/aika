@@ -73,6 +73,16 @@ class MainActivity : FlutterActivity() {
                     openDirectoryPicker(onlyPath = true)
                 }
 
+                "startChatKeepAlive" -> {
+                    ChatKeepAliveService.start(this)
+                    result.success(null)
+                }
+
+                "stopChatKeepAlive" -> {
+                    ChatKeepAliveService.stop(this)
+                    result.success(null)
+                }
+
                 "createDirectory" -> handleCreateDirectory(call, result)
 
                 "getFileDescriptor" -> handleGetFileDescriptor(call, result)

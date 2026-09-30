@@ -974,6 +974,37 @@ class Translations$chat$en {
   /// en: 'You blocked this device. Unblock it to send messages again.'
   String get blockedNotice => 'You blocked this device. Unblock it to send messages again.';
 
+  /// en: 'Today'
+  String get today => 'Today';
+
+  /// en: 'Yesterday'
+  String get yesterday => 'Yesterday';
+
+  /// en: 'last seen today at {time}'
+  String lastSeenToday({required Object time}) => 'last seen today at ${time}';
+
+  /// en: 'last seen yesterday at {time}'
+  String lastSeenYesterday({required Object time}) => 'last seen yesterday at ${time}';
+
+  /// en: 'last seen on {date}'
+  String lastSeenOn({required Object date}) => 'last seen on ${date}';
+
+  late final Translations$chat$status$en status = Translations$chat$status$en.internal(_root);
+
+  /// en: 'Not sent · Tap to retry'
+  String get notSentTapToRetry => 'Not sent · Tap to retry';
+
+  /// en: 'Retry'
+  String get retry => 'Retry';
+
+  /// en: 'Copy text'
+  String get copy => 'Copy text';
+
+  /// en: 'Copied'
+  String get copied => 'Copied';
+
+  late final Translations$chat$preview$en preview = Translations$chat$preview$en.internal(_root);
+  late final Translations$chat$notification$en notification = Translations$chat$notification$en.internal(_root);
   late final Translations$chat$newContact$en newContact = Translations$chat$newContact$en.internal(_root);
 }
 
@@ -1184,6 +1215,9 @@ class Translations$settingsTab$receive$en {
 
   /// en: 'Quick Save for "Favorites"'
   String get quickSaveFromFavorites => _root.general.quickSaveFromFavorites;
+
+  /// en: 'Stay reachable for messages'
+  String get chatKeepAlive => 'Stay reachable for messages';
 
   /// en: 'Require PIN'
   String get requirePin => _root.webSharePage.requirePin;
@@ -1995,6 +2029,72 @@ class Translations$qrPairing$confirm$en {
 
   /// en: 'Connect anyway'
   String get connectAnyway => 'Connect anyway';
+}
+
+// Path: chat.status
+class Translations$chat$status$en {
+  Translations$chat$status$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+
+  /// en: 'Waiting to be sent'
+  String get pending => 'Waiting to be sent';
+
+  /// en: 'Sent'
+  String get sent => 'Sent';
+
+  /// en: 'Delivered'
+  String get delivered => 'Delivered';
+
+  /// en: 'Read'
+  String get read => 'Read';
+
+  /// en: 'Not sent'
+  String get failed => 'Not sent';
+}
+
+// Path: chat.preview
+class Translations$chat$preview$en {
+  Translations$chat$preview$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+
+  /// en: 'Photo'
+  String get photo => 'Photo';
+
+  /// en: 'Video'
+  String get video => 'Video';
+
+  /// en: 'Audio'
+  String get audio => 'Audio';
+
+  /// en: 'Document'
+  String get document => 'Document';
+}
+
+// Path: chat.notification
+class Translations$chat$notification$en {
+  Translations$chat$notification$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+
+  /// en: 'Messages'
+  String get channelName => 'Messages';
+
+  /// en: 'New chat messages'
+  String get channelDescription => 'New chat messages';
+
+  /// en: 'Open'
+  String get open => 'Open';
+
+  /// en: '{count} new messages'
+  String newMessages({required Object count}) => '${count} new messages';
 }
 
 // Path: chat.newContact

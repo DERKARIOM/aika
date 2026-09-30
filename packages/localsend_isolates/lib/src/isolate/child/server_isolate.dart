@@ -1,10 +1,12 @@
 import 'package:localsend_isolates/constants.dart';
 import 'package:localsend_isolates/model/dto/multicast_dto.dart';
+import 'package:localsend_isolates/rust/api/chat.dart';
 import 'package:localsend_isolates/rust/api/model.dart' show FileDto;
 import 'package:localsend_isolates/rust/api/server.dart';
 import 'package:localsend_isolates/src/isolate/child/main.dart';
 import 'package:localsend_isolates/src/isolate/child/sync_provider.dart';
 import 'package:localsend_isolates/src/isolate/dto/send_to_isolate_data.dart';
+import 'package:localsend_isolates/src/task/chat/chat_hub.dart';
 import 'package:localsend_isolates/src/task/server/http_server.dart';
 import 'package:localsend_isolates/util/rust.dart';
 import 'package:typed_isolates/typed_isolates.dart';
@@ -148,8 +150,152 @@ class HttpServerRejectFileDownloadTask implements BaseHttpServerTask {
   });
 }
 
+/// Starts the chat hub (persistent chat WebSocket connections) with this
+/// device's TLS identity, and lets the HTTP server accept chat connections
+/// whenever it runs with TLS.
+///
+/// Emits [ChatLinkEvent]s on the stream of this task, forever.
+/// Only the first start task of the isolate succeeds.
+class ChatHubStartTask implements BaseHttpServerTask {}
+
+/// Opens a chat connection to a peer whose certificate must have
+/// [fingerprint]. Answered by one [ChatLinkResultEvent].
+class ChatConnectTask implements BaseHttpServerTask {
+  final String ip;
+  final int port;
+  final String fingerprint;
+
+  ChatConnectTask({
+    required this.ip,
+    required this.port,
+    required this.fingerprint,
+  });
+}
+
+/// Sends a text frame on a chat connection.
+/// Answered by one [ChatLinkResultEvent].
+class ChatSendTask implements BaseHttpServerTask {
+  final String connectionId;
+  final String text;
+
+  ChatSendTask({
+    required this.connectionId,
+    required this.text,
+  });
+}
+
+/// Closes a chat connection; a [ChatLinkDisconnectedEvent] follows.
+class ChatCloseTask implements BaseHttpServerTask {
+  final String connectionId;
+
+  ChatCloseTask({required this.connectionId});
+}
+
 /// A message sent from the server isolate to the main isolate.
 sealed class HttpServerEvent {}
+
+/// Events of the chat hub, in order per connection:
+/// one [ChatLinkConnectedEvent], any number of [ChatLinkMessageEvent],
+/// one [ChatLinkDisconnectedEvent].
+sealed class ChatLinkEvent extends HttpServerEvent {
+  String get connectionId;
+}
+
+class ChatLinkConnectedEvent extends ChatLinkEvent {
+  @override
+  final String connectionId;
+
+  /// Verified SHA-256 fingerprint (uppercase hex) of the peer certificate.
+  final String fingerprint;
+  final String ip;
+
+  /// `true` when this device initiated the connection.
+  final bool outbound;
+
+  ChatLinkConnectedEvent({
+    required this.connectionId,
+    required this.fingerprint,
+    required this.ip,
+    required this.outbound,
+  });
+}
+
+class ChatLinkMessageEvent extends ChatLinkEvent {
+  @override
+  final String connectionId;
+  final String text;
+
+  ChatLinkMessageEvent({
+    required this.connectionId,
+    required this.text,
+  });
+}
+
+class ChatLinkDisconnectedEvent extends ChatLinkEvent {
+  @override
+  final String connectionId;
+  final String reason;
+
+  ChatLinkDisconnectedEvent({
+    required this.connectionId,
+    required this.reason,
+  });
+}
+
+enum ChatLinkErrorKind {
+  /// The peer presented a certificate with another fingerprint:
+  /// possibly another device impersonating it.
+  fingerprintMismatch,
+
+  /// The peer has no chat WebSocket (e.g. v1.0.3) or refused it, see
+  /// [ChatLinkError.status].
+  unsupported,
+  tooManyConnections,
+  notConnected,
+  messageTooLarge,
+  timeout,
+  other,
+}
+
+class ChatLinkError {
+  final ChatLinkErrorKind kind;
+
+  /// HTTP status for [ChatLinkErrorKind.unsupported].
+  final int? status;
+  final String? message;
+
+  const ChatLinkError(this.kind, {this.status, this.message});
+
+  factory ChatLinkError.from(Object error) {
+    return switch (error) {
+      RsChatError_FingerprintMismatch() => const ChatLinkError(ChatLinkErrorKind.fingerprintMismatch),
+      RsChatError_Unsupported(:final status) => ChatLinkError(ChatLinkErrorKind.unsupported, status: status),
+      RsChatError_TooManyConnections() => const ChatLinkError(ChatLinkErrorKind.tooManyConnections),
+      RsChatError_NotConnected() => const ChatLinkError(ChatLinkErrorKind.notConnected),
+      RsChatError_MessageTooLarge() => const ChatLinkError(ChatLinkErrorKind.messageTooLarge),
+      RsChatError_Timeout() => const ChatLinkError(ChatLinkErrorKind.timeout),
+      RsChatError_Other(:final message) => ChatLinkError(ChatLinkErrorKind.other, message: message),
+      _ => ChatLinkError(ChatLinkErrorKind.other, message: error.toString()),
+    };
+  }
+
+  @override
+  String toString() => 'ChatLinkError(${kind.name}${status != null ? ', $status' : ''}${message != null ? ', $message' : ''})';
+}
+
+/// Result of a [ChatConnectTask] or [ChatSendTask].
+class ChatLinkResultEvent extends HttpServerEvent {
+  /// The new connection, for a successful [ChatConnectTask].
+  final String? connectionId;
+
+  /// `null` on success.
+  final ChatLinkError? error;
+
+  ChatLinkResultEvent({
+    this.connectionId,
+    this.error,
+  });
+}
 
 /// The server has been started and is listening.
 /// Always the first event emitted by a [HttpServerStartTask].
@@ -357,6 +503,8 @@ Future<void> setupHttpServerIsolate(
             return;
           }
 
+          ref.read(chatHubProvider).attachTo(ref.read(httpServerProvider));
+
           sendToMain(
             IsolateTaskStreamResult.event(
               id: task.id,
@@ -501,6 +649,82 @@ Future<void> setupHttpServerIsolate(
                 path: targetTask.path,
                 fileDescriptor: targetTask.fileDescriptor,
               );
+          return;
+        case ChatHubStartTask _:
+          final syncState = ref.read(syncProvider);
+          final Stream<RsChatEvent> events;
+          try {
+            events = ref
+                .read(chatHubProvider)
+                .start(
+                  cert: syncState.securityContext.certificate,
+                  privateKey: syncState.securityContext.privateKey,
+                );
+          } catch (e) {
+            sendToMain(IsolateTaskStreamResult.error(id: task.id, error: e.humanErrorMessage));
+            return;
+          }
+          // The server may already be running.
+          ref.read(chatHubProvider).attachTo(ref.read(httpServerProvider));
+
+          try {
+            await for (final event in events) {
+              sendToMain(
+                IsolateTaskStreamResult.event(
+                  id: task.id,
+                  data: switch (event) {
+                    RsChatEvent_Connected(:final connectionId, :final fingerprint, :final ip, :final outbound) => ChatLinkConnectedEvent(
+                      connectionId: connectionId,
+                      fingerprint: fingerprint,
+                      ip: ip,
+                      outbound: outbound,
+                    ),
+                    RsChatEvent_Message(:final connectionId, :final text) => ChatLinkMessageEvent(
+                      connectionId: connectionId,
+                      text: text,
+                    ),
+                    RsChatEvent_Disconnected(:final connectionId, :final reason) => ChatLinkDisconnectedEvent(
+                      connectionId: connectionId,
+                      reason: reason,
+                    ),
+                  },
+                ),
+              );
+            }
+          } finally {
+            sendToMain(IsolateTaskStreamResult.done(id: task.id));
+          }
+          return;
+        case ChatConnectTask connectTask:
+          ChatLinkResultEvent result;
+          try {
+            final connectionId = await ref
+                .read(chatHubProvider)
+                .connect(
+                  ip: connectTask.ip,
+                  port: connectTask.port,
+                  fingerprint: connectTask.fingerprint,
+                );
+            result = ChatLinkResultEvent(connectionId: connectionId);
+          } catch (e) {
+            result = ChatLinkResultEvent(error: ChatLinkError.from(e));
+          }
+          sendToMain(IsolateTaskStreamResult.event(id: task.id, data: result));
+          sendToMain(IsolateTaskStreamResult.done(id: task.id));
+          return;
+        case ChatSendTask sendTask:
+          ChatLinkResultEvent result;
+          try {
+            await ref.read(chatHubProvider).send(connectionId: sendTask.connectionId, text: sendTask.text);
+            result = ChatLinkResultEvent();
+          } catch (e) {
+            result = ChatLinkResultEvent(error: ChatLinkError.from(e));
+          }
+          sendToMain(IsolateTaskStreamResult.event(id: task.id, data: result));
+          sendToMain(IsolateTaskStreamResult.done(id: task.id));
+          return;
+        case ChatCloseTask closeTask:
+          await ref.read(chatHubProvider).close(connectionId: closeTask.connectionId);
           return;
         case HttpServerRejectFileDownloadTask rejectTask:
           await ref

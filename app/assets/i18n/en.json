@@ -115,6 +115,7 @@
       "title": "Receive",
       "quickSave": "@:general.quickSave",
       "quickSaveFromFavorites": "@:general.quickSaveFromFavorites",
+      "chatKeepAlive": "Stay reachable for messages",
       "requirePin": "@:webSharePage.requirePin",
       "autoFinish": "Auto Finish",
       "destination": "Save to folder",
@@ -609,6 +610,34 @@
     "block": "Block this device",
     "unblock": "Unblock this device",
     "blockedNotice": "You blocked this device. Unblock it to send messages again.",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "lastSeenToday": "last seen today at {time}",
+    "lastSeenYesterday": "last seen yesterday at {time}",
+    "lastSeenOn": "last seen on {date}",
+    "status": {
+      "pending": "Waiting to be sent",
+      "sent": "Sent",
+      "delivered": "Delivered",
+      "read": "Read",
+      "failed": "Not sent"
+    },
+    "notSentTapToRetry": "Not sent · Tap to retry",
+    "retry": "Retry",
+    "copy": "Copy text",
+    "copied": "Copied",
+    "preview": {
+      "photo": "Photo",
+      "video": "Video",
+      "audio": "Audio",
+      "document": "Document"
+    },
+    "notification": {
+      "channelName": "Messages",
+      "channelDescription": "New chat messages",
+      "open": "Open",
+      "newMessages": "{count} new messages"
+    },
     "newContact": {
       "title": "New conversation request",
       "description": "This device is not a known contact yet. Accepting will start a conversation and automatically accept its future messages.",

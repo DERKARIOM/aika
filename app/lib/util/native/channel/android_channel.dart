@@ -163,6 +163,13 @@ Future<String> copyFileToDownloadsAndroid({
   return result['uri'] as String;
 }
 
+/// Starts or stops the "Stay reachable for messages" foreground service
+/// (`ChatKeepAliveService`), which keeps the chat reachable while the app is
+/// in the background.
+Future<void> setChatKeepAliveAndroid(bool enabled) async {
+  await _methodChannel.invokeMethod(enabled ? 'startChatKeepAlive' : 'stopChatKeepAlive');
+}
+
 /// Opens the system "Downloads" UI. Used for "open destination folder" when the
 /// destination is the MediaStore-backed default Downloads folder, which has no single
 /// path/URI a generic file-open intent could point to.

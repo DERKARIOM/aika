@@ -523,6 +523,117 @@ class IsolateHttpServerRejectFileDownloadAction extends ReduxAction<IsolateContr
 }
 
 /// Saving a file received by the HTTP server failed.
+/// Starts the chat hub in the server isolate. The returned stream emits the
+/// chat connection events for the lifetime of the app. Dispatch once.
+class IsolateChatHubStartAction extends ReduxActionWithResult<IsolateController, ParentIsolateState, Stream<ChatLinkEvent>> {
+  @override
+  (ParentIsolateState, Stream<ChatLinkEvent>) reduce() {
+    final connection = state.httpServer;
+    if (connection == null) {
+      throw StateError('httpServer is not initialized');
+    }
+
+    return (
+      state,
+      connection.sendWrappedTaskAndListenStream(task: ChatHubStartTask()).where((e) => e is ChatLinkEvent).cast<ChatLinkEvent>(),
+    );
+  }
+}
+
+/// Opens a chat connection; the peer is accepted only if its certificate has
+/// [fingerprint]. Completes with the connection ID or the error.
+class IsolateChatConnectAction extends ReduxActionWithResult<IsolateController, ParentIsolateState, Future<ChatLinkResultEvent>> {
+  final String ip;
+  final int port;
+  final String fingerprint;
+
+  IsolateChatConnectAction({
+    required this.ip,
+    required this.port,
+    required this.fingerprint,
+  });
+
+  @override
+  (ParentIsolateState, Future<ChatLinkResultEvent>) reduce() {
+    final connection = state.httpServer;
+    if (connection == null) {
+      throw StateError('httpServer is not initialized');
+    }
+
+    return (
+      state,
+      _firstResult(
+        connection.sendWrappedTaskAndListenStream(
+          task: ChatConnectTask(ip: ip, port: port, fingerprint: fingerprint),
+        ),
+      ),
+    );
+  }
+}
+
+/// Sends a text frame on a chat connection.
+class IsolateChatSendAction extends ReduxActionWithResult<IsolateController, ParentIsolateState, Future<ChatLinkResultEvent>> {
+  final String connectionId;
+  final String text;
+
+  IsolateChatSendAction({
+    required this.connectionId,
+    required this.text,
+  });
+
+  @override
+  (ParentIsolateState, Future<ChatLinkResultEvent>) reduce() {
+    final connection = state.httpServer;
+    if (connection == null) {
+      throw StateError('httpServer is not initialized');
+    }
+
+    return (
+      state,
+      _firstResult(
+        connection.sendWrappedTaskAndListenStream(
+          task: ChatSendTask(connectionId: connectionId, text: text),
+        ),
+      ),
+    );
+  }
+}
+
+/// Closes a chat connection; a [ChatLinkDisconnectedEvent] follows.
+class IsolateChatCloseAction extends ReduxAction<IsolateController, ParentIsolateState> {
+  final String connectionId;
+
+  IsolateChatCloseAction({required this.connectionId});
+
+  @override
+  ParentIsolateState reduce() {
+    final connection = state.httpServer;
+    if (connection == null) {
+      throw StateError('httpServer is not initialized');
+    }
+
+    connection.sendToIsolate(
+      SendToIsolateData(
+        syncState: null,
+        data: IsolateTask(
+          data: ChatCloseTask(connectionId: connectionId),
+        ),
+      ),
+    );
+
+    return state;
+  }
+}
+
+Future<ChatLinkResultEvent> _firstResult(Stream<HttpServerEvent> events) async {
+  await for (final event in events) {
+    if (event is ChatLinkResultEvent) {
+      return event;
+    }
+  }
+  return ChatLinkResultEvent(error: const ChatLinkError(ChatLinkErrorKind.other, message: 'The server isolate did not report a result'));
+}
+
 class HttpServerFileUploadException implements Exception {
   final String message;
 

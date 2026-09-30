@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Service « Rester joignable pour les messages » (ChatKeepAliveService) -->
+    <string name="chat_keep_alive_title">Aika reste joignable pour les messages</string>
+    <string name="chat_keep_alive_text">Les messages des appareils à proximité continuent d\'arriver quand Aika est en arrière-plan.</string>
+    <string name="chat_keep_alive_channel">Joignable pour les messages</string>
+    <string name="chat_keep_alive_channel_description">Affichée tant qu\'Aika reste joignable pour les messages en arrière-plan.</string>
+</resources>

@@ -1,9 +1,11 @@
+pub(crate) mod chat_ws;
 pub mod common;
 pub mod internal;
 pub mod v2;
 pub mod v3;
 pub mod web;
 
+use crate::chat::{ChatHub, CHAT_WS_PATH};
 use crate::crypto::cert::{fingerprint_from_cert_der, public_key_from_cert_der};
 use crate::http::server::internal::{InternalConfig, InternalState};
 use crate::http::server::v2::ServerEventV2;
@@ -74,6 +76,14 @@ pub struct AppState {
 
     /// State of the v2 protocol endpoints. `None` disables the v2 routes.
     v2: Option<Arc<V2State>>,
+
+    /// Hub receiving the chat WebSocket connections. `None` disables the
+    /// chat route. Attached at runtime, see [ServerHandle::attach_chat_hub].
+    chat: Arc<std::sync::RwLock<Option<ChatHub>>>,
+
+    /// Cancelled when the server stops; also ends upgraded connections,
+    /// which hyper no longer tracks.
+    shutdown: CancellationToken,
 }
 
 impl AppState {
@@ -82,6 +92,7 @@ impl AppState {
         internal_config: Option<InternalConfig>,
         v2_config: Option<ServerConfigV2>,
         web_send_config: Option<WebSendConfig>,
+        shutdown: CancellationToken,
     ) -> Self {
         let v2 = v2_config.map(|config| {
             Arc::new(V2State {
@@ -106,7 +117,13 @@ impl AppState {
                 NonZeroUsize::new(200).unwrap(),
             ))),
             v2,
+            chat: Arc::new(std::sync::RwLock::new(None)),
+            shutdown,
         }
+    }
+
+    fn chat_hub(&self) -> Option<ChatHub> {
+        self.chat.read().ok().and_then(|hub| hub.clone())
     }
 }
 
@@ -114,6 +131,8 @@ impl AppState {
 /// (as opposed to the event channels which are driven by incoming requests).
 pub struct ServerHandle {
     v2: Option<Arc<V2State>>,
+
+    chat: Arc<std::sync::RwLock<Option<ChatHub>>>,
 
     /// The task running the accept loops. Completes after a stop has been
     /// requested, the listeners have been dropped and all connections have
@@ -128,6 +147,14 @@ impl ServerHandle {
     pub async fn wait_stopped(&self) {
         if let Some(task) = self.task.lock().await.take() {
             let _ = task.await;
+        }
+    }
+
+    /// Enables the chat WebSocket route with `hub` (or disables it with `None`).
+    /// Existing chat connections are not affected.
+    pub fn attach_chat_hub(&self, hub: Option<ChatHub>) {
+        if let Ok(mut slot) = self.chat.write() {
+            *slot = hub;
         }
     }
 
@@ -168,7 +195,14 @@ pub async fn start_with_port(
     let ipv4_socket_addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), port);
     let ipv6_socket_addr = SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), port);
     let info = Arc::new(Mutex::new(info));
-    let state = AppState::new(info.clone(), internal_config, v2_config, web_send_config);
+    let cancel = CancellationToken::new();
+    let state = AppState::new(
+        info.clone(),
+        internal_config,
+        v2_config,
+        web_send_config,
+        cancel.clone(),
+    );
 
     let ipv4_listener = tokio::net::TcpListener::bind(ipv4_socket_addr).await?;
     let ipv6_listener = match bind_ipv6_only(ipv6_socket_addr) {
@@ -179,7 +213,6 @@ pub async fn start_with_port(
         }
     };
 
-    let cancel = CancellationToken::new();
     let connections = TaskTracker::new();
 
     let task = tokio::spawn({
@@ -212,6 +245,7 @@ pub async fn start_with_port(
 
     Ok(ServerHandle {
         v2: state.v2.clone(),
+        chat: state.chat.clone(),
         task: Mutex::new(Some(task)),
     })
 }
@@ -309,7 +343,7 @@ async fn serve_connection(
             };
 
             Builder::new(TokioExecutor::new())
-                .serve_connection(
+                .serve_connection_with_upgrades(
                     TokioIo::new(tls_stream),
                     hyper::service::service_fn(move |mut req: Request<Incoming>| {
                         req.extensions_mut()
@@ -322,7 +356,7 @@ async fn serve_connection(
         }
         None => {
             Builder::new(TokioExecutor::new())
-                .serve_connection(
+                .serve_connection_with_upgrades(
                     TokioIo::new(tcp_stream),
                     hyper::service::service_fn(move |mut req: Request<Incoming>| {
                         req.extensions_mut()
@@ -458,6 +492,7 @@ async fn handle_request_inner(mut req: Request<Incoming>) -> Result<Response<Box
 
             v2::cancel(req, state, client_info).await
         }
+        (&Method::GET, CHAT_WS_PATH) => chat_ws::upgrade(req, state, client_info).await,
         // The versioned path is retained for compatibility, but this endpoint is internal.
         (&Method::POST, "/api/localsend/v2/show") => internal::show(req, state).await,
         (&Method::POST, "/api/localsend/v3/nonce") => {

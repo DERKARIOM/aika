@@ -8,6 +8,7 @@ import 'package:localsend_app/pages/chat/new_conversation_page.dart';
 import 'package:localsend_app/provider/chat/chat_conversations_provider.dart';
 import 'package:localsend_app/provider/chat/chat_provider.dart';
 import 'package:localsend_app/util/chat/chat_device_resolver.dart';
+import 'package:localsend_app/util/chat/chat_time_format.dart';
 import 'package:localsend_app/widget/dialogs/chat_delete_conversation_dialog.dart';
 import 'package:localsend_app/widget/responsive_list_view.dart';
 import 'package:refena_flutter/refena_flutter.dart';
@@ -81,7 +82,7 @@ class _ConversationTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ref = context.ref;
-    final online = isDeviceOnline(ref, conversation.peerFingerprint);
+    final online = watchPeerOnline(context, conversation.peerFingerprint);
     final typing = ref.watch(chatProvider.select((s) => s.typingPeerFingerprints.contains(conversation.peerFingerprint)));
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -144,7 +145,7 @@ class _ConversationTile extends StatelessWidget {
                   children: [
                     if (conversation.lastMessageAt != null)
                       Text(
-                        _formatTime(conversation.lastMessageAt!),
+                        formatConversationTimestamp(conversation.lastMessageAt!),
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
                       ),
                     const SizedBox(height: 6),
@@ -168,60 +169,55 @@ class _ConversationTile extends StatelessWidget {
   }
 
   void _showQuickActions(BuildContext context, Ref ref) {
-    unawaited(showModalBottomSheet(
-      context: context,
-      builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.ios_share_outlined),
-              title: Text(t.chat.export),
-              onTap: () async {
-                Navigator.of(context).pop();
-                final device = resolveConversationDevice(ref, conversation);
-                final text = await ref.notifier(chatProvider).exportConversation(device);
-                if (!context.mounted) return;
-                _showExportPreview(context, text);
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error),
-              title: Text(t.chat.deleteConversation),
-              onTap: () async {
-                Navigator.of(context).pop();
-                final device = resolveConversationDevice(ref, conversation);
-                final confirmed = await showDialog<bool>(context: context, builder: (_) => const ChatDeleteConversationDialog());
-                if (confirmed == true) {
-                  await ref.notifier(chatProvider).deleteConversation(device);
-                }
-              },
-            ),
-          ],
+    unawaited(
+      showModalBottomSheet(
+        context: context,
+        builder: (_) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.ios_share_outlined),
+                title: Text(t.chat.export),
+                onTap: () async {
+                  Navigator.of(context).pop();
+                  final device = resolveConversationDevice(ref, conversation);
+                  final text = await ref.notifier(chatProvider).exportConversation(device);
+                  if (!context.mounted) return;
+                  _showExportPreview(context, text);
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error),
+                title: Text(t.chat.deleteConversation),
+                onTap: () async {
+                  Navigator.of(context).pop();
+                  final device = resolveConversationDevice(ref, conversation);
+                  final confirmed = await showDialog<bool>(context: context, builder: (_) => const ChatDeleteConversationDialog());
+                  if (confirmed == true) {
+                    await ref.notifier(chatProvider).deleteConversation(device);
+                  }
+                },
+              ),
+            ],
+          ),
         ),
       ),
-    ));
+    );
   }
 
   void _showExportPreview(BuildContext context, String text) {
-    unawaited(showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text(t.chat.export),
-        content: SingleChildScrollView(child: SelectableText(text)),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(t.general.close)),
-        ],
+    unawaited(
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text(t.chat.export),
+          content: SingleChildScrollView(child: SelectableText(text)),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(t.general.close)),
+          ],
+        ),
       ),
-    ));
+    );
   }
-}
-
-String _formatTime(DateTime utc) {
-  final local = utc.toLocal();
-  final now = DateTime.now();
-  if (local.year == now.year && local.month == now.month && local.day == now.day) {
-    return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
-  }
-  return '${local.day.toString().padLeft(2, '0')}/${local.month.toString().padLeft(2, '0')}';
 }
