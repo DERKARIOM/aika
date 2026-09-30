@@ -1,3 +1,4 @@
+pub mod chat;
 pub mod crypto;
 pub mod http;
 pub mod logging;

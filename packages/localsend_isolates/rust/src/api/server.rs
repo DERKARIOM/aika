@@ -1,3 +1,4 @@
+use crate::api::chat::RsChatHub;
 use crate::frb_generated::StreamSink;
 use flutter_rust_bridge::frb;
 pub use localsend::http::dto_v2::{ProtocolTypeV2, RegisterDtoV2};
@@ -534,6 +535,19 @@ impl RsHttpServer {
             .lock()
             .await
             .retain(|(sid, _), _| sid != &session_id);
+    }
+
+    /// Accepts chat WebSocket connections (`GET /api/aika/v1/chat/ws`)
+    /// into [hub]. Until attached, the route answers 404.
+    #[frb(sync)]
+    pub fn attach_chat_hub(&self, hub: &RsChatHub) {
+        self.handle.attach_chat_hub(Some(hub.inner.clone()));
+    }
+
+    /// Stops accepting chat connections (existing ones stay open).
+    #[frb(sync)]
+    pub fn detach_chat_hub(&self) {
+        self.handle.attach_chat_hub(None);
     }
 
     /// Stops the server.

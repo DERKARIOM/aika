@@ -5,6 +5,7 @@
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
+import 'package:localsend_isolates/rust/api/chat.dart';
 import 'package:localsend_isolates/rust/api/model.dart';
 import 'package:localsend_isolates/rust/frb_generated.dart';
 
@@ -49,6 +50,10 @@ Future<RsHttpServer> startServer({
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<RsHttpServer>>
 abstract class RsHttpServer implements RustOpaqueInterface {
+  /// Accepts chat WebSocket connections (`GET /api/aika/v1/chat/ws`)
+  /// into [hub]. Until attached, the route answers 404.
+  void attachChatHub({required RsChatHub hub});
+
   /// Cancels the active upload session, e.g. because the user aborted the
   /// transfer on the receiving side.
   ///
@@ -57,6 +62,9 @@ abstract class RsHttpServer implements RustOpaqueInterface {
   /// No [RsServerEvent::SessionEnd] is emitted: the application initiated
   /// the cancellation itself.
   Future<void> cancelSession({required String sessionId});
+
+  /// Stops accepting chat connections (existing ones stay open).
+  void detachChatHub();
 
   /// Emits server events until the server is stopped.
   /// Can only be listened to once.

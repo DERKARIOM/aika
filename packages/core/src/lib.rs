@@ -1,3 +1,5 @@
+#[cfg(feature = "http")]
+pub mod chat;
 #[cfg(feature = "crypto")]
 pub mod crypto;
 #[cfg(feature = "http")]
