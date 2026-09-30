@@ -1,5 +1,12 @@
 export 'package:localsend_isolates/src/isolate/child/server_isolate.dart'
     show
+        ChatLinkConnectedEvent,
+        ChatLinkDisconnectedEvent,
+        ChatLinkError,
+        ChatLinkErrorKind,
+        ChatLinkEvent,
+        ChatLinkMessageEvent,
+        ChatLinkResultEvent,
         HttpServerCancelReceivedEvent,
         HttpServerEvent,
         HttpServerFileUploadEvent,

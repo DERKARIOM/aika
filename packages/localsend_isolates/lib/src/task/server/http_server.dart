@@ -1,3 +1,4 @@
+import 'package:localsend_isolates/rust/api/chat.dart';
 import 'package:localsend_isolates/rust/api/model.dart';
 import 'package:localsend_isolates/rust/api/server.dart';
 import 'package:refena_flutter/refena_flutter.dart';
@@ -115,6 +116,12 @@ class HttpServerService {
   /// Does nothing if the download was already answered via [respondFileDownload].
   Future<void> rejectFileDownload({required String sessionId, required String fileId}) async {
     await _requireServer().rejectFileDownload(sessionId: sessionId, fileId: fileId);
+  }
+
+  /// Accepts chat WebSocket connections into [hub]. Does nothing while the
+  /// server is stopped; must be called again after each start.
+  void attachChatHub(RsChatHub hub) {
+    _server?.attachChatHub(hub: hub);
   }
 
   /// Stops the server. The event stream returned by [start] will end.
