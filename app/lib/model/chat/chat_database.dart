@@ -1,6 +1,9 @@
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
+import 'package:localsend_app/model/chat/chat_database_encryption.dart';
 import 'package:localsend_app/model/chat/chat_envelope.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 part 'chat_database.g.dart';
 
@@ -161,14 +164,37 @@ class ChatBlockedDevices extends Table {
   Set<Column> get primaryKey => {fingerprint};
 }
 
+const _databaseName = 'aika_chat';
+
+/// Loads (or creates) the key, encrypts a v1.0.3 plaintext file in place if
+/// needed, then opens the database with the key applied on every
+/// connection. Same file as before encryption (`<documents>/aika_chat.sqlite`).
+Future<DatabaseConnection> _openEncrypted() async {
+  final key = await loadOrCreateChatDatabaseKey(SecureChatDatabaseKeyStore(fallbackDirectory: getApplicationSupportDirectory));
+  final path = p.join((await getApplicationDocumentsDirectory()).path, '$_databaseName.sqlite');
+  await prepareChatDatabaseFileInBackground(path, key);
+  return driftDatabase(name: _databaseName, native: _nativeOptions(path, key));
+}
+
+/// Top-level so the `setup` closure only captures [key] and stays sendable
+/// to drift's background isolate.
+DriftNativeOptions _nativeOptions(String path, String key) {
+  return DriftNativeOptions(
+    databasePath: () async => path,
+    setup: (db) => applyChatDatabaseKey(db, key),
+  );
+}
+
 @DriftDatabase(tables: [ChatConversations, ChatMessages, ChatOutboxEntries, ChatBlockedDevices])
 class ChatDatabase extends _$ChatDatabase {
   ChatDatabase(super.e);
 
-  /// Opens (or creates) the on-disk database in the platform's default app
-  /// data directory. `drift_flutter`'s `driftDatabase()` picks the right
-  /// native backend (NativeDatabase w/ background isolate) per platform.
-  ChatDatabase.defaults() : super(driftDatabase(name: 'aika_chat'));
+  /// Opens (or creates) the encrypted on-disk database in the platform's
+  /// default app data directory. `drift_flutter`'s `driftDatabase()` picks
+  /// the right native backend (NativeDatabase w/ background isolate) per
+  /// platform; the key is loaded lazily, on the first query, see
+  /// [_openEncrypted].
+  ChatDatabase.defaults() : super(DatabaseConnection.delayed(_openEncrypted()));
 
   @override
   int get schemaVersion => 1;

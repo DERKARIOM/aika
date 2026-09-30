@@ -37,6 +37,9 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   flutter_markdown: 0.7.7+1
+  # Holds the chat database key (Keystore/Keychain/libsecret/DPAPI).
+  # Linux builds need libsecret-1-dev, Linux installs libsecret-1-0.
+  flutter_secure_storage: 10.3.4
   freezed_annotation: 3.1.0
   gal: 2.3.2
   glob: 2.1.3
@@ -82,6 +85,9 @@ dependencies:
   shared_preferences_platform_interface: any
   slang: 4.18.0
   slang_flutter: 4.18.0
+  # Direct dependency (already pulled in by drift) to prepare the encrypted
+  # chat database file; the encrypted build is selected under `hooks:`.
+  sqlite3: 3.5.0
   system_settings_2: 3.0.2
   tray_manager: 0.5.3
   uri_content: 3.1.1
@@ -147,6 +153,14 @@ dependency_overrides:
     git:
       url: https://github.com/localsend/permission_handler_windows_noop.git
       ref: 2dadd8afbf81e0e3e4791d7144e689555e58f649
+
+# The chat database is encrypted: bundle SQLite3MultipleCiphers instead of
+# plain SQLite (same C API, adds `PRAGMA key`). See the `sqlite3` package's
+# doc/hook.md and `lib/model/chat/chat_database_encryption.dart`.
+hooks:
+  user_defines:
+    sqlite3:
+      source: sqlite3mc
 
 flutter:
   uses-material-design: true
