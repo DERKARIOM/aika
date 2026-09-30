@@ -494,6 +494,21 @@ class ChatDatabase extends _$ChatDatabase {
     );
   }
 
+  /// Makes the queued messages of [conversationId] that were not sent yet
+  /// due now, e.g. because the peer just came online. Messages already
+  /// sent and waiting for their ack keep their own timer.
+  Future<void> makeOutboxDueNow(String conversationId, DateTime now) {
+    final messageIds = selectOnly(chatMessages)
+      ..addColumns([chatMessages.id])
+      ..where(
+        chatMessages.conversationId.equals(conversationId) &
+            chatMessages.status.isInValues([ChatMessageStatusColumn.pending, ChatMessageStatusColumn.failed]),
+      );
+    return (update(chatOutboxEntries)..where((t) => t.messageId.isInQuery(messageIds))).write(
+      ChatOutboxEntriesCompanion(nextAttemptAt: Value(now)),
+    );
+  }
+
   Future<void> removeFromOutbox(String messageId) {
     return (delete(chatOutboxEntries)..where((t) => t.messageId.equals(messageId))).go();
   }

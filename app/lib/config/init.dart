@@ -233,12 +233,14 @@ Future<void> postInit(BuildContext context, Ref ref, bool appStart) async {
   ref.redux(signalingProvider).dispatch(SetupSignalingConnection());
 
   // Chat: keep the blocked-devices list and the conversation list synced
-  // with the database for as long as the app runs, and start the
-  // persistent outbox's periodic retry loop (survives app restarts because
+  // with the database for as long as the app runs, start the chat links
+  // (WebSocket transport), and start the persistent outbox's periodic
+  // retry loop (survives app restarts because
   // the queue itself lives in the on-disk ChatDatabase, not in memory).
   try {
     ref.redux(blockedDevicesProvider).dispatchAsync(StartWatchingBlockedDevicesAction()); // ignore: unawaited_futures
     ref.redux(chatConversationsProvider).dispatchAsync(StartWatchingChatConversationsAction()); // ignore: unawaited_futures
+    ref.notifier(chatProvider).startLinks();
     ref.notifier(chatProvider).startOutboxRetryLoop();
     await ref.read(chatNotificationServiceProvider).initialize();
   } catch (e) {

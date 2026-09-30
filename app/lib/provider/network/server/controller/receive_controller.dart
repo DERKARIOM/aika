@@ -10,8 +10,7 @@ import 'package:localsend_app/pages/home_page.dart';
 import 'package:localsend_app/pages/home_page_controller.dart';
 import 'package:localsend_app/pages/progress_page.dart';
 import 'package:localsend_app/pages/receive_page.dart';
-import 'package:localsend_app/provider/chat/blocked_devices_provider.dart';
-import 'package:localsend_app/provider/chat/chat_database_provider.dart';
+import 'package:localsend_app/provider/chat/chat_contact_policy.dart';
 import 'package:localsend_app/provider/chat/chat_provider.dart';
 import 'package:localsend_app/provider/device_info_provider.dart';
 import 'package:localsend_app/provider/favorites_provider.dart';
@@ -31,7 +30,6 @@ import 'package:localsend_app/util/native/directories.dart';
 import 'package:localsend_app/util/native/file_saver.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/native/tray_helper.dart';
-import 'package:localsend_app/widget/dialogs/chat_new_contact_dialog.dart';
 import 'package:localsend_app/widget/dialogs/open_file_dialog.dart';
 import 'package:localsend_isolates/isolate.dart';
 import 'package:localsend_isolates/model/device.dart';
@@ -263,32 +261,12 @@ class ReceiveController {
     required ChatEnvelope envelope,
     required Map<String, FileDto> files,
   }) async {
-    final blocked = server.ref.read(blockedDevicesProvider).isFingerprintBlocked(senderFingerprint);
-    if (blocked) {
-      server.ref.redux(parentIsolateProvider).dispatch(IsolateHttpServerPrepareUploadDecisionAction(acceptedFileIds: null));
-      return;
-    }
-
     final sender = event.info.toDevice(event.ip, null).copyWith(fingerprint: senderFingerprint);
 
-    final hasExistingConversation = await server.ref.read(chatDatabaseProvider).getConversation(senderFingerprint) != null;
-    final isFavorite = server.ref.read(favoritesProvider).any((f) => f.fingerprint == senderFingerprint);
-
-    if (!hasExistingConversation && !isFavorite) {
-      // First message ever from this device: ask once, explicitly.
-      final accepted = await showDialog<bool>(
-        // ignore: use_build_context_synchronously
-        context: Routerino.context,
-        builder: (_) => ChatNewContactDialog(sender: sender),
-      );
-      if (accepted != true) {
-        server.ref.redux(parentIsolateProvider).dispatch(IsolateHttpServerPrepareUploadDecisionAction(acceptedFileIds: null));
-        if (accepted == false) {
-          // User explicitly chose "Block" rather than just dismissing the dialog.
-          await server.ref.redux(blockedDevicesProvider).dispatchAsync(BlockDeviceAction(fingerprint: senderFingerprint, alias: sender.alias));
-        }
-        return;
-      }
+    // Blocked: refused; unknown: asked once (see `acceptChatSender`).
+    if (!await acceptChatSender(server.ref, sender)) {
+      server.ref.redux(parentIsolateProvider).dispatch(IsolateHttpServerPrepareUploadDecisionAction(acceptedFileIds: null));
+      return;
     }
 
     final acceptedIds = await server.ref.notifier(chatProvider).handleIncomingEnvelope(sender: sender, envelope: envelope, allFilesInBatch: files);
@@ -692,8 +670,7 @@ class ReceiveController {
       // permission and previously never matched the old '/storage/emulated/0/Download'
       // hardcoded check now that getDefaultDestinationDirectory() no longer returns it.
       final isLegacyNonDownloadsDestination =
-          session.destinationDirectory != kAndroidDefaultDownloadsMarker &&
-          !session.destinationDirectory.startsWith('/storage/emulated/0/Download');
+          session.destinationDirectory != kAndroidDefaultDownloadsMarker && !session.destinationDirectory.startsWith('/storage/emulated/0/Download');
       if (checkPlatform([TargetPlatform.android]) && isLegacyNonDownloadsDestination) {
         // Android requires more permission to save files outside of the Download directory
         try {
