@@ -539,6 +539,22 @@
     "block": "Bloquer cet appareil",
     "unblock": "Débloquer cet appareil",
     "blockedNotice": "Vous avez bloqué cet appareil. Débloquez-le pour pouvoir échanger à nouveau.",
+    "today": "Aujourd'hui",
+    "yesterday": "Hier",
+    "lastSeenToday": "vu aujourd'hui à {time}",
+    "lastSeenYesterday": "vu hier à {time}",
+    "lastSeenOn": "vu le {date}",
+    "status": {
+      "pending": "En attente d'envoi",
+      "sent": "Envoyé",
+      "delivered": "Distribué",
+      "read": "Lu",
+      "failed": "Non envoyé"
+    },
+    "notSentTapToRetry": "Non envoyé · Appuyer pour réessayer",
+    "retry": "Réessayer",
+    "copy": "Copier le texte",
+    "copied": "Copié",
     "newContact": {
       "title": "Nouvelle demande de discussion",
       "description": "Cet appareil n'est pas encore un contact connu. Accepter démarrera une discussion et acceptera automatiquement ses futurs messages.",

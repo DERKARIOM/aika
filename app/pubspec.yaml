@@ -119,6 +119,8 @@ dev_dependencies:
   # Same version as localsend_isolates: only used by
   # test/integration/chat_hub_native_test.dart to load the native library.
   flutter_rust_bridge: 2.12.0
+  flutter_test:
+    sdk: flutter
   freezed: 3.2.5
   mockito: any
   refena_inspector: 2.1.1

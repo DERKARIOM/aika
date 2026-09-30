@@ -283,6 +283,24 @@ class ChatService extends Notifier<ChatUiState> {
     }
   }
 
+  /// Sends an outgoing message again right away (user tapped "Retry"),
+  /// including one that failed for good (e.g. declined by the peer).
+  Future<void> retryMessage(String messageId) async {
+    final db = ref.read(chatDatabaseProvider);
+    final message = await db.getMessage(messageId);
+    if (message == null ||
+        message.direction != ChatMessageDirectionColumn.outgoing ||
+        message.status == ChatMessageStatusColumn.delivered ||
+        message.status == ChatMessageStatusColumn.read) {
+      return;
+    }
+    if (message.status == ChatMessageStatusColumn.failed) {
+      await db.updateMessageStatus(messageId, ChatMessageStatusColumn.pending, errorMessage: message.errorMessage);
+    }
+    await db.enqueueOutbox(messageId);
+    await retryDueOutbox();
+  }
+
   Future<void> deleteConversation(Device target) {
     return ref.read(chatDatabaseProvider).deleteConversation(target.fingerprint);
   }

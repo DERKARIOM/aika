@@ -1,5 +1,7 @@
 import 'package:collection/collection.dart';
+import 'package:flutter/widgets.dart';
 import 'package:localsend_app/model/chat/chat_database.dart';
+import 'package:localsend_app/provider/chat/chat_provider.dart';
 import 'package:localsend_app/provider/favorites_provider.dart';
 import 'package:localsend_app/provider/network/nearby_devices_provider.dart';
 import 'package:localsend_isolates/model/device.dart';
@@ -59,8 +61,11 @@ Device resolveDeviceByFingerprint(
   );
 }
 
-/// Whether [fingerprint] is currently visible via discovery (i.e. reachable
-/// right now, as opposed to just "known").
-bool isDeviceOnline(Ref ref, String fingerprint) {
-  return ref.read(nearbyDevicesProvider).devices.values.any((d) => d.fingerprint == fingerprint);
+/// Whether [fingerprint] is reachable right now (as opposed to just
+/// "known"): it has a ready chat link, or discovery currently sees it.
+/// Rebuilds [context] whenever either changes.
+bool watchPeerOnline(BuildContext context, String fingerprint) {
+  final linked = context.watch(chatProvider.select((s) => s.onlinePeerFingerprints.contains(fingerprint)));
+  final discovered = context.watch(nearbyDevicesProvider.select((s) => s.devices.values.any((d) => d.fingerprint == fingerprint)));
+  return linked || discovered;
 }

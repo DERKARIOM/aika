@@ -162,6 +162,31 @@ void main() {
     expect((await onlyMessage()).status, ChatMessageStatusColumn.sent);
   });
 
+  test('Should send a failed message again on retry', () async {
+    transport.open();
+    await settle();
+    await db.insertMessage(
+      ChatMessagesCompanion.insert(
+        id: 'refused',
+        conversationId: _peer,
+        direction: ChatMessageDirectionColumn.outgoing,
+        contentType: ChatContentType.text.name,
+        status: ChatMessageStatusColumn.failed,
+        createdAt: DateTime.utc(2026),
+        body: const Value('encore'),
+        errorMessage: const Value('Message refusé par le destinataire.'),
+      ),
+    );
+
+    await chat.retryMessage('refused');
+    await settle();
+
+    expect(transport.sentOf<ChatMessageFrame>().single.id, 'refused');
+    final row = await onlyMessage();
+    expect(row.status, ChatMessageStatusColumn.sent);
+    expect(row.errorMessage, isNull);
+  });
+
   test('Should record the peer protocol and presence', () async {
     transport.open();
     await settle();

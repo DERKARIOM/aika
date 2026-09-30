@@ -974,6 +974,35 @@ class Translations$chat$en {
   /// en: 'You blocked this device. Unblock it to send messages again.'
   String get blockedNotice => 'You blocked this device. Unblock it to send messages again.';
 
+  /// en: 'Today'
+  String get today => 'Today';
+
+  /// en: 'Yesterday'
+  String get yesterday => 'Yesterday';
+
+  /// en: 'last seen today at {time}'
+  String lastSeenToday({required Object time}) => 'last seen today at ${time}';
+
+  /// en: 'last seen yesterday at {time}'
+  String lastSeenYesterday({required Object time}) => 'last seen yesterday at ${time}';
+
+  /// en: 'last seen on {date}'
+  String lastSeenOn({required Object date}) => 'last seen on ${date}';
+
+  late final Translations$chat$status$en status = Translations$chat$status$en.internal(_root);
+
+  /// en: 'Not sent · Tap to retry'
+  String get notSentTapToRetry => 'Not sent · Tap to retry';
+
+  /// en: 'Retry'
+  String get retry => 'Retry';
+
+  /// en: 'Copy text'
+  String get copy => 'Copy text';
+
+  /// en: 'Copied'
+  String get copied => 'Copied';
+
   late final Translations$chat$newContact$en newContact = Translations$chat$newContact$en.internal(_root);
 }
 
@@ -1995,6 +2024,30 @@ class Translations$qrPairing$confirm$en {
 
   /// en: 'Connect anyway'
   String get connectAnyway => 'Connect anyway';
+}
+
+// Path: chat.status
+class Translations$chat$status$en {
+  Translations$chat$status$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+
+  /// en: 'Waiting to be sent'
+  String get pending => 'Waiting to be sent';
+
+  /// en: 'Sent'
+  String get sent => 'Sent';
+
+  /// en: 'Delivered'
+  String get delivered => 'Delivered';
+
+  /// en: 'Read'
+  String get read => 'Read';
+
+  /// en: 'Not sent'
+  String get failed => 'Not sent';
 }
 
 // Path: chat.newContact

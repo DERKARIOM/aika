@@ -770,6 +770,26 @@ class _Translations$chat$fr extends Translations$chat$en {
   @override
   String get blockedNotice => 'Vous avez bloqué cet appareil. Débloquez-le pour pouvoir échanger à nouveau.';
   @override
+  String get today => 'Aujourd\'hui';
+  @override
+  String get yesterday => 'Hier';
+  @override
+  String lastSeenToday({required Object time}) => 'vu aujourd\'hui à ${time}';
+  @override
+  String lastSeenYesterday({required Object time}) => 'vu hier à ${time}';
+  @override
+  String lastSeenOn({required Object date}) => 'vu le ${date}';
+  @override
+  late final _Translations$chat$status$fr status = _Translations$chat$status$fr._(_root);
+  @override
+  String get notSentTapToRetry => 'Non envoyé · Appuyer pour réessayer';
+  @override
+  String get retry => 'Réessayer';
+  @override
+  String get copy => 'Copier le texte';
+  @override
+  String get copied => 'Copié';
+  @override
   late final _Translations$chat$newContact$fr newContact = _Translations$chat$newContact$fr._(_root);
 }
 
@@ -1599,6 +1619,25 @@ class _Translations$qrPairing$confirm$fr extends Translations$qrPairing$confirm$
   String get connect => 'Se connecter';
   @override
   String get connectAnyway => 'Se connecter quand même';
+}
+
+// Path: chat.status
+class _Translations$chat$status$fr extends Translations$chat$status$en {
+  _Translations$chat$status$fr._(TranslationsFr root) : this._root = root, super.internal(root);
+
+  final TranslationsFr _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String get pending => 'En attente d\'envoi';
+  @override
+  String get sent => 'Envoyé';
+  @override
+  String get delivered => 'Distribué';
+  @override
+  String get read => 'Lu';
+  @override
+  String get failed => 'Non envoyé';
 }
 
 // Path: chat.newContact

@@ -1,9 +1,14 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/chat/chat_database.dart';
 import 'package:localsend_app/model/chat/chat_envelope.dart';
+import 'package:localsend_app/util/chat/chat_time_format.dart';
+
+/// "Read" ticks, the convention users know from other messengers.
+const _readTickColor = Color(0xFF53BDEB);
 
 /// A single WhatsApp/Telegram/Material-3-style chat bubble.
 ///
@@ -15,9 +20,20 @@ import 'package:localsend_app/model/chat/chat_envelope.dart';
 class ChatMessageBubble extends StatelessWidget {
   final ChatMessage message;
 
-  const ChatMessageBubble({required this.message});
+  /// Sends an outgoing message again; offered while it is not delivered.
+  final VoidCallback? onRetry;
+
+  const ChatMessageBubble({required this.message, this.onRetry});
 
   bool get _isOutgoing => message.direction == ChatMessageDirectionColumn.outgoing;
+
+  /// Not sent, and the last attempt reported why.
+  bool get _hasSendError =>
+      _isOutgoing &&
+      (message.status == ChatMessageStatusColumn.failed || (message.status == ChatMessageStatusColumn.pending && message.errorMessage != null));
+
+  bool get _canRetry =>
+      onRetry != null && _isOutgoing && (message.status == ChatMessageStatusColumn.pending || message.status == ChatMessageStatusColumn.failed);
 
   @override
   Widget build(BuildContext context) {
@@ -25,7 +41,7 @@ class ChatMessageBubble extends StatelessWidget {
     final bubbleColor = _isOutgoing ? colorScheme.primary : colorScheme.surfaceContainerHighest;
     final textColor = _isOutgoing ? colorScheme.onPrimary : colorScheme.onSurface;
 
-    return Align(
+    final bubble = Align(
       alignment: _isOutgoing ? Alignment.centerRight : Alignment.centerLeft,
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.75),
@@ -56,12 +72,17 @@ class ChatMessageBubble extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    _formatTime(message.createdAt),
+                    formatChatClock(message.createdAt),
                     style: TextStyle(color: textColor.withValues(alpha: 0.7), fontSize: 11),
                   ),
                   if (_isOutgoing) ...[
                     const SizedBox(width: 4),
-                    Icon(_statusIcon(message.status), size: 15, color: textColor.withValues(alpha: 0.85)),
+                    Icon(
+                      _statusIcon(message.status),
+                      size: 15,
+                      semanticLabel: _statusLabel(message.status),
+                      color: message.status == ChatMessageStatusColumn.read ? _readTickColor : textColor.withValues(alpha: 0.85),
+                    ),
                   ],
                 ],
               ),
@@ -70,6 +91,80 @@ class ChatMessageBubble extends StatelessWidget {
         ),
       ),
     );
+
+    return GestureDetector(
+      onTap: _hasSendError && _canRetry ? onRetry : null,
+      onLongPress: () => _showActions(context),
+      child: Column(
+        crossAxisAlignment: _isOutgoing ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          bubble,
+          if (_hasSendError)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4, right: 4),
+              child: Text(
+                t.chat.notSentTapToRetry,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(color: colorScheme.error),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _showActions(BuildContext context) {
+    final text = message.body;
+    final error = _isOutgoing && message.status != ChatMessageStatusColumn.delivered && message.status != ChatMessageStatusColumn.read
+        ? message.errorMessage
+        : null;
+    if ((text == null || text.isEmpty) && !_canRetry && error == null) {
+      return;
+    }
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (error != null)
+              ListTile(
+                leading: Icon(Icons.error_outline, color: Theme.of(context).colorScheme.error),
+                title: Text(_statusLabel(message.status)),
+                subtitle: Text(error),
+              ),
+            if (text != null && text.isNotEmpty)
+              ListTile(
+                leading: const Icon(Icons.copy_rounded),
+                title: Text(t.chat.copy),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  Clipboard.setData(ClipboardData(text: text)).ignore();
+                  ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(t.chat.copied)));
+                },
+              ),
+            if (_canRetry)
+              ListTile(
+                leading: const Icon(Icons.refresh_rounded),
+                title: Text(t.chat.retry),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  onRetry!();
+                },
+              ),
+          ],
+        ),
+      ),
+    ).ignore();
+  }
+
+  String _statusLabel(ChatMessageStatusColumn status) {
+    return switch (status) {
+      ChatMessageStatusColumn.pending => t.chat.status.pending,
+      ChatMessageStatusColumn.sent => t.chat.status.sent,
+      ChatMessageStatusColumn.delivered => t.chat.status.delivered,
+      ChatMessageStatusColumn.read => t.chat.status.read,
+      ChatMessageStatusColumn.failed => t.chat.status.failed,
+    };
   }
 
   IconData _statusIcon(ChatMessageStatusColumn status) {
@@ -142,9 +237,4 @@ class _AttachmentPreview extends StatelessWidget {
     if (contentType == ChatContentType.audio.name) return Icons.mic_none_outlined;
     return Icons.insert_drive_file_outlined;
   }
-}
-
-String _formatTime(DateTime utc) {
-  final local = utc.toLocal();
-  return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
 }

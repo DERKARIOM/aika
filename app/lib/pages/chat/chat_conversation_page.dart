@@ -9,6 +9,7 @@ import 'package:localsend_app/provider/chat/chat_conversations_provider.dart';
 import 'package:localsend_app/provider/chat/chat_database_provider.dart';
 import 'package:localsend_app/provider/chat/chat_provider.dart';
 import 'package:localsend_app/util/chat/chat_device_resolver.dart';
+import 'package:localsend_app/util/chat/chat_time_format.dart';
 import 'package:localsend_app/util/device_type_ext.dart';
 import 'package:localsend_app/util/native/cross_file_converters.dart';
 import 'package:localsend_app/widget/chat/chat_message_bubble.dart';
@@ -83,8 +84,17 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
   Widget build(BuildContext context) {
     final ref = context.ref;
     final device = _resolveDevice(ref);
-    final online = isDeviceOnline(ref, widget.peerFingerprint);
+    final online = watchPeerOnline(context, widget.peerFingerprint);
     final typing = context.watch(chatProvider.select((s) => s.typingPeerFingerprints.contains(widget.peerFingerprint)));
+    final lastSeenAt = context.watch(chatConversationsProvider.select((s) => s.byFingerprint(widget.peerFingerprint)?.lastSeenAt));
+    final String presence;
+    if (typing) {
+      presence = t.chat.typing;
+    } else if (online) {
+      presence = t.chat.online;
+    } else {
+      presence = formatLastSeen(lastSeenAt) ?? t.chat.offline;
+    }
     final blocked = context.watch(blockedDevicesProvider).isFingerprintBlocked(widget.peerFingerprint);
 
     return Scaffold(
@@ -100,7 +110,7 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
                 children: [
                   Text(device.alias, style: const TextStyle(fontSize: 16)),
                   Text(
-                    typing ? t.chat.typing : (online ? t.chat.online : t.chat.offline),
+                    presence,
                     style: TextStyle(
                       fontSize: 12,
                       color: typing ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant,
@@ -155,8 +165,24 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       itemCount: _messages.length,
                       itemBuilder: (context, index) {
-                        final message = _messages[_messages.length - 1 - index];
-                        return ChatMessageBubble(message: message);
+                        final position = _messages.length - 1 - index;
+                        final message = _messages[position];
+                        final bubble = ChatMessageBubble(
+                          message: message,
+                          onRetry: () => unawaited(ref.notifier(chatProvider).retryMessage(message.id)),
+                        );
+                        // The list is reversed: the separator goes above the
+                        // first message of each day.
+                        final firstOfDay = position == 0 || !isSameChatDay(_messages[position - 1].createdAt, message.createdAt);
+                        if (!firstOfDay) {
+                          return bubble;
+                        }
+                        return Column(
+                          children: [
+                            _DaySeparator(label: chatDayLabel(message.createdAt)),
+                            bubble,
+                          ],
+                        );
                       },
                     ),
             ),
@@ -185,16 +211,42 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
   }
 
   void _showExportPreview(BuildContext context, String text) {
-    unawaited(showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text(t.chat.export),
-        content: SingleChildScrollView(child: SelectableText(text)),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(t.general.close)),
-        ],
+    unawaited(
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text(t.chat.export),
+          content: SingleChildScrollView(child: SelectableText(text)),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(t.general.close)),
+          ],
+        ),
       ),
-    ));
+    );
+  }
+}
+
+class _DaySeparator extends StatelessWidget {
+  final String label;
+
+  const _DaySeparator({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(label, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant)),
+        ),
+      ),
+    );
   }
 }
 
