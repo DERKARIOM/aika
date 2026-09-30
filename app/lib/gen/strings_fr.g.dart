@@ -962,6 +962,8 @@ class _Translations$settingsTab$receive$fr extends Translations$settingsTab$rece
   @override
   String get quickSaveFromFavorites => _root.general.quickSaveFromFavorites;
   @override
+  String get chatKeepAlive => 'Rester joignable pour les messages';
+  @override
   String get requirePin => _root.webSharePage.requirePin;
   @override
   String get autoFinish => 'Fermer la page du transfert lorqu\'il est terminé';

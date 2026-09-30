@@ -19,6 +19,7 @@ import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/provider/version_provider.dart';
 import 'package:localsend_app/util/alias_generator.dart';
 import 'package:localsend_app/util/device_type_ext.dart';
+import 'package:localsend_app/util/native/channel/android_channel.dart' as android_channel;
 import 'package:localsend_app/util/native/macos_channel.dart';
 import 'package:localsend_app/util/native/pick_directory_path.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
@@ -177,6 +178,15 @@ class SettingsTab extends StatelessWidget {
                           }
                         },
                       ),
+                      if (checkPlatform([TargetPlatform.android]))
+                        _BooleanEntry(
+                          label: t.settingsTab.receive.chatKeepAlive,
+                          value: vm.settings.chatKeepAlive,
+                          onChanged: (b) async {
+                            await ref.notifier(settingsProvider).setChatKeepAlive(b);
+                            await android_channel.setChatKeepAliveAndroid(b);
+                          },
+                        ),
                       _BooleanEntry(
                         label: t.settingsTab.receive.requirePin,
                         value: vm.settings.receivePin != null,

@@ -38,6 +38,7 @@ import 'package:localsend_app/provider/window_dimensions_provider.dart';
 import 'package:localsend_app/util/i18n.dart';
 import 'package:localsend_app/util/native/autostart_helper.dart';
 import 'package:localsend_app/util/native/cache_helper.dart';
+import 'package:localsend_app/util/native/channel/android_channel.dart' as android_channel;
 import 'package:localsend_app/util/native/context_menu_helper.dart';
 import 'package:localsend_app/util/native/cross_file_converters.dart';
 import 'package:localsend_app/util/native/device_info_helper.dart';
@@ -241,6 +242,9 @@ Future<void> postInit(BuildContext context, Ref ref, bool appStart) async {
     ref.redux(blockedDevicesProvider).dispatchAsync(StartWatchingBlockedDevicesAction()); // ignore: unawaited_futures
     ref.redux(chatConversationsProvider).dispatchAsync(StartWatchingChatConversationsAction()); // ignore: unawaited_futures
     ref.notifier(chatProvider).startLinks();
+    if (checkPlatform([TargetPlatform.android]) && ref.read(settingsProvider).chatKeepAlive) {
+      await android_channel.setChatKeepAliveAndroid(true);
+    }
     ref.notifier(chatProvider).startOutboxRetryLoop();
     await ref.read(chatNotificationServiceProvider).initialize();
   } catch (e) {

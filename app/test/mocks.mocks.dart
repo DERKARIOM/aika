@@ -285,6 +285,24 @@ class MockPersistenceService extends _i1.Mock implements _i3.PersistenceService 
           as bool);
 
   @override
+  bool isChatKeepAlive() =>
+      (super.noSuchMethod(
+            Invocation.method(#isChatKeepAlive, []),
+            returnValue: false,
+            returnValueForMissingStub: false,
+          )
+          as bool);
+
+  @override
+  _i4.Future<void> setChatKeepAlive(bool? chatKeepAlive) =>
+      (super.noSuchMethod(
+            Invocation.method(#setChatKeepAlive, [chatKeepAlive]),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
+          )
+          as _i4.Future<void>);
+
+  @override
   _i4.Future<void> setShareViaLinkAutoAccept(bool? shareViaLinkAutoAccept) =>
       (super.noSuchMethod(
             Invocation.method(#setShareViaLinkAutoAccept, [
@@ -323,6 +341,15 @@ class MockPersistenceService extends _i1.Mock implements _i3.PersistenceService 
   _i4.Future<void> setDestination(String? destination) =>
       (super.noSuchMethod(
             Invocation.method(#setDestination, [destination]),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
+          )
+          as _i4.Future<void>);
+
+  @override
+  _i4.Future<void> setLastUpdateCheckMillis(int? millis) =>
+      (super.noSuchMethod(
+            Invocation.method(#setLastUpdateCheckMillis, [millis]),
             returnValue: _i4.Future<void>.value(),
             returnValueForMissingStub: _i4.Future<void>.value(),
           )

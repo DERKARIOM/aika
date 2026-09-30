@@ -91,6 +91,7 @@ const _enableAnimations = 'ls_enable_animations';
 const _deviceType = 'ls_device_type';
 const _deviceModel = 'ls_device_model';
 const _shareViaLinkAutoAccept = 'ls_share_via_link_auto_accept';
+const _chatKeepAlive = 'aika_chat_keep_alive'; // Android only
 const _advancedSettingsKey = 'ls_advanced_settings';
 
 /// Best-effort check that the directory containing [filePath] is writable
@@ -390,6 +391,14 @@ class PersistenceService {
 
   bool getShareViaLinkAutoAccept() {
     return _prefs.getBool(_shareViaLinkAutoAccept) ?? false;
+  }
+
+  bool isChatKeepAlive() {
+    return _prefs.getBool(_chatKeepAlive) ?? false;
+  }
+
+  Future<void> setChatKeepAlive(bool chatKeepAlive) async {
+    await _prefs.setBool(_chatKeepAlive, chatKeepAlive);
   }
 
   Future<void> setShareViaLinkAutoAccept(bool shareViaLinkAutoAccept) async {

@@ -70,6 +70,7 @@ class SettingsService extends PureNotifier<SettingsState> {
     shareViaLinkAutoAccept: _persistence.getShareViaLinkAutoAccept(),
     discoveryTimeout: _persistence.getDiscoveryTimeout(),
     advancedSettings: _persistence.getAdvancedSettingsEnabled(),
+    chatKeepAlive: _persistence.isChatKeepAlive(),
   );
 
   Future<void> setAlias(String alias) async {
@@ -174,6 +175,13 @@ class SettingsService extends PureNotifier<SettingsState> {
     await _persistence.setQuickSaveFromFavorites(quickSaveFromFavorites);
     state = state.copyWith(
       quickSaveFromFavorites: quickSaveFromFavorites,
+    );
+  }
+
+  Future<void> setChatKeepAlive(bool chatKeepAlive) async {
+    await _persistence.setChatKeepAlive(chatKeepAlive);
+    state = state.copyWith(
+      chatKeepAlive: chatKeepAlive,
     );
   }
 

@@ -47,6 +47,10 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- Chat: optional "Stay reachable for messages" foreground service -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" />
+
     <!-- Android TV -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -104,6 +108,12 @@
             </intent-filter>
 
         </activity>
+
+        <!-- Chat: "Stay reachable for messages" (see ChatKeepAliveService) -->
+        <service
+            android:name=".ChatKeepAliveService"
+            android:exported="false"
+            android:foregroundServiceType="remoteMessaging" />
 
         <!-- Quick tile to launch the app -->
         <service

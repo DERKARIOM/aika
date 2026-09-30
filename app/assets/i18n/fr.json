@@ -115,6 +115,7 @@
       "title": "Réception",
       "quickSave": "@:general.quickSave",
       "quickSaveFromFavorites": "@:general.quickSaveFromFavorites",
+      "chatKeepAlive": "Rester joignable pour les messages",
       "requirePin": "@:webSharePage.requirePin",
       "autoFinish": "Fermer la page du transfert lorqu'il est terminé",
       "destination": "Destination",

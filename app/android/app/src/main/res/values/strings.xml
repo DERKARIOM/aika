@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Chat "Stay reachable for messages" foreground service (ChatKeepAliveService) -->
+    <string name="chat_keep_alive_title">Aika is reachable for messages</string>
+    <string name="chat_keep_alive_text">Messages from nearby devices keep arriving while Aika is in the background.</string>
+    <string name="chat_keep_alive_channel">Reachable for messages</string>
+    <string name="chat_keep_alive_channel_description">Shown while Aika stays reachable for messages in the background.</string>
+</resources>

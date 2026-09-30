@@ -1216,6 +1216,9 @@ class Translations$settingsTab$receive$en {
   /// en: 'Quick Save for "Favorites"'
   String get quickSaveFromFavorites => _root.general.quickSaveFromFavorites;
 
+  /// en: 'Stay reachable for messages'
+  String get chatKeepAlive => 'Stay reachable for messages';
+
   /// en: 'Require PIN'
   String get requirePin => _root.webSharePage.requirePin;
 
