@@ -41,6 +41,11 @@ class ChatConversations extends Table {
 
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 
+  /// Highest chat protocol version the peer announced in its WebSocket
+  /// `hello` (schema v2). Null means unknown: only the legacy
+  /// `.aika-chat.v1.json` envelope is safe to use with that peer.
+  IntColumn get peerChatProtocol => integer().nullable()();
+
   @override
   Set<Column> get primaryKey => {peerFingerprint};
 }
@@ -95,6 +100,7 @@ bool isChatStatusTransitionAllowed(ChatMessageStatusColumn from, ChatMessageStat
 /// `id` doubles as [ChatEnvelope.messageId] so that receipts, dedup and
 /// outbox bookkeeping can all key off the very same identifier that goes
 /// over the wire.
+@TableIndex(name: 'chat_messages_conversation_created', columns: {#conversationId, #createdAt})
 class ChatMessages extends Table {
   TextColumn get id => text()();
 
@@ -125,6 +131,10 @@ class ChatMessages extends Table {
 
   DateTimeColumn get createdAt => dateTime()();
 
+  /// When an outgoing message actually left this device (schema v2); null
+  /// while it is still pending, and for incoming messages.
+  DateTimeColumn get sentAt => dateTime().nullable()();
+
   DateTimeColumn get deliveredAt => dateTime().nullable()();
 
   DateTimeColumn get readAt => dateTime().nullable()();
@@ -138,6 +148,7 @@ class ChatMessages extends Table {
 /// `prepare-upload` call succeeds; until then it survives app restarts and
 /// is retried with an increasing backoff every time the target device
 /// reappears in discovery (see `ChatOutboxService`).
+@TableIndex(name: 'chat_outbox_next_attempt', columns: {#nextAttemptAt})
 class ChatOutboxEntries extends Table {
   TextColumn get messageId => text().references(ChatMessages, #id)();
 
@@ -197,7 +208,21 @@ class ChatDatabase extends _$ChatDatabase {
   ChatDatabase.defaults() : super(DatabaseConnection.delayed(_openEncrypted()));
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration {
+    return MigrationStrategy(
+      onUpgrade: (m, from, to) async {
+        if (from < 2) {
+          await m.addColumn(chatConversations, chatConversations.peerChatProtocol);
+          await m.addColumn(chatMessages, chatMessages.sentAt);
+          await m.create(chatMessagesConversationCreated);
+          await m.create(chatOutboxNextAttempt);
+        }
+      },
+    );
+  }
 
   // ---------------------------------------------------------------------
   // Conversations
@@ -263,9 +288,23 @@ class ChatDatabase extends _$ChatDatabase {
     );
   }
 
-  Future<void> deleteConversation(String peerFingerprint) async {
-    await (delete(chatMessages)..where((t) => t.conversationId.equals(peerFingerprint))).go();
-    await (delete(chatConversations)..where((t) => t.peerFingerprint.equals(peerFingerprint))).go();
+  Future<void> deleteConversation(String peerFingerprint) {
+    return transaction(() async {
+      // Queued messages of this conversation must not be sent any more.
+      final messageIds = selectOnly(chatMessages)
+        ..addColumns([chatMessages.id])
+        ..where(chatMessages.conversationId.equals(peerFingerprint));
+      await (delete(chatOutboxEntries)..where((t) => t.messageId.isInQuery(messageIds))).go();
+      await (delete(chatMessages)..where((t) => t.conversationId.equals(peerFingerprint))).go();
+      await (delete(chatConversations)..where((t) => t.peerFingerprint.equals(peerFingerprint))).go();
+    });
+  }
+
+  /// Records the chat protocol version the peer announced (schema v2).
+  Future<void> setPeerChatProtocol(String peerFingerprint, int? version) {
+    return (update(chatConversations)..where((t) => t.peerFingerprint.equals(peerFingerprint))).write(
+      ChatConversationsCompanion(peerChatProtocol: Value(version)),
+    );
   }
 
   // ---------------------------------------------------------------------
@@ -318,6 +357,7 @@ class ChatDatabase extends _$ChatDatabase {
         ChatMessagesCompanion(
           status: Value(status),
           errorMessage: Value(errorMessage),
+          sentAt: status == ChatMessageStatusColumn.sent && current.sentAt == null ? Value(DateTime.now().toUtc()) : const Value.absent(),
           deliveredAt: deliveredAt != null ? Value(deliveredAt) : const Value.absent(),
           readAt: readAt != null ? Value(readAt) : const Value.absent(),
         ),

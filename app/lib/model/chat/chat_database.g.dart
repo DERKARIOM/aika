@@ -3,7 +3,8 @@
 part of 'chat_database.dart';
 
 // ignore_for_file: type=lint
-class $ChatConversationsTable extends ChatConversations with TableInfo<$ChatConversationsTable, ChatConversation> {
+class $ChatConversationsTable extends ChatConversations
+    with TableInfo<$ChatConversationsTable, ChatConversation> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
@@ -64,26 +65,29 @@ class $ChatConversationsTable extends ChatConversations with TableInfo<$ChatConv
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
-  static const VerificationMeta _lastMessagePreviewMeta = const VerificationMeta('lastMessagePreview');
+  static const VerificationMeta _lastMessagePreviewMeta =
+      const VerificationMeta('lastMessagePreview');
   @override
-  late final GeneratedColumn<String> lastMessagePreview = GeneratedColumn<String>(
-    'last_message_preview',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-  );
+  late final GeneratedColumn<String> lastMessagePreview =
+      GeneratedColumn<String>(
+        'last_message_preview',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _lastMessageAtMeta = const VerificationMeta(
     'lastMessageAt',
   );
   @override
-  late final GeneratedColumn<DateTime> lastMessageAt = GeneratedColumn<DateTime>(
-    'last_message_at',
-    aliasedName,
-    true,
-    type: DriftSqlType.dateTime,
-    requiredDuringInsert: false,
-  );
+  late final GeneratedColumn<DateTime> lastMessageAt =
+      GeneratedColumn<DateTime>(
+        'last_message_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -96,6 +100,17 @@ class $ChatConversationsTable extends ChatConversations with TableInfo<$ChatConv
     requiredDuringInsert: false,
     defaultValue: currentDateAndTime,
   );
+  static const VerificationMeta _peerChatProtocolMeta = const VerificationMeta(
+    'peerChatProtocol',
+  );
+  @override
+  late final GeneratedColumn<int> peerChatProtocol = GeneratedColumn<int>(
+    'peer_chat_protocol',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     peerFingerprint,
@@ -106,6 +121,7 @@ class $ChatConversationsTable extends ChatConversations with TableInfo<$ChatConv
     lastMessagePreview,
     lastMessageAt,
     createdAt,
+    peerChatProtocol,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -189,6 +205,15 @@ class $ChatConversationsTable extends ChatConversations with TableInfo<$ChatConv
         createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
       );
     }
+    if (data.containsKey('peer_chat_protocol')) {
+      context.handle(
+        _peerChatProtocolMeta,
+        peerChatProtocol.isAcceptableOrUnknown(
+          data['peer_chat_protocol']!,
+          _peerChatProtocolMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -230,6 +255,10 @@ class $ChatConversationsTable extends ChatConversations with TableInfo<$ChatConv
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      peerChatProtocol: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}peer_chat_protocol'],
+      ),
     );
   }
 
@@ -239,7 +268,8 @@ class $ChatConversationsTable extends ChatConversations with TableInfo<$ChatConv
   }
 }
 
-class ChatConversation extends DataClass implements Insertable<ChatConversation> {
+class ChatConversation extends DataClass
+    implements Insertable<ChatConversation> {
   /// The peer's certificate fingerprint (SHA-256), see [Device.fingerprint].
   final String peerFingerprint;
 
@@ -264,6 +294,11 @@ class ChatConversation extends DataClass implements Insertable<ChatConversation>
   final String? lastMessagePreview;
   final DateTime? lastMessageAt;
   final DateTime createdAt;
+
+  /// Highest chat protocol version the peer announced in its WebSocket
+  /// `hello` (schema v2). Null means unknown: only the legacy
+  /// `.aika-chat.v1.json` envelope is safe to use with that peer.
+  final int? peerChatProtocol;
   const ChatConversation({
     required this.peerFingerprint,
     required this.peerAlias,
@@ -273,6 +308,7 @@ class ChatConversation extends DataClass implements Insertable<ChatConversation>
     this.lastMessagePreview,
     this.lastMessageAt,
     required this.createdAt,
+    this.peerChatProtocol,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -293,6 +329,9 @@ class ChatConversation extends DataClass implements Insertable<ChatConversation>
       map['last_message_at'] = Variable<DateTime>(lastMessageAt);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || peerChatProtocol != null) {
+      map['peer_chat_protocol'] = Variable<int>(peerChatProtocol);
+    }
     return map;
   }
 
@@ -300,12 +339,23 @@ class ChatConversation extends DataClass implements Insertable<ChatConversation>
     return ChatConversationsCompanion(
       peerFingerprint: Value(peerFingerprint),
       peerAlias: Value(peerAlias),
-      peerDeviceModel: peerDeviceModel == null && nullToAbsent ? const Value.absent() : Value(peerDeviceModel),
-      lastSeenAt: lastSeenAt == null && nullToAbsent ? const Value.absent() : Value(lastSeenAt),
+      peerDeviceModel: peerDeviceModel == null && nullToAbsent
+          ? const Value.absent()
+          : Value(peerDeviceModel),
+      lastSeenAt: lastSeenAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastSeenAt),
       unreadCount: Value(unreadCount),
-      lastMessagePreview: lastMessagePreview == null && nullToAbsent ? const Value.absent() : Value(lastMessagePreview),
-      lastMessageAt: lastMessageAt == null && nullToAbsent ? const Value.absent() : Value(lastMessageAt),
+      lastMessagePreview: lastMessagePreview == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastMessagePreview),
+      lastMessageAt: lastMessageAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastMessageAt),
       createdAt: Value(createdAt),
+      peerChatProtocol: peerChatProtocol == null && nullToAbsent
+          ? const Value.absent()
+          : Value(peerChatProtocol),
     );
   }
 
@@ -325,6 +375,7 @@ class ChatConversation extends DataClass implements Insertable<ChatConversation>
       ),
       lastMessageAt: serializer.fromJson<DateTime?>(json['lastMessageAt']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      peerChatProtocol: serializer.fromJson<int?>(json['peerChatProtocol']),
     );
   }
   @override
@@ -339,6 +390,7 @@ class ChatConversation extends DataClass implements Insertable<ChatConversation>
       'lastMessagePreview': serializer.toJson<String?>(lastMessagePreview),
       'lastMessageAt': serializer.toJson<DateTime?>(lastMessageAt),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'peerChatProtocol': serializer.toJson<int?>(peerChatProtocol),
     };
   }
 
@@ -351,26 +403,51 @@ class ChatConversation extends DataClass implements Insertable<ChatConversation>
     Value<String?> lastMessagePreview = const Value.absent(),
     Value<DateTime?> lastMessageAt = const Value.absent(),
     DateTime? createdAt,
+    Value<int?> peerChatProtocol = const Value.absent(),
   }) => ChatConversation(
     peerFingerprint: peerFingerprint ?? this.peerFingerprint,
     peerAlias: peerAlias ?? this.peerAlias,
-    peerDeviceModel: peerDeviceModel.present ? peerDeviceModel.value : this.peerDeviceModel,
+    peerDeviceModel: peerDeviceModel.present
+        ? peerDeviceModel.value
+        : this.peerDeviceModel,
     lastSeenAt: lastSeenAt.present ? lastSeenAt.value : this.lastSeenAt,
     unreadCount: unreadCount ?? this.unreadCount,
-    lastMessagePreview: lastMessagePreview.present ? lastMessagePreview.value : this.lastMessagePreview,
-    lastMessageAt: lastMessageAt.present ? lastMessageAt.value : this.lastMessageAt,
+    lastMessagePreview: lastMessagePreview.present
+        ? lastMessagePreview.value
+        : this.lastMessagePreview,
+    lastMessageAt: lastMessageAt.present
+        ? lastMessageAt.value
+        : this.lastMessageAt,
     createdAt: createdAt ?? this.createdAt,
+    peerChatProtocol: peerChatProtocol.present
+        ? peerChatProtocol.value
+        : this.peerChatProtocol,
   );
   ChatConversation copyWithCompanion(ChatConversationsCompanion data) {
     return ChatConversation(
-      peerFingerprint: data.peerFingerprint.present ? data.peerFingerprint.value : this.peerFingerprint,
+      peerFingerprint: data.peerFingerprint.present
+          ? data.peerFingerprint.value
+          : this.peerFingerprint,
       peerAlias: data.peerAlias.present ? data.peerAlias.value : this.peerAlias,
-      peerDeviceModel: data.peerDeviceModel.present ? data.peerDeviceModel.value : this.peerDeviceModel,
-      lastSeenAt: data.lastSeenAt.present ? data.lastSeenAt.value : this.lastSeenAt,
-      unreadCount: data.unreadCount.present ? data.unreadCount.value : this.unreadCount,
-      lastMessagePreview: data.lastMessagePreview.present ? data.lastMessagePreview.value : this.lastMessagePreview,
-      lastMessageAt: data.lastMessageAt.present ? data.lastMessageAt.value : this.lastMessageAt,
+      peerDeviceModel: data.peerDeviceModel.present
+          ? data.peerDeviceModel.value
+          : this.peerDeviceModel,
+      lastSeenAt: data.lastSeenAt.present
+          ? data.lastSeenAt.value
+          : this.lastSeenAt,
+      unreadCount: data.unreadCount.present
+          ? data.unreadCount.value
+          : this.unreadCount,
+      lastMessagePreview: data.lastMessagePreview.present
+          ? data.lastMessagePreview.value
+          : this.lastMessagePreview,
+      lastMessageAt: data.lastMessageAt.present
+          ? data.lastMessageAt.value
+          : this.lastMessageAt,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      peerChatProtocol: data.peerChatProtocol.present
+          ? data.peerChatProtocol.value
+          : this.peerChatProtocol,
     );
   }
 
@@ -384,7 +461,8 @@ class ChatConversation extends DataClass implements Insertable<ChatConversation>
           ..write('unreadCount: $unreadCount, ')
           ..write('lastMessagePreview: $lastMessagePreview, ')
           ..write('lastMessageAt: $lastMessageAt, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('peerChatProtocol: $peerChatProtocol')
           ..write(')'))
         .toString();
   }
@@ -399,6 +477,7 @@ class ChatConversation extends DataClass implements Insertable<ChatConversation>
     lastMessagePreview,
     lastMessageAt,
     createdAt,
+    peerChatProtocol,
   );
   @override
   bool operator ==(Object other) =>
@@ -411,7 +490,8 @@ class ChatConversation extends DataClass implements Insertable<ChatConversation>
           other.unreadCount == this.unreadCount &&
           other.lastMessagePreview == this.lastMessagePreview &&
           other.lastMessageAt == this.lastMessageAt &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.peerChatProtocol == this.peerChatProtocol);
 }
 
 class ChatConversationsCompanion extends UpdateCompanion<ChatConversation> {
@@ -423,6 +503,7 @@ class ChatConversationsCompanion extends UpdateCompanion<ChatConversation> {
   final Value<String?> lastMessagePreview;
   final Value<DateTime?> lastMessageAt;
   final Value<DateTime> createdAt;
+  final Value<int?> peerChatProtocol;
   final Value<int> rowid;
   const ChatConversationsCompanion({
     this.peerFingerprint = const Value.absent(),
@@ -433,6 +514,7 @@ class ChatConversationsCompanion extends UpdateCompanion<ChatConversation> {
     this.lastMessagePreview = const Value.absent(),
     this.lastMessageAt = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.peerChatProtocol = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ChatConversationsCompanion.insert({
@@ -444,6 +526,7 @@ class ChatConversationsCompanion extends UpdateCompanion<ChatConversation> {
     this.lastMessagePreview = const Value.absent(),
     this.lastMessageAt = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.peerChatProtocol = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : peerFingerprint = Value(peerFingerprint),
        peerAlias = Value(peerAlias);
@@ -456,6 +539,7 @@ class ChatConversationsCompanion extends UpdateCompanion<ChatConversation> {
     Expression<String>? lastMessagePreview,
     Expression<DateTime>? lastMessageAt,
     Expression<DateTime>? createdAt,
+    Expression<int>? peerChatProtocol,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -464,9 +548,11 @@ class ChatConversationsCompanion extends UpdateCompanion<ChatConversation> {
       if (peerDeviceModel != null) 'peer_device_model': peerDeviceModel,
       if (lastSeenAt != null) 'last_seen_at': lastSeenAt,
       if (unreadCount != null) 'unread_count': unreadCount,
-      if (lastMessagePreview != null) 'last_message_preview': lastMessagePreview,
+      if (lastMessagePreview != null)
+        'last_message_preview': lastMessagePreview,
       if (lastMessageAt != null) 'last_message_at': lastMessageAt,
       if (createdAt != null) 'created_at': createdAt,
+      if (peerChatProtocol != null) 'peer_chat_protocol': peerChatProtocol,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -480,6 +566,7 @@ class ChatConversationsCompanion extends UpdateCompanion<ChatConversation> {
     Value<String?>? lastMessagePreview,
     Value<DateTime?>? lastMessageAt,
     Value<DateTime>? createdAt,
+    Value<int?>? peerChatProtocol,
     Value<int>? rowid,
   }) {
     return ChatConversationsCompanion(
@@ -491,6 +578,7 @@ class ChatConversationsCompanion extends UpdateCompanion<ChatConversation> {
       lastMessagePreview: lastMessagePreview ?? this.lastMessagePreview,
       lastMessageAt: lastMessageAt ?? this.lastMessageAt,
       createdAt: createdAt ?? this.createdAt,
+      peerChatProtocol: peerChatProtocol ?? this.peerChatProtocol,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -522,6 +610,9 @@ class ChatConversationsCompanion extends UpdateCompanion<ChatConversation> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (peerChatProtocol.present) {
+      map['peer_chat_protocol'] = Variable<int>(peerChatProtocol.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -539,13 +630,15 @@ class ChatConversationsCompanion extends UpdateCompanion<ChatConversation> {
           ..write('lastMessagePreview: $lastMessagePreview, ')
           ..write('lastMessageAt: $lastMessageAt, ')
           ..write('createdAt: $createdAt, ')
+          ..write('peerChatProtocol: $peerChatProtocol, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
   }
 }
 
-class $ChatMessagesTable extends ChatMessages with TableInfo<$ChatMessagesTable, ChatMessage> {
+class $ChatMessagesTable extends ChatMessages
+    with TableInfo<$ChatMessagesTable, ChatMessage> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
@@ -574,7 +667,11 @@ class $ChatMessagesTable extends ChatMessages with TableInfo<$ChatMessagesTable,
     ),
   );
   @override
-  late final GeneratedColumnWithTypeConverter<ChatMessageDirectionColumn, String> direction =
+  late final GeneratedColumnWithTypeConverter<
+    ChatMessageDirectionColumn,
+    String
+  >
+  direction =
       GeneratedColumn<String>(
         'direction',
         aliasedName,
@@ -615,15 +712,17 @@ class $ChatMessagesTable extends ChatMessages with TableInfo<$ChatMessagesTable,
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
-  static const VerificationMeta _attachmentFileNameMeta = const VerificationMeta('attachmentFileName');
+  static const VerificationMeta _attachmentFileNameMeta =
+      const VerificationMeta('attachmentFileName');
   @override
-  late final GeneratedColumn<String> attachmentFileName = GeneratedColumn<String>(
-    'attachment_file_name',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-  );
+  late final GeneratedColumn<String> attachmentFileName =
+      GeneratedColumn<String>(
+        'attachment_file_name',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _attachmentSizeMeta = const VerificationMeta(
     'attachmentSize',
   );
@@ -636,7 +735,8 @@ class $ChatMessagesTable extends ChatMessages with TableInfo<$ChatMessagesTable,
     requiredDuringInsert: false,
   );
   @override
-  late final GeneratedColumnWithTypeConverter<ChatMessageStatusColumn, String> status = GeneratedColumn<String>(
+  late final GeneratedColumnWithTypeConverter<ChatMessageStatusColumn, String>
+  status = GeneratedColumn<String>(
     'status',
     aliasedName,
     false,
@@ -664,6 +764,15 @@ class $ChatMessagesTable extends ChatMessages with TableInfo<$ChatMessagesTable,
     false,
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sentAtMeta = const VerificationMeta('sentAt');
+  @override
+  late final GeneratedColumn<DateTime> sentAt = GeneratedColumn<DateTime>(
+    'sent_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
   );
   static const VerificationMeta _deliveredAtMeta = const VerificationMeta(
     'deliveredAt',
@@ -698,6 +807,7 @@ class $ChatMessagesTable extends ChatMessages with TableInfo<$ChatMessagesTable,
     status,
     errorMessage,
     createdAt,
+    sentAt,
     deliveredAt,
     readAt,
   ];
@@ -790,6 +900,12 @@ class $ChatMessagesTable extends ChatMessages with TableInfo<$ChatMessagesTable,
     } else if (isInserting) {
       context.missing(_createdAtMeta);
     }
+    if (data.containsKey('sent_at')) {
+      context.handle(
+        _sentAtMeta,
+        sentAt.isAcceptableOrUnknown(data['sent_at']!, _sentAtMeta),
+      );
+    }
     if (data.containsKey('delivered_at')) {
       context.handle(
         _deliveredAtMeta,
@@ -862,6 +978,10 @@ class $ChatMessagesTable extends ChatMessages with TableInfo<$ChatMessagesTable,
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      sentAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}sent_at'],
+      ),
       deliveredAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}delivered_at'],
@@ -878,10 +998,12 @@ class $ChatMessagesTable extends ChatMessages with TableInfo<$ChatMessagesTable,
     return $ChatMessagesTable(attachedDatabase, alias);
   }
 
-  static JsonTypeConverter2<ChatMessageDirectionColumn, String, String> $converterdirection = const EnumNameConverter<ChatMessageDirectionColumn>(
+  static JsonTypeConverter2<ChatMessageDirectionColumn, String, String>
+  $converterdirection = const EnumNameConverter<ChatMessageDirectionColumn>(
     ChatMessageDirectionColumn.values,
   );
-  static JsonTypeConverter2<ChatMessageStatusColumn, String, String> $converterstatus = const EnumNameConverter<ChatMessageStatusColumn>(
+  static JsonTypeConverter2<ChatMessageStatusColumn, String, String>
+  $converterstatus = const EnumNameConverter<ChatMessageStatusColumn>(
     ChatMessageStatusColumn.values,
   );
 }
@@ -907,6 +1029,10 @@ class ChatMessage extends DataClass implements Insertable<ChatMessage> {
   final ChatMessageStatusColumn status;
   final String? errorMessage;
   final DateTime createdAt;
+
+  /// When an outgoing message actually left this device (schema v2); null
+  /// while it is still pending, and for incoming messages.
+  final DateTime? sentAt;
   final DateTime? deliveredAt;
   final DateTime? readAt;
   const ChatMessage({
@@ -921,6 +1047,7 @@ class ChatMessage extends DataClass implements Insertable<ChatMessage> {
     required this.status,
     this.errorMessage,
     required this.createdAt,
+    this.sentAt,
     this.deliveredAt,
     this.readAt,
   });
@@ -956,6 +1083,9 @@ class ChatMessage extends DataClass implements Insertable<ChatMessage> {
       map['error_message'] = Variable<String>(errorMessage);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || sentAt != null) {
+      map['sent_at'] = Variable<DateTime>(sentAt);
+    }
     if (!nullToAbsent || deliveredAt != null) {
       map['delivered_at'] = Variable<DateTime>(deliveredAt);
     }
@@ -972,14 +1102,29 @@ class ChatMessage extends DataClass implements Insertable<ChatMessage> {
       direction: Value(direction),
       contentType: Value(contentType),
       body: body == null && nullToAbsent ? const Value.absent() : Value(body),
-      attachmentPath: attachmentPath == null && nullToAbsent ? const Value.absent() : Value(attachmentPath),
-      attachmentFileName: attachmentFileName == null && nullToAbsent ? const Value.absent() : Value(attachmentFileName),
-      attachmentSize: attachmentSize == null && nullToAbsent ? const Value.absent() : Value(attachmentSize),
+      attachmentPath: attachmentPath == null && nullToAbsent
+          ? const Value.absent()
+          : Value(attachmentPath),
+      attachmentFileName: attachmentFileName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(attachmentFileName),
+      attachmentSize: attachmentSize == null && nullToAbsent
+          ? const Value.absent()
+          : Value(attachmentSize),
       status: Value(status),
-      errorMessage: errorMessage == null && nullToAbsent ? const Value.absent() : Value(errorMessage),
+      errorMessage: errorMessage == null && nullToAbsent
+          ? const Value.absent()
+          : Value(errorMessage),
       createdAt: Value(createdAt),
-      deliveredAt: deliveredAt == null && nullToAbsent ? const Value.absent() : Value(deliveredAt),
-      readAt: readAt == null && nullToAbsent ? const Value.absent() : Value(readAt),
+      sentAt: sentAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sentAt),
+      deliveredAt: deliveredAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deliveredAt),
+      readAt: readAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(readAt),
     );
   }
 
@@ -1006,6 +1151,7 @@ class ChatMessage extends DataClass implements Insertable<ChatMessage> {
       ),
       errorMessage: serializer.fromJson<String?>(json['errorMessage']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      sentAt: serializer.fromJson<DateTime?>(json['sentAt']),
       deliveredAt: serializer.fromJson<DateTime?>(json['deliveredAt']),
       readAt: serializer.fromJson<DateTime?>(json['readAt']),
     );
@@ -1029,6 +1175,7 @@ class ChatMessage extends DataClass implements Insertable<ChatMessage> {
       ),
       'errorMessage': serializer.toJson<String?>(errorMessage),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'sentAt': serializer.toJson<DateTime?>(sentAt),
       'deliveredAt': serializer.toJson<DateTime?>(deliveredAt),
       'readAt': serializer.toJson<DateTime?>(readAt),
     };
@@ -1046,6 +1193,7 @@ class ChatMessage extends DataClass implements Insertable<ChatMessage> {
     ChatMessageStatusColumn? status,
     Value<String?> errorMessage = const Value.absent(),
     DateTime? createdAt,
+    Value<DateTime?> sentAt = const Value.absent(),
     Value<DateTime?> deliveredAt = const Value.absent(),
     Value<DateTime?> readAt = const Value.absent(),
   }) => ChatMessage(
@@ -1054,29 +1202,51 @@ class ChatMessage extends DataClass implements Insertable<ChatMessage> {
     direction: direction ?? this.direction,
     contentType: contentType ?? this.contentType,
     body: body.present ? body.value : this.body,
-    attachmentPath: attachmentPath.present ? attachmentPath.value : this.attachmentPath,
-    attachmentFileName: attachmentFileName.present ? attachmentFileName.value : this.attachmentFileName,
-    attachmentSize: attachmentSize.present ? attachmentSize.value : this.attachmentSize,
+    attachmentPath: attachmentPath.present
+        ? attachmentPath.value
+        : this.attachmentPath,
+    attachmentFileName: attachmentFileName.present
+        ? attachmentFileName.value
+        : this.attachmentFileName,
+    attachmentSize: attachmentSize.present
+        ? attachmentSize.value
+        : this.attachmentSize,
     status: status ?? this.status,
     errorMessage: errorMessage.present ? errorMessage.value : this.errorMessage,
     createdAt: createdAt ?? this.createdAt,
+    sentAt: sentAt.present ? sentAt.value : this.sentAt,
     deliveredAt: deliveredAt.present ? deliveredAt.value : this.deliveredAt,
     readAt: readAt.present ? readAt.value : this.readAt,
   );
   ChatMessage copyWithCompanion(ChatMessagesCompanion data) {
     return ChatMessage(
       id: data.id.present ? data.id.value : this.id,
-      conversationId: data.conversationId.present ? data.conversationId.value : this.conversationId,
+      conversationId: data.conversationId.present
+          ? data.conversationId.value
+          : this.conversationId,
       direction: data.direction.present ? data.direction.value : this.direction,
-      contentType: data.contentType.present ? data.contentType.value : this.contentType,
+      contentType: data.contentType.present
+          ? data.contentType.value
+          : this.contentType,
       body: data.body.present ? data.body.value : this.body,
-      attachmentPath: data.attachmentPath.present ? data.attachmentPath.value : this.attachmentPath,
-      attachmentFileName: data.attachmentFileName.present ? data.attachmentFileName.value : this.attachmentFileName,
-      attachmentSize: data.attachmentSize.present ? data.attachmentSize.value : this.attachmentSize,
+      attachmentPath: data.attachmentPath.present
+          ? data.attachmentPath.value
+          : this.attachmentPath,
+      attachmentFileName: data.attachmentFileName.present
+          ? data.attachmentFileName.value
+          : this.attachmentFileName,
+      attachmentSize: data.attachmentSize.present
+          ? data.attachmentSize.value
+          : this.attachmentSize,
       status: data.status.present ? data.status.value : this.status,
-      errorMessage: data.errorMessage.present ? data.errorMessage.value : this.errorMessage,
+      errorMessage: data.errorMessage.present
+          ? data.errorMessage.value
+          : this.errorMessage,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
-      deliveredAt: data.deliveredAt.present ? data.deliveredAt.value : this.deliveredAt,
+      sentAt: data.sentAt.present ? data.sentAt.value : this.sentAt,
+      deliveredAt: data.deliveredAt.present
+          ? data.deliveredAt.value
+          : this.deliveredAt,
       readAt: data.readAt.present ? data.readAt.value : this.readAt,
     );
   }
@@ -1095,6 +1265,7 @@ class ChatMessage extends DataClass implements Insertable<ChatMessage> {
           ..write('status: $status, ')
           ..write('errorMessage: $errorMessage, ')
           ..write('createdAt: $createdAt, ')
+          ..write('sentAt: $sentAt, ')
           ..write('deliveredAt: $deliveredAt, ')
           ..write('readAt: $readAt')
           ..write(')'))
@@ -1114,6 +1285,7 @@ class ChatMessage extends DataClass implements Insertable<ChatMessage> {
     status,
     errorMessage,
     createdAt,
+    sentAt,
     deliveredAt,
     readAt,
   );
@@ -1132,6 +1304,7 @@ class ChatMessage extends DataClass implements Insertable<ChatMessage> {
           other.status == this.status &&
           other.errorMessage == this.errorMessage &&
           other.createdAt == this.createdAt &&
+          other.sentAt == this.sentAt &&
           other.deliveredAt == this.deliveredAt &&
           other.readAt == this.readAt);
 }
@@ -1148,6 +1321,7 @@ class ChatMessagesCompanion extends UpdateCompanion<ChatMessage> {
   final Value<ChatMessageStatusColumn> status;
   final Value<String?> errorMessage;
   final Value<DateTime> createdAt;
+  final Value<DateTime?> sentAt;
   final Value<DateTime?> deliveredAt;
   final Value<DateTime?> readAt;
   final Value<int> rowid;
@@ -1163,6 +1337,7 @@ class ChatMessagesCompanion extends UpdateCompanion<ChatMessage> {
     this.status = const Value.absent(),
     this.errorMessage = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.sentAt = const Value.absent(),
     this.deliveredAt = const Value.absent(),
     this.readAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -1179,6 +1354,7 @@ class ChatMessagesCompanion extends UpdateCompanion<ChatMessage> {
     required ChatMessageStatusColumn status,
     this.errorMessage = const Value.absent(),
     required DateTime createdAt,
+    this.sentAt = const Value.absent(),
     this.deliveredAt = const Value.absent(),
     this.readAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -1200,6 +1376,7 @@ class ChatMessagesCompanion extends UpdateCompanion<ChatMessage> {
     Expression<String>? status,
     Expression<String>? errorMessage,
     Expression<DateTime>? createdAt,
+    Expression<DateTime>? sentAt,
     Expression<DateTime>? deliveredAt,
     Expression<DateTime>? readAt,
     Expression<int>? rowid,
@@ -1211,11 +1388,13 @@ class ChatMessagesCompanion extends UpdateCompanion<ChatMessage> {
       if (contentType != null) 'content_type': contentType,
       if (body != null) 'body': body,
       if (attachmentPath != null) 'attachment_path': attachmentPath,
-      if (attachmentFileName != null) 'attachment_file_name': attachmentFileName,
+      if (attachmentFileName != null)
+        'attachment_file_name': attachmentFileName,
       if (attachmentSize != null) 'attachment_size': attachmentSize,
       if (status != null) 'status': status,
       if (errorMessage != null) 'error_message': errorMessage,
       if (createdAt != null) 'created_at': createdAt,
+      if (sentAt != null) 'sent_at': sentAt,
       if (deliveredAt != null) 'delivered_at': deliveredAt,
       if (readAt != null) 'read_at': readAt,
       if (rowid != null) 'rowid': rowid,
@@ -1234,6 +1413,7 @@ class ChatMessagesCompanion extends UpdateCompanion<ChatMessage> {
     Value<ChatMessageStatusColumn>? status,
     Value<String?>? errorMessage,
     Value<DateTime>? createdAt,
+    Value<DateTime?>? sentAt,
     Value<DateTime?>? deliveredAt,
     Value<DateTime?>? readAt,
     Value<int>? rowid,
@@ -1250,6 +1430,7 @@ class ChatMessagesCompanion extends UpdateCompanion<ChatMessage> {
       status: status ?? this.status,
       errorMessage: errorMessage ?? this.errorMessage,
       createdAt: createdAt ?? this.createdAt,
+      sentAt: sentAt ?? this.sentAt,
       deliveredAt: deliveredAt ?? this.deliveredAt,
       readAt: readAt ?? this.readAt,
       rowid: rowid ?? this.rowid,
@@ -1296,6 +1477,9 @@ class ChatMessagesCompanion extends UpdateCompanion<ChatMessage> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (sentAt.present) {
+      map['sent_at'] = Variable<DateTime>(sentAt.value);
+    }
     if (deliveredAt.present) {
       map['delivered_at'] = Variable<DateTime>(deliveredAt.value);
     }
@@ -1322,6 +1506,7 @@ class ChatMessagesCompanion extends UpdateCompanion<ChatMessage> {
           ..write('status: $status, ')
           ..write('errorMessage: $errorMessage, ')
           ..write('createdAt: $createdAt, ')
+          ..write('sentAt: $sentAt, ')
           ..write('deliveredAt: $deliveredAt, ')
           ..write('readAt: $readAt, ')
           ..write('rowid: $rowid')
@@ -1330,7 +1515,8 @@ class ChatMessagesCompanion extends UpdateCompanion<ChatMessage> {
   }
 }
 
-class $ChatOutboxEntriesTable extends ChatOutboxEntries with TableInfo<$ChatOutboxEntriesTable, ChatOutboxEntry> {
+class $ChatOutboxEntriesTable extends ChatOutboxEntries
+    with TableInfo<$ChatOutboxEntriesTable, ChatOutboxEntry> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
@@ -1365,13 +1551,14 @@ class $ChatOutboxEntriesTable extends ChatOutboxEntries with TableInfo<$ChatOutb
     'nextAttemptAt',
   );
   @override
-  late final GeneratedColumn<DateTime> nextAttemptAt = GeneratedColumn<DateTime>(
-    'next_attempt_at',
-    aliasedName,
-    false,
-    type: DriftSqlType.dateTime,
-    requiredDuringInsert: true,
-  );
+  late final GeneratedColumn<DateTime> nextAttemptAt =
+      GeneratedColumn<DateTime>(
+        'next_attempt_at',
+        aliasedName,
+        false,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: true,
+      );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -1536,7 +1723,9 @@ class ChatOutboxEntry extends DataClass implements Insertable<ChatOutboxEntry> {
     return ChatOutboxEntry(
       messageId: data.messageId.present ? data.messageId.value : this.messageId,
       attempts: data.attempts.present ? data.attempts.value : this.attempts,
-      nextAttemptAt: data.nextAttemptAt.present ? data.nextAttemptAt.value : this.nextAttemptAt,
+      nextAttemptAt: data.nextAttemptAt.present
+          ? data.nextAttemptAt.value
+          : this.nextAttemptAt,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
   }
@@ -1553,7 +1742,8 @@ class ChatOutboxEntry extends DataClass implements Insertable<ChatOutboxEntry> {
   }
 
   @override
-  int get hashCode => Object.hash(messageId, attempts, nextAttemptAt, createdAt);
+  int get hashCode =>
+      Object.hash(messageId, attempts, nextAttemptAt, createdAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1651,7 +1841,8 @@ class ChatOutboxEntriesCompanion extends UpdateCompanion<ChatOutboxEntry> {
   }
 }
 
-class $ChatBlockedDevicesTable extends ChatBlockedDevices with TableInfo<$ChatBlockedDevicesTable, ChatBlockedDevice> {
+class $ChatBlockedDevicesTable extends ChatBlockedDevices
+    with TableInfo<$ChatBlockedDevicesTable, ChatBlockedDevice> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
@@ -1757,7 +1948,8 @@ class $ChatBlockedDevicesTable extends ChatBlockedDevices with TableInfo<$ChatBl
   }
 }
 
-class ChatBlockedDevice extends DataClass implements Insertable<ChatBlockedDevice> {
+class ChatBlockedDevice extends DataClass
+    implements Insertable<ChatBlockedDevice> {
   final String fingerprint;
   final String alias;
   final DateTime blockedAt;
@@ -1815,7 +2007,9 @@ class ChatBlockedDevice extends DataClass implements Insertable<ChatBlockedDevic
   );
   ChatBlockedDevice copyWithCompanion(ChatBlockedDevicesCompanion data) {
     return ChatBlockedDevice(
-      fingerprint: data.fingerprint.present ? data.fingerprint.value : this.fingerprint,
+      fingerprint: data.fingerprint.present
+          ? data.fingerprint.value
+          : this.fingerprint,
       alias: data.alias.present ? data.alias.value : this.alias,
       blockedAt: data.blockedAt.present ? data.blockedAt.value : this.blockedAt,
     );
@@ -1836,7 +2030,10 @@ class ChatBlockedDevice extends DataClass implements Insertable<ChatBlockedDevic
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      (other is ChatBlockedDevice && other.fingerprint == this.fingerprint && other.alias == this.alias && other.blockedAt == this.blockedAt);
+      (other is ChatBlockedDevice &&
+          other.fingerprint == this.fingerprint &&
+          other.alias == this.alias &&
+          other.blockedAt == this.blockedAt);
 }
 
 class ChatBlockedDevicesCompanion extends UpdateCompanion<ChatBlockedDevice> {
@@ -1918,18 +2115,32 @@ class ChatBlockedDevicesCompanion extends UpdateCompanion<ChatBlockedDevice> {
 abstract class _$ChatDatabase extends GeneratedDatabase {
   _$ChatDatabase(QueryExecutor e) : super(e);
   $ChatDatabaseManager get managers => $ChatDatabaseManager(this);
-  late final $ChatConversationsTable chatConversations = $ChatConversationsTable(this);
+  late final $ChatConversationsTable chatConversations =
+      $ChatConversationsTable(this);
   late final $ChatMessagesTable chatMessages = $ChatMessagesTable(this);
-  late final $ChatOutboxEntriesTable chatOutboxEntries = $ChatOutboxEntriesTable(this);
-  late final $ChatBlockedDevicesTable chatBlockedDevices = $ChatBlockedDevicesTable(this);
+  late final $ChatOutboxEntriesTable chatOutboxEntries =
+      $ChatOutboxEntriesTable(this);
+  late final $ChatBlockedDevicesTable chatBlockedDevices =
+      $ChatBlockedDevicesTable(this);
+  late final Index chatMessagesConversationCreated = Index(
+    'chat_messages_conversation_created',
+    'CREATE INDEX chat_messages_conversation_created ON chat_messages (conversation_id, created_at)',
+  );
+  late final Index chatOutboxNextAttempt = Index(
+    'chat_outbox_next_attempt',
+    'CREATE INDEX chat_outbox_next_attempt ON chat_outbox_entries (next_attempt_at)',
+  );
   @override
-  Iterable<TableInfo<Table, Object?>> get allTables => allSchemaEntities.whereType<TableInfo<Table, Object?>>();
+  Iterable<TableInfo<Table, Object?>> get allTables =>
+      allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
   List<DatabaseSchemaEntity> get allSchemaEntities => [
     chatConversations,
     chatMessages,
     chatOutboxEntries,
     chatBlockedDevices,
+    chatMessagesConversationCreated,
+    chatOutboxNextAttempt,
   ];
 }
 
@@ -1943,6 +2154,7 @@ typedef $$ChatConversationsTableCreateCompanionBuilder =
       Value<String?> lastMessagePreview,
       Value<DateTime?> lastMessageAt,
       Value<DateTime> createdAt,
+      Value<int?> peerChatProtocol,
       Value<int> rowid,
     });
 typedef $$ChatConversationsTableUpdateCompanionBuilder =
@@ -1955,27 +2167,37 @@ typedef $$ChatConversationsTableUpdateCompanionBuilder =
       Value<String?> lastMessagePreview,
       Value<DateTime?> lastMessageAt,
       Value<DateTime> createdAt,
+      Value<int?> peerChatProtocol,
       Value<int> rowid,
     });
 
-final class $$ChatConversationsTableReferences extends BaseReferences<_$ChatDatabase, $ChatConversationsTable, ChatConversation> {
+final class $$ChatConversationsTableReferences
+    extends
+        BaseReferences<
+          _$ChatDatabase,
+          $ChatConversationsTable,
+          ChatConversation
+        > {
   $$ChatConversationsTableReferences(
     super.$_db,
     super.$_table,
     super.$_typedResult,
   );
 
-  static MultiTypedResultKey<$ChatMessagesTable, List<ChatMessage>> _chatMessagesRefsTable(_$ChatDatabase db) => MultiTypedResultKey.fromTable(
+  static MultiTypedResultKey<$ChatMessagesTable, List<ChatMessage>>
+  _chatMessagesRefsTable(_$ChatDatabase db) => MultiTypedResultKey.fromTable(
     db.chatMessages,
-    aliasName: 'chat_conversations__peer_fingerprint__chat_messages__conversation_id',
+    aliasName:
+        'chat_conversations__peer_fingerprint__chat_messages__conversation_id',
   );
 
   $$ChatMessagesTableProcessedTableManager get chatMessagesRefs {
-    final manager = $$ChatMessagesTableTableManager($_db, $_db.chatMessages).filter(
-      (f) => f.conversationId.peerFingerprint.sqlEquals(
-        $_itemColumn<String>('peer_fingerprint')!,
-      ),
-    );
+    final manager = $$ChatMessagesTableTableManager($_db, $_db.chatMessages)
+        .filter(
+          (f) => f.conversationId.peerFingerprint.sqlEquals(
+            $_itemColumn<String>('peer_fingerprint')!,
+          ),
+        );
 
     final cache = $_typedResult.readTableOrNull(_chatMessagesRefsTable($_db));
     return ProcessedTableManager(
@@ -1984,7 +2206,8 @@ final class $$ChatConversationsTableReferences extends BaseReferences<_$ChatData
   }
 }
 
-class $$ChatConversationsTableFilterComposer extends Composer<_$ChatDatabase, $ChatConversationsTable> {
+class $$ChatConversationsTableFilterComposer
+    extends Composer<_$ChatDatabase, $ChatConversationsTable> {
   $$ChatConversationsTableFilterComposer({
     required super.$db,
     required super.$table,
@@ -2032,6 +2255,11 @@ class $$ChatConversationsTableFilterComposer extends Composer<_$ChatDatabase, $C
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<int> get peerChatProtocol => $composableBuilder(
+    column: $table.peerChatProtocol,
+    builder: (column) => ColumnFilters(column),
+  );
+
   Expression<bool> chatMessagesRefs(
     Expression<bool> Function($$ChatMessagesTableFilterComposer f) f,
   ) {
@@ -2050,14 +2278,16 @@ class $$ChatConversationsTableFilterComposer extends Composer<_$ChatDatabase, $C
             $table: $db.chatMessages,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
           ),
     );
     return f(composer);
   }
 }
 
-class $$ChatConversationsTableOrderingComposer extends Composer<_$ChatDatabase, $ChatConversationsTable> {
+class $$ChatConversationsTableOrderingComposer
+    extends Composer<_$ChatDatabase, $ChatConversationsTable> {
   $$ChatConversationsTableOrderingComposer({
     required super.$db,
     required super.$table,
@@ -2104,9 +2334,15 @@ class $$ChatConversationsTableOrderingComposer extends Composer<_$ChatDatabase, 
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get peerChatProtocol => $composableBuilder(
+    column: $table.peerChatProtocol,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
-class $$ChatConversationsTableAnnotationComposer extends Composer<_$ChatDatabase, $ChatConversationsTable> {
+class $$ChatConversationsTableAnnotationComposer
+    extends Composer<_$ChatDatabase, $ChatConversationsTable> {
   $$ChatConversationsTableAnnotationComposer({
     required super.$db,
     required super.$table,
@@ -2119,7 +2355,8 @@ class $$ChatConversationsTableAnnotationComposer extends Composer<_$ChatDatabase
     builder: (column) => column,
   );
 
-  GeneratedColumn<String> get peerAlias => $composableBuilder(column: $table.peerAlias, builder: (column) => column);
+  GeneratedColumn<String> get peerAlias =>
+      $composableBuilder(column: $table.peerAlias, builder: (column) => column);
 
   GeneratedColumn<String> get peerDeviceModel => $composableBuilder(
     column: $table.peerDeviceModel,
@@ -2146,7 +2383,13 @@ class $$ChatConversationsTableAnnotationComposer extends Composer<_$ChatDatabase
     builder: (column) => column,
   );
 
-  GeneratedColumn<DateTime> get createdAt => $composableBuilder(column: $table.createdAt, builder: (column) => column);
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<int> get peerChatProtocol => $composableBuilder(
+    column: $table.peerChatProtocol,
+    builder: (column) => column,
+  );
 
   Expression<T> chatMessagesRefs<T extends Object>(
     Expression<T> Function($$ChatMessagesTableAnnotationComposer a) f,
@@ -2166,7 +2409,8 @@ class $$ChatConversationsTableAnnotationComposer extends Composer<_$ChatDatabase
             $table: $db.chatMessages,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
           ),
     );
     return f(composer);
@@ -2195,12 +2439,15 @@ class $$ChatConversationsTableTableManager
         TableManagerState(
           db: db,
           table: table,
-          createFilteringComposer: () => $$ChatConversationsTableFilterComposer($db: db, $table: table),
-          createOrderingComposer: () => $$ChatConversationsTableOrderingComposer($db: db, $table: table),
-          createComputedFieldComposer: () => $$ChatConversationsTableAnnotationComposer(
-            $db: db,
-            $table: table,
-          ),
+          createFilteringComposer: () =>
+              $$ChatConversationsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ChatConversationsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ChatConversationsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
           updateCompanionCallback:
               ({
                 Value<String> peerFingerprint = const Value.absent(),
@@ -2211,6 +2458,7 @@ class $$ChatConversationsTableTableManager
                 Value<String?> lastMessagePreview = const Value.absent(),
                 Value<DateTime?> lastMessageAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<int?> peerChatProtocol = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ChatConversationsCompanion(
                 peerFingerprint: peerFingerprint,
@@ -2221,6 +2469,7 @@ class $$ChatConversationsTableTableManager
                 lastMessagePreview: lastMessagePreview,
                 lastMessageAt: lastMessageAt,
                 createdAt: createdAt,
+                peerChatProtocol: peerChatProtocol,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -2233,6 +2482,7 @@ class $$ChatConversationsTableTableManager
                 Value<String?> lastMessagePreview = const Value.absent(),
                 Value<DateTime?> lastMessageAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<int?> peerChatProtocol = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ChatConversationsCompanion.insert(
                 peerFingerprint: peerFingerprint,
@@ -2243,6 +2493,7 @@ class $$ChatConversationsTableTableManager
                 lastMessagePreview: lastMessagePreview,
                 lastMessageAt: lastMessageAt,
                 createdAt: createdAt,
+                peerChatProtocol: peerChatProtocol,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -2261,17 +2512,24 @@ class $$ChatConversationsTableTableManager
               getPrefetchedDataCallback: (items) async {
                 return [
                   if (chatMessagesRefs)
-                    await $_getPrefetchedData<ChatConversation, $ChatConversationsTable, ChatMessage>(
+                    await $_getPrefetchedData<
+                      ChatConversation,
+                      $ChatConversationsTable,
+                      ChatMessage
+                    >(
                       currentTable: table,
-                      referencedTable: $$ChatConversationsTableReferences._chatMessagesRefsTable(db),
-                      managerFromTypedResult: (p0) => $$ChatConversationsTableReferences(
-                        db,
-                        table,
-                        p0,
-                      ).chatMessagesRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) => referencedItems.where(
-                        (e) => e.conversationId == item.peerFingerprint,
-                      ),
+                      referencedTable: $$ChatConversationsTableReferences
+                          ._chatMessagesRefsTable(db),
+                      managerFromTypedResult: (p0) =>
+                          $$ChatConversationsTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).chatMessagesRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where(
+                            (e) => e.conversationId == item.peerFingerprint,
+                          ),
                       typedResults: items,
                     ),
                 ];
@@ -2309,6 +2567,7 @@ typedef $$ChatMessagesTableCreateCompanionBuilder =
       required ChatMessageStatusColumn status,
       Value<String?> errorMessage,
       required DateTime createdAt,
+      Value<DateTime?> sentAt,
       Value<DateTime?> deliveredAt,
       Value<DateTime?> readAt,
       Value<int> rowid,
@@ -2326,17 +2585,20 @@ typedef $$ChatMessagesTableUpdateCompanionBuilder =
       Value<ChatMessageStatusColumn> status,
       Value<String?> errorMessage,
       Value<DateTime> createdAt,
+      Value<DateTime?> sentAt,
       Value<DateTime?> deliveredAt,
       Value<DateTime?> readAt,
       Value<int> rowid,
     });
 
-final class $$ChatMessagesTableReferences extends BaseReferences<_$ChatDatabase, $ChatMessagesTable, ChatMessage> {
+final class $$ChatMessagesTableReferences
+    extends BaseReferences<_$ChatDatabase, $ChatMessagesTable, ChatMessage> {
   $$ChatMessagesTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
-  static $ChatConversationsTable _conversationIdTable(_$ChatDatabase db) => db.chatConversations.createAlias(
-    'chat_messages__conversation_id__chat_conversations__peer_fingerprint',
-  );
+  static $ChatConversationsTable _conversationIdTable(_$ChatDatabase db) =>
+      db.chatConversations.createAlias(
+        'chat_messages__conversation_id__chat_conversations__peer_fingerprint',
+      );
 
   $$ChatConversationsTableProcessedTableManager get conversationId {
     final $_column = $_itemColumn<String>('conversation_id')!;
@@ -2352,7 +2614,8 @@ final class $$ChatMessagesTableReferences extends BaseReferences<_$ChatDatabase,
     );
   }
 
-  static MultiTypedResultKey<$ChatOutboxEntriesTable, List<ChatOutboxEntry>> _chatOutboxEntriesRefsTable(_$ChatDatabase db) =>
+  static MultiTypedResultKey<$ChatOutboxEntriesTable, List<ChatOutboxEntry>>
+  _chatOutboxEntriesRefsTable(_$ChatDatabase db) =>
       MultiTypedResultKey.fromTable(
         db.chatOutboxEntries,
         aliasName: 'chat_messages__id__chat_outbox_entries__message_id',
@@ -2373,7 +2636,8 @@ final class $$ChatMessagesTableReferences extends BaseReferences<_$ChatDatabase,
   }
 }
 
-class $$ChatMessagesTableFilterComposer extends Composer<_$ChatDatabase, $ChatMessagesTable> {
+class $$ChatMessagesTableFilterComposer
+    extends Composer<_$ChatDatabase, $ChatMessagesTable> {
   $$ChatMessagesTableFilterComposer({
     required super.$db,
     required super.$table,
@@ -2386,7 +2650,12 @@ class $$ChatMessagesTableFilterComposer extends Composer<_$ChatDatabase, $ChatMe
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnWithTypeConverterFilters<ChatMessageDirectionColumn, ChatMessageDirectionColumn, String> get direction => $composableBuilder(
+  ColumnWithTypeConverterFilters<
+    ChatMessageDirectionColumn,
+    ChatMessageDirectionColumn,
+    String
+  >
+  get direction => $composableBuilder(
     column: $table.direction,
     builder: (column) => ColumnWithTypeConverterFilters(column),
   );
@@ -2416,7 +2685,12 @@ class $$ChatMessagesTableFilterComposer extends Composer<_$ChatDatabase, $ChatMe
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnWithTypeConverterFilters<ChatMessageStatusColumn, ChatMessageStatusColumn, String> get status => $composableBuilder(
+  ColumnWithTypeConverterFilters<
+    ChatMessageStatusColumn,
+    ChatMessageStatusColumn,
+    String
+  >
+  get status => $composableBuilder(
     column: $table.status,
     builder: (column) => ColumnWithTypeConverterFilters(column),
   );
@@ -2428,6 +2702,11 @@ class $$ChatMessagesTableFilterComposer extends Composer<_$ChatDatabase, $ChatMe
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get sentAt => $composableBuilder(
+    column: $table.sentAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2457,7 +2736,8 @@ class $$ChatMessagesTableFilterComposer extends Composer<_$ChatDatabase, $ChatMe
             $table: $db.chatConversations,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
           ),
     );
     return composer;
@@ -2481,14 +2761,16 @@ class $$ChatMessagesTableFilterComposer extends Composer<_$ChatDatabase, $ChatMe
             $table: $db.chatOutboxEntries,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
           ),
     );
     return f(composer);
   }
 }
 
-class $$ChatMessagesTableOrderingComposer extends Composer<_$ChatDatabase, $ChatMessagesTable> {
+class $$ChatMessagesTableOrderingComposer
+    extends Composer<_$ChatDatabase, $ChatMessagesTable> {
   $$ChatMessagesTableOrderingComposer({
     required super.$db,
     required super.$table,
@@ -2546,6 +2828,11 @@ class $$ChatMessagesTableOrderingComposer extends Composer<_$ChatDatabase, $Chat
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get sentAt => $composableBuilder(
+    column: $table.sentAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get deliveredAt => $composableBuilder(
     column: $table.deliveredAt,
     builder: (column) => ColumnOrderings(column),
@@ -2572,14 +2859,16 @@ class $$ChatMessagesTableOrderingComposer extends Composer<_$ChatDatabase, $Chat
             $table: $db.chatConversations,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
           ),
     );
     return composer;
   }
 }
 
-class $$ChatMessagesTableAnnotationComposer extends Composer<_$ChatDatabase, $ChatMessagesTable> {
+class $$ChatMessagesTableAnnotationComposer
+    extends Composer<_$ChatDatabase, $ChatMessagesTable> {
   $$ChatMessagesTableAnnotationComposer({
     required super.$db,
     required super.$table,
@@ -2587,9 +2876,11 @@ class $$ChatMessagesTableAnnotationComposer extends Composer<_$ChatDatabase, $Ch
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  GeneratedColumn<String> get id => $composableBuilder(column: $table.id, builder: (column) => column);
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
 
-  GeneratedColumnWithTypeConverter<ChatMessageDirectionColumn, String> get direction =>
+  GeneratedColumnWithTypeConverter<ChatMessageDirectionColumn, String>
+  get direction =>
       $composableBuilder(column: $table.direction, builder: (column) => column);
 
   GeneratedColumn<String> get contentType => $composableBuilder(
@@ -2597,7 +2888,8 @@ class $$ChatMessagesTableAnnotationComposer extends Composer<_$ChatDatabase, $Ch
     builder: (column) => column,
   );
 
-  GeneratedColumn<String> get body => $composableBuilder(column: $table.body, builder: (column) => column);
+  GeneratedColumn<String> get body =>
+      $composableBuilder(column: $table.body, builder: (column) => column);
 
   GeneratedColumn<String> get attachmentPath => $composableBuilder(
     column: $table.attachmentPath,
@@ -2614,7 +2906,8 @@ class $$ChatMessagesTableAnnotationComposer extends Composer<_$ChatDatabase, $Ch
     builder: (column) => column,
   );
 
-  GeneratedColumnWithTypeConverter<ChatMessageStatusColumn, String> get status =>
+  GeneratedColumnWithTypeConverter<ChatMessageStatusColumn, String>
+  get status =>
       $composableBuilder(column: $table.status, builder: (column) => column);
 
   GeneratedColumn<String> get errorMessage => $composableBuilder(
@@ -2622,58 +2915,67 @@ class $$ChatMessagesTableAnnotationComposer extends Composer<_$ChatDatabase, $Ch
     builder: (column) => column,
   );
 
-  GeneratedColumn<DateTime> get createdAt => $composableBuilder(column: $table.createdAt, builder: (column) => column);
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get sentAt =>
+      $composableBuilder(column: $table.sentAt, builder: (column) => column);
 
   GeneratedColumn<DateTime> get deliveredAt => $composableBuilder(
     column: $table.deliveredAt,
     builder: (column) => column,
   );
 
-  GeneratedColumn<DateTime> get readAt => $composableBuilder(column: $table.readAt, builder: (column) => column);
+  GeneratedColumn<DateTime> get readAt =>
+      $composableBuilder(column: $table.readAt, builder: (column) => column);
 
   $$ChatConversationsTableAnnotationComposer get conversationId {
-    final $$ChatConversationsTableAnnotationComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.conversationId,
-      referencedTable: $db.chatConversations,
-      getReferencedColumn: (t) => t.peerFingerprint,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$ChatConversationsTableAnnotationComposer(
-            $db: $db,
-            $table: $db.chatConversations,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
-          ),
-    );
+    final $$ChatConversationsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.conversationId,
+          referencedTable: $db.chatConversations,
+          getReferencedColumn: (t) => t.peerFingerprint,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$ChatConversationsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.chatConversations,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
     return composer;
   }
 
   Expression<T> chatOutboxEntriesRefs<T extends Object>(
     Expression<T> Function($$ChatOutboxEntriesTableAnnotationComposer a) f,
   ) {
-    final $$ChatOutboxEntriesTableAnnotationComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.id,
-      referencedTable: $db.chatOutboxEntries,
-      getReferencedColumn: (t) => t.messageId,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$ChatOutboxEntriesTableAnnotationComposer(
-            $db: $db,
-            $table: $db.chatOutboxEntries,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
-          ),
-    );
+    final $$ChatOutboxEntriesTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.chatOutboxEntries,
+          getReferencedColumn: (t) => t.messageId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$ChatOutboxEntriesTableAnnotationComposer(
+                $db: $db,
+                $table: $db.chatOutboxEntries,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
     return f(composer);
   }
 }
@@ -2701,14 +3003,18 @@ class $$ChatMessagesTableTableManager
         TableManagerState(
           db: db,
           table: table,
-          createFilteringComposer: () => $$ChatMessagesTableFilterComposer($db: db, $table: table),
-          createOrderingComposer: () => $$ChatMessagesTableOrderingComposer($db: db, $table: table),
-          createComputedFieldComposer: () => $$ChatMessagesTableAnnotationComposer($db: db, $table: table),
+          createFilteringComposer: () =>
+              $$ChatMessagesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ChatMessagesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ChatMessagesTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
                 Value<String> id = const Value.absent(),
                 Value<String> conversationId = const Value.absent(),
-                Value<ChatMessageDirectionColumn> direction = const Value.absent(),
+                Value<ChatMessageDirectionColumn> direction =
+                    const Value.absent(),
                 Value<String> contentType = const Value.absent(),
                 Value<String?> body = const Value.absent(),
                 Value<String?> attachmentPath = const Value.absent(),
@@ -2717,6 +3023,7 @@ class $$ChatMessagesTableTableManager
                 Value<ChatMessageStatusColumn> status = const Value.absent(),
                 Value<String?> errorMessage = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime?> sentAt = const Value.absent(),
                 Value<DateTime?> deliveredAt = const Value.absent(),
                 Value<DateTime?> readAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -2732,6 +3039,7 @@ class $$ChatMessagesTableTableManager
                 status: status,
                 errorMessage: errorMessage,
                 createdAt: createdAt,
+                sentAt: sentAt,
                 deliveredAt: deliveredAt,
                 readAt: readAt,
                 rowid: rowid,
@@ -2749,6 +3057,7 @@ class $$ChatMessagesTableTableManager
                 required ChatMessageStatusColumn status,
                 Value<String?> errorMessage = const Value.absent(),
                 required DateTime createdAt,
+                Value<DateTime?> sentAt = const Value.absent(),
                 Value<DateTime?> deliveredAt = const Value.absent(),
                 Value<DateTime?> readAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -2764,6 +3073,7 @@ class $$ChatMessagesTableTableManager
                 status: status,
                 errorMessage: errorMessage,
                 createdAt: createdAt,
+                sentAt: sentAt,
                 deliveredAt: deliveredAt,
                 readAt: readAt,
                 rowid: rowid,
@@ -2776,49 +3086,74 @@ class $$ChatMessagesTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({conversationId = false, chatOutboxEntriesRefs = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [
-                if (chatOutboxEntriesRefs) db.chatOutboxEntries,
-              ],
-              addJoins:
-                  <T extends TableManagerState<dynamic, dynamic, dynamic, dynamic, dynamic, dynamic, dynamic, dynamic, dynamic, dynamic, dynamic>>(
-                    state,
-                  ) {
-                    if (conversationId) {
-                      state =
-                          state.withJoin(
-                                currentTable: table,
-                                currentColumn: table.conversationId,
-                                referencedTable: $$ChatMessagesTableReferences._conversationIdTable(db),
-                                referencedColumn: $$ChatMessagesTableReferences._conversationIdTable(db).peerFingerprint,
-                              )
-                              as T;
-                    }
+          prefetchHooksCallback:
+              ({conversationId = false, chatOutboxEntriesRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (chatOutboxEntriesRefs) db.chatOutboxEntries,
+                  ],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (conversationId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.conversationId,
+                                    referencedTable:
+                                        $$ChatMessagesTableReferences
+                                            ._conversationIdTable(db),
+                                    referencedColumn:
+                                        $$ChatMessagesTableReferences
+                                            ._conversationIdTable(db)
+                                            .peerFingerprint,
+                                  )
+                                  as T;
+                        }
 
-                    return state;
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (chatOutboxEntriesRefs)
+                        await $_getPrefetchedData<
+                          ChatMessage,
+                          $ChatMessagesTable,
+                          ChatOutboxEntry
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ChatMessagesTableReferences
+                              ._chatOutboxEntriesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ChatMessagesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).chatOutboxEntriesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.messageId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
                   },
-              getPrefetchedDataCallback: (items) async {
-                return [
-                  if (chatOutboxEntriesRefs)
-                    await $_getPrefetchedData<ChatMessage, $ChatMessagesTable, ChatOutboxEntry>(
-                      currentTable: table,
-                      referencedTable: $$ChatMessagesTableReferences._chatOutboxEntriesRefsTable(db),
-                      managerFromTypedResult: (p0) => $$ChatMessagesTableReferences(
-                        db,
-                        table,
-                        p0,
-                      ).chatOutboxEntriesRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) => referencedItems.where(
-                        (e) => e.messageId == item.id,
-                      ),
-                      typedResults: items,
-                    ),
-                ];
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -2854,14 +3189,22 @@ typedef $$ChatOutboxEntriesTableUpdateCompanionBuilder =
       Value<int> rowid,
     });
 
-final class $$ChatOutboxEntriesTableReferences extends BaseReferences<_$ChatDatabase, $ChatOutboxEntriesTable, ChatOutboxEntry> {
+final class $$ChatOutboxEntriesTableReferences
+    extends
+        BaseReferences<
+          _$ChatDatabase,
+          $ChatOutboxEntriesTable,
+          ChatOutboxEntry
+        > {
   $$ChatOutboxEntriesTableReferences(
     super.$_db,
     super.$_table,
     super.$_typedResult,
   );
 
-  static $ChatMessagesTable _messageIdTable(_$ChatDatabase db) => db.chatMessages.createAlias('chat_outbox_entries__message_id__chat_messages__id');
+  static $ChatMessagesTable _messageIdTable(_$ChatDatabase db) => db
+      .chatMessages
+      .createAlias('chat_outbox_entries__message_id__chat_messages__id');
 
   $$ChatMessagesTableProcessedTableManager get messageId {
     final $_column = $_itemColumn<String>('message_id')!;
@@ -2878,7 +3221,8 @@ final class $$ChatOutboxEntriesTableReferences extends BaseReferences<_$ChatData
   }
 }
 
-class $$ChatOutboxEntriesTableFilterComposer extends Composer<_$ChatDatabase, $ChatOutboxEntriesTable> {
+class $$ChatOutboxEntriesTableFilterComposer
+    extends Composer<_$ChatDatabase, $ChatOutboxEntriesTable> {
   $$ChatOutboxEntriesTableFilterComposer({
     required super.$db,
     required super.$table,
@@ -2917,14 +3261,16 @@ class $$ChatOutboxEntriesTableFilterComposer extends Composer<_$ChatDatabase, $C
             $table: $db.chatMessages,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
           ),
     );
     return composer;
   }
 }
 
-class $$ChatOutboxEntriesTableOrderingComposer extends Composer<_$ChatDatabase, $ChatOutboxEntriesTable> {
+class $$ChatOutboxEntriesTableOrderingComposer
+    extends Composer<_$ChatDatabase, $ChatOutboxEntriesTable> {
   $$ChatOutboxEntriesTableOrderingComposer({
     required super.$db,
     required super.$table,
@@ -2963,14 +3309,16 @@ class $$ChatOutboxEntriesTableOrderingComposer extends Composer<_$ChatDatabase, 
             $table: $db.chatMessages,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
           ),
     );
     return composer;
   }
 }
 
-class $$ChatOutboxEntriesTableAnnotationComposer extends Composer<_$ChatDatabase, $ChatOutboxEntriesTable> {
+class $$ChatOutboxEntriesTableAnnotationComposer
+    extends Composer<_$ChatDatabase, $ChatOutboxEntriesTable> {
   $$ChatOutboxEntriesTableAnnotationComposer({
     required super.$db,
     required super.$table,
@@ -2978,14 +3326,16 @@ class $$ChatOutboxEntriesTableAnnotationComposer extends Composer<_$ChatDatabase
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  GeneratedColumn<int> get attempts => $composableBuilder(column: $table.attempts, builder: (column) => column);
+  GeneratedColumn<int> get attempts =>
+      $composableBuilder(column: $table.attempts, builder: (column) => column);
 
   GeneratedColumn<DateTime> get nextAttemptAt => $composableBuilder(
     column: $table.nextAttemptAt,
     builder: (column) => column,
   );
 
-  GeneratedColumn<DateTime> get createdAt => $composableBuilder(column: $table.createdAt, builder: (column) => column);
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
   $$ChatMessagesTableAnnotationComposer get messageId {
     final $$ChatMessagesTableAnnotationComposer composer = $composerBuilder(
@@ -3003,7 +3353,8 @@ class $$ChatOutboxEntriesTableAnnotationComposer extends Composer<_$ChatDatabase
             $table: $db.chatMessages,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
           ),
     );
     return composer;
@@ -3032,12 +3383,15 @@ class $$ChatOutboxEntriesTableTableManager
         TableManagerState(
           db: db,
           table: table,
-          createFilteringComposer: () => $$ChatOutboxEntriesTableFilterComposer($db: db, $table: table),
-          createOrderingComposer: () => $$ChatOutboxEntriesTableOrderingComposer($db: db, $table: table),
-          createComputedFieldComposer: () => $$ChatOutboxEntriesTableAnnotationComposer(
-            $db: db,
-            $table: table,
-          ),
+          createFilteringComposer: () =>
+              $$ChatOutboxEntriesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ChatOutboxEntriesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ChatOutboxEntriesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
           updateCompanionCallback:
               ({
                 Value<String> messageId = const Value.absent(),
@@ -3079,16 +3433,33 @@ class $$ChatOutboxEntriesTableTableManager
               db: db,
               explicitlyWatchedTables: [],
               addJoins:
-                  <T extends TableManagerState<dynamic, dynamic, dynamic, dynamic, dynamic, dynamic, dynamic, dynamic, dynamic, dynamic, dynamic>>(
-                    state,
-                  ) {
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
                     if (messageId) {
                       state =
                           state.withJoin(
                                 currentTable: table,
                                 currentColumn: table.messageId,
-                                referencedTable: $$ChatOutboxEntriesTableReferences._messageIdTable(db),
-                                referencedColumn: $$ChatOutboxEntriesTableReferences._messageIdTable(db).id,
+                                referencedTable:
+                                    $$ChatOutboxEntriesTableReferences
+                                        ._messageIdTable(db),
+                                referencedColumn:
+                                    $$ChatOutboxEntriesTableReferences
+                                        ._messageIdTable(db)
+                                        .id,
                               )
                               as T;
                     }
@@ -3133,7 +3504,8 @@ typedef $$ChatBlockedDevicesTableUpdateCompanionBuilder =
       Value<int> rowid,
     });
 
-class $$ChatBlockedDevicesTableFilterComposer extends Composer<_$ChatDatabase, $ChatBlockedDevicesTable> {
+class $$ChatBlockedDevicesTableFilterComposer
+    extends Composer<_$ChatDatabase, $ChatBlockedDevicesTable> {
   $$ChatBlockedDevicesTableFilterComposer({
     required super.$db,
     required super.$table,
@@ -3157,7 +3529,8 @@ class $$ChatBlockedDevicesTableFilterComposer extends Composer<_$ChatDatabase, $
   );
 }
 
-class $$ChatBlockedDevicesTableOrderingComposer extends Composer<_$ChatDatabase, $ChatBlockedDevicesTable> {
+class $$ChatBlockedDevicesTableOrderingComposer
+    extends Composer<_$ChatDatabase, $ChatBlockedDevicesTable> {
   $$ChatBlockedDevicesTableOrderingComposer({
     required super.$db,
     required super.$table,
@@ -3181,7 +3554,8 @@ class $$ChatBlockedDevicesTableOrderingComposer extends Composer<_$ChatDatabase,
   );
 }
 
-class $$ChatBlockedDevicesTableAnnotationComposer extends Composer<_$ChatDatabase, $ChatBlockedDevicesTable> {
+class $$ChatBlockedDevicesTableAnnotationComposer
+    extends Composer<_$ChatDatabase, $ChatBlockedDevicesTable> {
   $$ChatBlockedDevicesTableAnnotationComposer({
     required super.$db,
     required super.$table,
@@ -3194,9 +3568,11 @@ class $$ChatBlockedDevicesTableAnnotationComposer extends Composer<_$ChatDatabas
     builder: (column) => column,
   );
 
-  GeneratedColumn<String> get alias => $composableBuilder(column: $table.alias, builder: (column) => column);
+  GeneratedColumn<String> get alias =>
+      $composableBuilder(column: $table.alias, builder: (column) => column);
 
-  GeneratedColumn<DateTime> get blockedAt => $composableBuilder(column: $table.blockedAt, builder: (column) => column);
+  GeneratedColumn<DateTime> get blockedAt =>
+      $composableBuilder(column: $table.blockedAt, builder: (column) => column);
 }
 
 class $$ChatBlockedDevicesTableTableManager
@@ -3212,7 +3588,11 @@ class $$ChatBlockedDevicesTableTableManager
           $$ChatBlockedDevicesTableUpdateCompanionBuilder,
           (
             ChatBlockedDevice,
-            BaseReferences<_$ChatDatabase, $ChatBlockedDevicesTable, ChatBlockedDevice>,
+            BaseReferences<
+              _$ChatDatabase,
+              $ChatBlockedDevicesTable,
+              ChatBlockedDevice
+            >,
           ),
           ChatBlockedDevice,
           PrefetchHooks Function()
@@ -3224,12 +3604,15 @@ class $$ChatBlockedDevicesTableTableManager
         TableManagerState(
           db: db,
           table: table,
-          createFilteringComposer: () => $$ChatBlockedDevicesTableFilterComposer($db: db, $table: table),
-          createOrderingComposer: () => $$ChatBlockedDevicesTableOrderingComposer($db: db, $table: table),
-          createComputedFieldComposer: () => $$ChatBlockedDevicesTableAnnotationComposer(
-            $db: db,
-            $table: table,
-          ),
+          createFilteringComposer: () =>
+              $$ChatBlockedDevicesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ChatBlockedDevicesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ChatBlockedDevicesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
           updateCompanionCallback:
               ({
                 Value<String> fingerprint = const Value.absent(),
@@ -3254,7 +3637,9 @@ class $$ChatBlockedDevicesTableTableManager
                 blockedAt: blockedAt,
                 rowid: rowid,
               ),
-          withReferenceMapper: (p0) => p0.map((e) => (e.readTable(table), BaseReferences(db, table, e))).toList(),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
           prefetchHooksCallback: null,
         ),
       );
@@ -3272,7 +3657,11 @@ typedef $$ChatBlockedDevicesTableProcessedTableManager =
       $$ChatBlockedDevicesTableUpdateCompanionBuilder,
       (
         ChatBlockedDevice,
-        BaseReferences<_$ChatDatabase, $ChatBlockedDevicesTable, ChatBlockedDevice>,
+        BaseReferences<
+          _$ChatDatabase,
+          $ChatBlockedDevicesTable,
+          ChatBlockedDevice
+        >,
       ),
       ChatBlockedDevice,
       PrefetchHooks Function()
@@ -3281,8 +3670,12 @@ typedef $$ChatBlockedDevicesTableProcessedTableManager =
 class $ChatDatabaseManager {
   final _$ChatDatabase _db;
   $ChatDatabaseManager(this._db);
-  $$ChatConversationsTableTableManager get chatConversations => $$ChatConversationsTableTableManager(_db, _db.chatConversations);
-  $$ChatMessagesTableTableManager get chatMessages => $$ChatMessagesTableTableManager(_db, _db.chatMessages);
-  $$ChatOutboxEntriesTableTableManager get chatOutboxEntries => $$ChatOutboxEntriesTableTableManager(_db, _db.chatOutboxEntries);
-  $$ChatBlockedDevicesTableTableManager get chatBlockedDevices => $$ChatBlockedDevicesTableTableManager(_db, _db.chatBlockedDevices);
+  $$ChatConversationsTableTableManager get chatConversations =>
+      $$ChatConversationsTableTableManager(_db, _db.chatConversations);
+  $$ChatMessagesTableTableManager get chatMessages =>
+      $$ChatMessagesTableTableManager(_db, _db.chatMessages);
+  $$ChatOutboxEntriesTableTableManager get chatOutboxEntries =>
+      $$ChatOutboxEntriesTableTableManager(_db, _db.chatOutboxEntries);
+  $$ChatBlockedDevicesTableTableManager get chatBlockedDevices =>
+      $$ChatBlockedDevicesTableTableManager(_db, _db.chatBlockedDevices);
 }
