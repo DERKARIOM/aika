@@ -247,7 +247,11 @@ jobs:
       - uses: actions/upload-artifact@v6
         with:
           name: Aika-${{ needs.validate.outputs.marketing_version }}-${{ needs.validate.outputs.build_number }}-unsigned
-          path: ${{ env.FLUTTER_APP_DIR }}/Aika.ipa
+          # Le zip est créé plus haut à "$GITHUB_WORKSPACE/Aika.ipa" (racine du
+          # dépôt), pas dans ${{ env.FLUTTER_APP_DIR }} — même chemin que celui
+          # relu par l'étape "Valider l'IPA généré" juste avant (qui n'a pas de
+          # working-directory dédié, donc "Aika.ipa" y désigne aussi la racine).
+          path: Aika.ipa
           if-no-files-found: error
           retention-days: 90
 
