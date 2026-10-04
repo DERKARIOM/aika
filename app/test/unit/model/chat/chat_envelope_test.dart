@@ -1,6 +1,9 @@
 import 'dart:convert';
 
 import 'package:localsend_app/model/chat/chat_envelope.dart';
+import 'package:localsend_isolates/model/dto/file_dto.dart';
+import 'package:localsend_isolates/model/file_type.dart';
+import 'package:localsend_isolates/util/rust.dart';
 import 'package:test/test.dart';
 
 ChatEnvelope _decode(String raw) {
@@ -16,6 +19,32 @@ String _failureReason(String raw) {
 }
 
 void main() {
+  group('isChatEnvelopeFile', () {
+    FileDto file(String name, {String? preview}) => FileDto(
+      id: 'f',
+      fileName: name,
+      size: 10,
+      fileType: FileType.text,
+      hash: null,
+      preview: preview,
+      metadata: null,
+    );
+
+    test('Should recognize the envelope as it arrives over the network', () {
+      final envelope = ChatEnvelope.message(messageId: 'm1', contentType: ChatContentType.image, attachmentFileId: 'a1');
+      // As sent then received: the type is re-derived from the `.json` name.
+      final received = file(kChatEnvelopeFileName, preview: envelope.encode()).toRust().toDart();
+
+      expect(received.fileType, isNot(FileType.text));
+      expect(isChatEnvelopeFile(received), true);
+    });
+
+    test('Should not take an ordinary file for the envelope', () {
+      expect(isChatEnvelopeFile(file('photo.json', preview: '{}')), false);
+      expect(isChatEnvelopeFile(file(kChatEnvelopeFileName)), false);
+    });
+  });
+
   group('ChatEnvelope round trip', () {
     test('Should encode and decode a text message', () {
       final ts = DateTime.utc(2026, 9, 30, 12, 0, 0);

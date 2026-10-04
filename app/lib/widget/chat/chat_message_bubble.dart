@@ -6,6 +6,9 @@ import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/chat/chat_database.dart';
 import 'package:localsend_app/model/chat/chat_envelope.dart';
 import 'package:localsend_app/util/chat/chat_time_format.dart';
+import 'package:localsend_app/util/file_size_helper.dart';
+import 'package:localsend_app/util/native/open_file.dart' as native;
+import 'package:localsend_isolates/model/file_type.dart';
 
 /// "Read" ticks, the convention users know from other messengers.
 const _readTickColor = Color(0xFF53BDEB);
@@ -23,7 +26,18 @@ class ChatMessageBubble extends StatelessWidget {
   /// Sends an outgoing message again; offered while it is not delivered.
   final VoidCallback? onRetry;
 
-  const ChatMessageBubble({required this.message, this.onRetry});
+  /// Same author just before / just after: the bubbles of a group sit
+  /// closer together, and only the last one has the "tail" corner.
+  final bool groupedWithPrevious;
+  final bool groupedWithNext;
+
+  const ChatMessageBubble({
+    required this.message,
+    this.onRetry,
+    this.groupedWithPrevious = false,
+    this.groupedWithNext = false,
+    super.key,
+  });
 
   bool get _isOutgoing => message.direction == ChatMessageDirectionColumn.outgoing;
 
@@ -46,16 +60,11 @@ class ChatMessageBubble extends StatelessWidget {
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.75),
         child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 3),
+          margin: EdgeInsets.only(top: groupedWithPrevious ? 1 : 6, bottom: groupedWithNext ? 1 : 2),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
             color: bubbleColor,
-            borderRadius: BorderRadius.only(
-              topLeft: const Radius.circular(18),
-              topRight: const Radius.circular(18),
-              bottomLeft: Radius.circular(_isOutgoing ? 18 : 4),
-              bottomRight: Radius.circular(_isOutgoing ? 4 : 18),
-            ),
+            borderRadius: _borderRadius,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -109,6 +118,23 @@ class ChatMessageBubble extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+
+  /// Round corners, except on the author's side where the bubble touches
+  /// the previous or next one of its group, and the "tail" at the bottom of
+  /// the last one.
+  BorderRadius get _borderRadius {
+    const round = Radius.circular(18);
+    const joined = Radius.circular(6);
+    const tail = Radius.circular(4);
+    final authorTop = groupedWithPrevious ? joined : round;
+    final authorBottom = groupedWithNext ? joined : tail;
+    return BorderRadius.only(
+      topLeft: _isOutgoing ? round : authorTop,
+      topRight: _isOutgoing ? authorTop : round,
+      bottomLeft: _isOutgoing ? round : authorBottom,
+      bottomRight: _isOutgoing ? authorBottom : round,
     );
   }
 
@@ -178,24 +204,58 @@ class ChatMessageBubble extends StatelessWidget {
   }
 }
 
+/// The file of a media message: a thumbnail for an image, otherwise an
+/// icon, the file name and its size. Tapping it opens the file with the
+/// system's default app, once it is on this device (always for one we sent,
+/// after the download for one we received; a spinner shows until then).
 class _AttachmentPreview extends StatelessWidget {
   final ChatMessage message;
   final Color textColor;
 
   const _AttachmentPreview({required this.message, required this.textColor});
 
+  bool get _isImage => message.contentType == ChatContentType.image.name;
+
+  FileType get _fileType => switch (message.contentType) {
+    'image' => FileType.image,
+    'video' => FileType.video,
+    _ => FileType.other,
+  };
+
   @override
   Widget build(BuildContext context) {
     final path = message.attachmentPath;
-    final isImage = message.contentType == ChatContentType.image.name;
-
-    if (isImage && path != null) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Image.file(File(path), width: 220, fit: BoxFit.cover, errorBuilder: (_, _, _) => _placeholder(context)),
-      );
+    final content = _isImage && path != null ? _image(context, path) : _fileRow(path);
+    if (path == null) {
+      return content;
     }
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => native.openFile(context, _fileType, path),
+        child: content,
+      ),
+    );
+  }
 
+  Widget _image(BuildContext context, String path) {
+    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Image.file(
+        File(path),
+        width: 220,
+        // Decoded at display size: a 12 MP photo would otherwise take ~48 MB.
+        cacheWidth: (220 * pixelRatio).round(),
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => _fileRow(path),
+      ),
+    );
+  }
+
+  Widget _fileRow(String? path) {
+    final size = message.attachmentSize;
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -206,35 +266,39 @@ class _AttachmentPreview extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(_iconFor(message.contentType), color: textColor),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
           Flexible(
-            child: Text(
-              message.attachmentFileName ?? t.chat.attachment,
-              style: TextStyle(color: textColor),
-              overflow: TextOverflow.ellipsis,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  message.attachmentFileName ?? t.chat.attachment,
+                  style: TextStyle(color: textColor, fontWeight: FontWeight.w500),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (size != null)
+                  Text(
+                    size.asReadableFileSize,
+                    style: TextStyle(color: textColor.withValues(alpha: 0.7), fontSize: 12),
+                  ),
+              ],
             ),
           ),
-          if (path == null) ...[
-            const SizedBox(width: 8),
-            SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: textColor)),
-          ],
+          const SizedBox(width: 10),
+          if (path == null)
+            SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: textColor))
+          else
+            Icon(Icons.open_in_new_rounded, size: 18, color: textColor.withValues(alpha: 0.8)),
         ],
       ),
     );
   }
 
-  Widget _placeholder(BuildContext context) {
-    return Container(
-      width: 220,
-      height: 140,
-      color: Colors.black12,
-      child: Icon(Icons.broken_image_outlined, color: textColor),
-    );
-  }
-
   IconData _iconFor(String contentType) {
     if (contentType == ChatContentType.video.name) return Icons.videocam_outlined;
-    if (contentType == ChatContentType.audio.name) return Icons.mic_none_outlined;
+    if (contentType == ChatContentType.audio.name) return Icons.audiotrack_outlined;
+    if (contentType == ChatContentType.image.name) return Icons.image_outlined;
     return Icons.insert_drive_file_outlined;
   }
 }

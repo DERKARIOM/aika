@@ -89,6 +89,53 @@ void main() {
     });
   });
 
+  group('ChatFrame limits', () {
+    String message({String id = 'm1', String? text}) => jsonEncode({
+      't': 'msg',
+      'id': id,
+      'ts': 0,
+      'ct': 'text',
+      'txt': ?text,
+    });
+
+    test('Should accept a text of the maximum length', () {
+      final frame = ChatFrame.tryDecode(message(text: 'a' * chatMaxTextLength));
+      expect(frame, isA<ChatMessageFrame>());
+    });
+
+    test('Should reject a longer text or id', () {
+      expect(ChatFrame.tryDecode(message(text: 'a' * (chatMaxTextLength + 1))), isNull);
+      expect(ChatFrame.tryDecode(message(id: 'i' * (chatMaxIdLength + 1))), isNull);
+      expect(
+        ChatFrame.tryDecode(
+          jsonEncode({
+            't': 'ack',
+            'ids': ['i' * (chatMaxIdLength + 1)],
+            'st': 'read',
+          }),
+        ),
+        isNull,
+      );
+    });
+
+    test('Should cut a long alias and device model without breaking an emoji', () {
+      final alias = '${'a' * (chatMaxNameLength - 1)}👋';
+      final hello = ChatFrame.tryDecode(jsonEncode({'t': 'hello', 'v': 1, 'alias': alias, 'model': 'm' * 500})) as ChatHelloFrame;
+
+      expect(hello.alias, 'a' * (chatMaxNameLength - 1));
+      expect(hello.deviceModel!.length, chatMaxNameLength);
+    });
+
+    test('Should split a long text without breaking an emoji', () {
+      final text = '${'a' * (chatMaxTextLength - 1)}👋 fin';
+      final parts = splitChatText(text);
+
+      expect(parts, ['a' * (chatMaxTextLength - 1), '👋 fin']);
+      expect(parts.join(), text);
+      expect(splitChatText('court'), ['court']);
+    });
+  });
+
   group('ChatHelloFrame.negotiate', () {
     const own = ChatHelloFrame(version: 3, minVersion: 2, alias: 'me');
 

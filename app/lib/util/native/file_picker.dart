@@ -8,6 +8,7 @@ import 'package:localsend_app/config/theme.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/cross_file.dart';
 import 'package:localsend_app/pages/apk_picker_page.dart';
+import 'package:localsend_app/pages/chat/new_conversation_page.dart';
 import 'package:localsend_app/provider/device_info_provider.dart';
 import 'package:localsend_app/provider/selection/selected_sending_files_provider.dart';
 import 'package:localsend_app/util/determine_image_type.dart';
@@ -19,7 +20,6 @@ import 'package:localsend_app/util/native/pick_directory_path.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/ui/asset_picker_translated_text_delegate.dart';
 import 'package:localsend_app/widget/dialogs/loading_dialog.dart';
-import 'package:localsend_app/widget/dialogs/message_input_dialog.dart';
 import 'package:localsend_app/widget/dialogs/no_permission_dialog.dart';
 import 'package:localsend_isolates/model/file_type.dart';
 import 'package:localsend_isolates/util/sleep.dart';
@@ -281,11 +281,10 @@ Future<void> _pickMedia(BuildContext context, Ref ref) async {
   }
 }
 
+/// A text goes to the instant messaging, not through a file transfer: the
+/// user picks the device, then writes in the conversation.
 Future<void> _pickText(BuildContext context, Ref ref) async {
-  final result = await showDialog<String>(context: context, builder: (_) => const MessageInputDialog());
-  if (result != null) {
-    ref.redux(selectedSendingFilesProvider).dispatch(AddMessageAction(message: result));
-  }
+  await context.push(() => const NewConversationPage());
 }
 
 Future<void> _pickClipboard(BuildContext context, Ref ref) async {

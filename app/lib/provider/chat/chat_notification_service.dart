@@ -16,6 +16,12 @@ final _logger = Logger('ChatNotifications');
 
 const _channelId = 'aika_chat_messages';
 
+/// Windows identity of Aika's notifications. Both must stay the same from
+/// one version to the next: Windows ties notifications (and the user's
+/// notification settings) to them.
+const _windowsAppUserModelId = 'Aika.Aika';
+const _windowsNotificationGuid = 'b2d4be65-9348-4382-b5ac-39adfed56c32';
+
 /// Notification id of a conversation. Derived from the fingerprint (hex)
 /// rather than `String.hashCode`, which changes between runs: a
 /// notification left over from a previous run must still be replaced and
@@ -82,11 +88,19 @@ class ChatNotificationService {
       const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
       const darwinSettings = DarwinInitializationSettings();
       final linuxSettings = LinuxInitializationSettings(defaultActionName: t.chat.notification.open);
+      // Required by the plugin on Windows: without it, initialize() throws
+      // and the PC never shows a chat notification.
+      const windowsSettings = WindowsInitializationSettings(
+        appName: 'Aika',
+        appUserModelId: _windowsAppUserModelId,
+        guid: _windowsNotificationGuid,
+      );
       final initSettings = InitializationSettings(
         android: androidSettings,
         iOS: darwinSettings,
         macOS: darwinSettings,
         linux: linuxSettings,
+        windows: windowsSettings,
       );
 
       await _plugin.initialize(

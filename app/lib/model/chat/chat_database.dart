@@ -314,7 +314,8 @@ class ChatDatabase extends _$ChatDatabase {
   Stream<List<ChatMessage>> watchMessages(String conversationId, {int limit = 200}) {
     return (select(chatMessages)
           ..where((t) => t.conversationId.equals(conversationId))
-          ..orderBy([(t) => OrderingTerm.desc(t.createdAt)])
+          // The id breaks ties (same millisecond), so the order is stable.
+          ..orderBy([(t) => OrderingTerm.desc(t.createdAt), (t) => OrderingTerm.desc(t.id)])
           ..limit(limit))
         .watch()
         .map((rows) => rows.reversed.toList());
@@ -451,6 +452,25 @@ class ChatDatabase extends _$ChatDatabase {
     });
   }
 
+  /// Ids of the incoming messages of [conversationId] read at or after
+  /// [since], oldest first, at most [limit]: the read receipts to send
+  /// again after a link was down (receipts are idempotent on the peer).
+  Future<List<String>> incomingReadSince(String conversationId, DateTime since, {int limit = 500}) async {
+    final rows =
+        await (select(chatMessages)
+              ..where(
+                (t) =>
+                    t.conversationId.equals(conversationId) &
+                    t.direction.equalsValue(ChatMessageDirectionColumn.incoming) &
+                    t.status.equalsValue(ChatMessageStatusColumn.read) &
+                    t.readAt.isBiggerOrEqualValue(since),
+              )
+              ..orderBy([(t) => OrderingTerm.desc(t.readAt)])
+              ..limit(limit))
+            .get();
+    return rows.reversed.map((r) => r.id).toList();
+  }
+
   /// Renders the full conversation as a plain-text transcript, newest
   /// message last, suitable for the "export conversation" feature.
   Future<String> exportConversationAsText(String conversationId) async {
@@ -524,6 +544,20 @@ class ChatDatabase extends _$ChatDatabase {
 
     final rows = await query.get();
     return rows.map((row) => (row.readTable(chatMessages), row.readTable(chatOutboxEntries).attempts)).toList();
+  }
+
+  /// Number of outgoing messages of [conversationId] not sent yet
+  /// (waiting for a chat link), for the conversation's connection banner.
+  Stream<int> watchPendingCount(String conversationId) {
+    final count = chatMessages.id.count();
+    final query = selectOnly(chatMessages)
+      ..addColumns([count])
+      ..where(
+        chatMessages.conversationId.equals(conversationId) &
+            chatMessages.direction.equalsValue(ChatMessageDirectionColumn.outgoing) &
+            chatMessages.status.equalsValue(ChatMessageStatusColumn.pending),
+      );
+    return query.map((row) => row.read(count) ?? 0).watchSingle();
   }
 
   Stream<int> watchOutboxSize() {

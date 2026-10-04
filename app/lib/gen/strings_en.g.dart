@@ -949,6 +949,18 @@ class Translations$chat$en {
   /// en: 'Offline'
   String get offline => 'Offline';
 
+  /// en: 'Connecting…'
+  String get connecting => 'Connecting…';
+
+  /// en: 'Waiting to send: {count}. Sent automatically as soon as the device is reachable.'
+  String pendingMessages({required Object count}) => 'Waiting to send: ${count}. Sent automatically as soon as the device is reachable.';
+
+  /// en: 'Encryption is turned off on this device: chat is unavailable.'
+  String get encryptionOff => 'Encryption is turned off on this device: chat is unavailable.';
+
+  /// en: 'Latest messages'
+  String get scrollToLatest => 'Latest messages';
+
   /// en: 'Message'
   String get messageHint => 'Message';
 

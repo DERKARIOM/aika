@@ -12,6 +12,8 @@ import 'package:localsend_app/util/chat/chat_device_resolver.dart';
 import 'package:localsend_app/util/chat/chat_time_format.dart';
 import 'package:localsend_app/util/device_type_ext.dart';
 import 'package:localsend_app/util/native/cross_file_converters.dart';
+import 'package:localsend_app/widget/chat/chat_composer.dart';
+import 'package:localsend_app/widget/chat/chat_connection_banner.dart';
 import 'package:localsend_app/widget/chat/chat_message_bubble.dart';
 import 'package:localsend_app/widget/dialogs/chat_delete_conversation_dialog.dart';
 import 'package:localsend_isolates/model/device.dart';
@@ -32,30 +34,83 @@ class ChatConversationPage extends StatefulWidget {
   State<ChatConversationPage> createState() => _ChatConversationPageState();
 }
 
+/// Messages loaded at once; scrolling up loads this many more.
+const _pageSize = 200;
+
+/// Consecutive messages of the same author closer than this are grouped.
+const _groupGap = Duration(minutes: 2);
+
 class _ChatConversationPageState extends State<ChatConversationPage> with Refena {
   final _textController = TextEditingController();
+  final _scrollController = ScrollController();
   StreamSubscription<List<ChatMessage>>? _messagesSub;
   List<ChatMessage> _messages = [];
+
+  /// How many of the latest messages are watched (grows by [_pageSize]).
+  int _limit = _pageSize;
+
+  /// Scrolled up far enough to offer a jump back to the latest message.
+  bool _showScrollToLatest = false;
 
   @override
   void initState() {
     super.initState();
     ensureRef((ref) {
       ref.notifier(chatProvider).currentlyOpenConversationFingerprint = widget.peerFingerprint;
-      _messagesSub = ref.read(chatDatabaseProvider).watchMessages(widget.peerFingerprint).listen((messages) {
-        if (mounted) {
-          setState(() => _messages = messages);
-        }
-        // New messages can arrive while this screen is already open; keep
-        // marking them read as they come in, not just once on open.
-        _markRead(ref);
-      });
+      // Once on open: resets the badge and (re)opens the chat link.
+      _markRead(ref);
+      _watchMessages(ref);
     });
+    _scrollController.addListener(_onScroll);
+  }
+
+  /// (Re)subscribes to the latest [_limit] messages.
+  void _watchMessages(Ref ref) {
+    unawaited(_messagesSub?.cancel());
+    _messagesSub = ref.read(chatDatabaseProvider).watchMessages(widget.peerFingerprint, limit: _limit).listen((messages) {
+      if (mounted) {
+        setState(() => _messages = messages);
+      }
+      // New messages can arrive while this screen is already open; mark
+      // them read as they come in. Other updates (e.g. the status of our
+      // own messages) need nothing.
+      if (messages.any(_isUnreadIncoming)) {
+        _markRead(ref);
+      }
+    });
+  }
+
+  /// The list is reversed: offset 0 is the latest message, the end of the
+  /// scroll extent the oldest one loaded.
+  void _onScroll() {
+    final position = _scrollController.position;
+    final showScrollToLatest = position.pixels > 600;
+    if (showScrollToLatest != _showScrollToLatest) {
+      setState(() => _showScrollToLatest = showScrollToLatest);
+    }
+    // Near the oldest loaded message, and there may be older ones.
+    if (position.pixels >= position.maxScrollExtent - 400 && _messages.length >= _limit) {
+      _limit += _pageSize;
+      _watchMessages(ref);
+    }
+  }
+
+  void _scrollToLatest() {
+    unawaited(_scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOutCubic));
+  }
+
+  /// Whether [later] directly continues [earlier] (same author, shortly
+  /// after, same day): drawn as one group of bubbles.
+  static bool _sameGroup(ChatMessage earlier, ChatMessage later) {
+    return earlier.direction == later.direction &&
+        later.createdAt.difference(earlier.createdAt) < _groupGap &&
+        isSameChatDay(earlier.createdAt, later.createdAt);
   }
 
   @override
   void dispose() {
     unawaited(_messagesSub?.cancel());
+    _scrollController.dispose();
     final chatService = ref.notifier(chatProvider);
     if (chatService.currentlyOpenConversationFingerprint == widget.peerFingerprint) {
       chatService.currentlyOpenConversationFingerprint = null;
@@ -64,6 +119,10 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
     unawaited(chatService.setTyping(target: _resolveDevice(ref), isTyping: false));
     _textController.dispose();
     super.dispose();
+  }
+
+  static bool _isUnreadIncoming(ChatMessage message) {
+    return message.direction == ChatMessageDirectionColumn.incoming && message.status != ChatMessageStatusColumn.read;
   }
 
   void _markRead(Ref ref) {
@@ -155,47 +214,44 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
       body: SafeArea(
         child: Column(
           children: [
+            ChatConnectionBanner(peerFingerprint: widget.peerFingerprint),
             Expanded(
               child: _messages.isEmpty
                   ? Center(
                       child: Text(t.chat.noMessagesYet, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
                     )
-                  : ListView.builder(
-                      reverse: true,
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      itemCount: _messages.length,
-                      itemBuilder: (context, index) {
-                        final position = _messages.length - 1 - index;
-                        final message = _messages[position];
-                        final bubble = ChatMessageBubble(
-                          message: message,
-                          onRetry: () => unawaited(ref.notifier(chatProvider).retryMessage(message.id)),
-                        );
-                        // The list is reversed: the separator goes above the
-                        // first message of each day.
-                        final firstOfDay = position == 0 || !isSameChatDay(_messages[position - 1].createdAt, message.createdAt);
-                        if (!firstOfDay) {
-                          return bubble;
-                        }
-                        return Column(
-                          children: [
-                            _DaySeparator(label: chatDayLabel(message.createdAt)),
-                            bubble,
-                          ],
-                        );
-                      },
+                  : Stack(
+                      children: [
+                        _buildMessageList(ref),
+                        Positioned(
+                          right: 16,
+                          bottom: 12,
+                          child: AnimatedScale(
+                            scale: _showScrollToLatest ? 1 : 0,
+                            duration: const Duration(milliseconds: 180),
+                            child: FloatingActionButton.small(
+                              heroTag: null,
+                              tooltip: t.chat.scrollToLatest,
+                              onPressed: _scrollToLatest,
+                              child: const Icon(Icons.keyboard_arrow_down_rounded),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
             ),
-            _Composer(
+            ChatComposer(
               controller: _textController,
               blocked: blocked,
               onChanged: (text) => unawaited(ref.notifier(chatProvider).setTyping(target: device, isTyping: text.isNotEmpty)),
-              onSendText: () {
-                final text = _textController.text;
-                _textController.clear();
+              onSend: (text) {
                 unawaited(ref.notifier(chatProvider).sendText(target: device, text: text));
+                // Back to the latest message, where the new one appears.
+                if (_scrollController.hasClients && _scrollController.offset > 0) {
+                  _scrollToLatest();
+                }
               },
-              onSendFile: () async {
+              onAttach: () async {
                 final file = await openFile();
                 if (file == null) {
                   return;
@@ -207,6 +263,41 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildMessageList(Ref ref) {
+    return ListView.builder(
+      controller: _scrollController,
+      reverse: true,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      itemCount: _messages.length,
+      itemBuilder: (context, index) {
+        final position = _messages.length - 1 - index;
+        final message = _messages[position];
+        final previous = position > 0 ? _messages[position - 1] : null;
+        final next = position < _messages.length - 1 ? _messages[position + 1] : null;
+        final bubble = ChatMessageBubble(
+          key: ValueKey(message.id),
+          message: message,
+          groupedWithPrevious: previous != null && _sameGroup(previous, message),
+          groupedWithNext: next != null && _sameGroup(message, next),
+          onRetry: () => unawaited(ref.notifier(chatProvider).retryMessage(message.id)),
+        );
+        // The list is reversed: the separator goes above the first message
+        // of each day.
+        final firstOfDay = previous == null || !isSameChatDay(previous.createdAt, message.createdAt);
+        if (!firstOfDay) {
+          return bubble;
+        }
+        return Column(
+          key: ValueKey('day-${message.id}'),
+          children: [
+            _DaySeparator(label: chatDayLabel(message.createdAt)),
+            bubble,
+          ],
+        );
+      },
     );
   }
 
@@ -244,77 +335,6 @@ class _DaySeparator extends StatelessWidget {
             borderRadius: BorderRadius.circular(999),
           ),
           child: Text(label, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant)),
-        ),
-      ),
-    );
-  }
-}
-
-class _Composer extends StatelessWidget {
-  final TextEditingController controller;
-  final bool blocked;
-  final ValueChanged<String> onChanged;
-  final VoidCallback onSendText;
-  final VoidCallback onSendFile;
-
-  const _Composer({
-    required this.controller,
-    required this.blocked,
-    required this.onChanged,
-    required this.onSendText,
-    required this.onSendFile,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (blocked) {
-      return Padding(
-        padding: const EdgeInsets.all(16),
-        child: Text(
-          t.chat.blockedNotice,
-          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
-          textAlign: TextAlign.center,
-        ),
-      );
-    }
-
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
-        child: Row(
-          children: [
-            IconButton(
-              tooltip: t.chat.attachment,
-              icon: const Icon(Icons.attach_file_rounded),
-              onPressed: onSendFile,
-            ),
-            Expanded(
-              child: TextField(
-                controller: controller,
-                onChanged: onChanged,
-                minLines: 1,
-                maxLines: 5,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: InputDecoration(
-                  hintText: t.chat.messageHint,
-                  filled: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
-                ),
-                onSubmitted: (_) => onSendText(),
-              ),
-            ),
-            const SizedBox(width: 4),
-            IconButton.filled(
-              icon: const Icon(Icons.send_rounded),
-              onPressed: () {
-                if (controller.text.trim().isNotEmpty) {
-                  onSendText();
-                }
-              },
-            ),
-          ],
         ),
       ),
     );

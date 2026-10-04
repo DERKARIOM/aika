@@ -71,13 +71,6 @@ class ReceiveController {
   /// The Rust server already checked the PIN and enforces that only one
   /// session can be active at a time.
   Future<void> onPrepareUpload(HttpServerPrepareUploadEvent event) async {
-    if (server.getStateOrNull()?.session != null) {
-      // The Rust server is the authority on the single-session invariant:
-      // a new request means the old session is over (e.g. finished but still
-      // displayed, or aborted while waiting).
-      closeSession();
-    }
-
     final files = {
       for (final entry in event.files.entries) entry.key: entry.value.toDart(),
     };
@@ -93,15 +86,12 @@ class ReceiveController {
     // existing transfer pipeline without any Rust/FFI change. Detect and
     // fully hand them off to the chat layer before any of the generic
     // "accept files?" UI/state below ever runs.
-    final envelopeEntry = files.entries.firstWhereOrNull(
-      (e) => e.value.fileName == kChatEnvelopeFileName && e.value.fileType == FileType.text && e.value.preview != null,
-    );
+    final envelopeEntry = files.entries.firstWhereOrNull((e) => isChatEnvelopeFile(e.value));
     if (envelopeEntry != null) {
       final decoded = ChatEnvelope.tryDecode(envelopeEntry.value.preview!);
       if (decoded is ChatEnvelopeDecodeSuccess) {
         await _handleChatPrepareUpload(
           event: event,
-          senderFingerprint: senderFingerprint,
           envelope: decoded.envelope,
           files: files,
         );
@@ -110,6 +100,13 @@ class ReceiveController {
       _logger.warning('Received a malformed chat envelope, falling back to the generic file-request flow.');
       // Fall through: treat it as an ordinary (if odd-looking) file rather
       // than silently dropping it.
+    }
+
+    if (server.getStateOrNull()?.session != null) {
+      // The Rust server is the authority on the single-session invariant:
+      // a new request means the old session is over (e.g. finished but still
+      // displayed, or aborted while waiting).
+      closeSession();
     }
 
     final settings = server.ref.read(settingsProvider);
@@ -247,37 +244,60 @@ class ReceiveController {
 
   /// Handles a `prepare-upload` request that turned out to be a chat
   /// envelope (message/typing/receipt), detected in [onPrepareUpload].
+  /// Since chat links exist, only older apps and media messages use this.
   ///
   /// Unlike a normal file transfer, this never shows the generic
-  /// "Accept files?" [ReceivePage]: known contacts (an existing
-  /// conversation, or a Favorite) are auto-accepted so messaging feels
-  /// instant, while a brand-new device gets exactly one lightweight
-  /// [ChatNewContactDialog] confirmation the first time it writes - after
-  /// that, it behaves like any other known contact. Blocked devices are
-  /// rejected before anything is persisted or shown.
+  /// "Accept files?" [ReceivePage]:
+  /// - only a sender proven by its mTLS client certificate is considered
+  ///   (with encryption off, the claimed fingerprint could be anyone's);
+  /// - blocked devices are refused before anything is persisted or shown;
+  /// - known contacts (a conversation, or a Favorite) are accepted at once;
+  /// - a brand-new device is answered at once too, and its message stored
+  ///   only once the user accepts it with [ChatNewContactDialog].
   Future<void> _handleChatPrepareUpload({
     required HttpServerPrepareUploadEvent event,
-    required String senderFingerprint,
     required ChatEnvelope envelope,
     required Map<String, FileDto> files,
   }) async {
-    final sender = event.info.toDevice(event.ip, null).copyWith(fingerprint: senderFingerprint);
-
-    // Blocked: refused; unknown: asked once (see `acceptChatSender`).
-    if (!await acceptChatSender(server.ref, sender)) {
-      server.ref.redux(parentIsolateProvider).dispatch(IsolateHttpServerPrepareUploadDecisionAction(acceptedFileIds: null));
+    final certFingerprint = event.certFingerprint;
+    if (certFingerprint == null) {
+      _logger.warning('Refused a chat envelope from ${event.ip}: no client certificate, the sender cannot be verified.');
+      _answerPrepareUpload(null);
       return;
+    }
+    final sender = event.info.toDevice(event.ip, null).copyWith(fingerprint: certFingerprint);
+
+    switch (await chatSenderVerdict(server.ref, sender)) {
+      case ChatSenderVerdict.blocked:
+        _answerPrepareUpload(null);
+        return;
+      case ChatSenderVerdict.unknown:
+        // Answered before the user is asked: until the Rust server gets an
+        // answer, its single transfer slot stays claimed and every incoming
+        // file transfer is refused, for as long as the dialog stays open.
+        // Nothing is downloaded now; a media attachment comes with the
+        // sender's next retry, once this device is a known contact.
+        _answerPrepareUpload(const []);
+        unawaited(_acceptFromNewContact(sender, envelope));
+        return;
+      case ChatSenderVerdict.known:
+        break;
     }
 
     final acceptedIds = await server.ref.notifier(chatProvider).handleIncomingEnvelope(sender: sender, envelope: envelope, allFilesInBatch: files);
 
-    server.ref.redux(parentIsolateProvider).dispatch(IsolateHttpServerPrepareUploadDecisionAction(acceptedFileIds: acceptedIds.toList()));
+    _answerPrepareUpload(acceptedIds.toList());
 
     if (acceptedIds.isEmpty) {
       // Pure text/typing/receipt: fully consumed already, nothing to
-      // download. Rust responds 204 and never creates a session.
+      // download. Rust responds 204 and never creates a session, so a
+      // finished transfer still on screen stays there.
       return;
     }
+
+    // A media download replaces the previous session (finished but still
+    // displayed): Rust only accepted it because its slot was free.
+    closeSession();
 
     // A companion media file needs its bytes downloaded: give it a normal
     // ReceiveSessionState so `onFileUpload` can reuse the existing,
@@ -315,6 +335,21 @@ class ReceiveController {
         ),
       ),
     );
+  }
+
+  /// Stores the message of a first-time sender if the user accepts it.
+  /// Typing signals and receipts from an unknown device are dropped.
+  Future<void> _acceptFromNewContact(Device sender, ChatEnvelope envelope) async {
+    if (envelope.kind != ChatEnvelopeKind.message || !await acceptChatSender(server.ref, sender)) {
+      return;
+    }
+    await server.ref.notifier(chatProvider).handleIncomingEnvelope(sender: sender, envelope: envelope, allFilesInBatch: const {});
+  }
+
+  /// Answers the pending `prepare-upload` request: `null` declines it (403),
+  /// an empty list accepts it without any download (204).
+  void _answerPrepareUpload(List<String>? acceptedFileIds) {
+    server.ref.redux(parentIsolateProvider).dispatch(IsolateHttpServerPrepareUploadDecisionAction(acceptedFileIds: acceptedFileIds));
   }
 
   /// An accepted file is being uploaded.

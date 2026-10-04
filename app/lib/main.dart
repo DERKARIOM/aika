@@ -6,6 +6,7 @@ import 'package:localsend_app/config/theme.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/persistence/color_mode.dart';
 import 'package:localsend_app/pages/home_page.dart';
+import 'package:localsend_app/provider/chat/chat_provider.dart';
 import 'package:localsend_app/provider/local_ip_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
 // [FOSS_REMOVE_START]
@@ -57,6 +58,8 @@ class LocalSendApp extends StatelessWidget {
             switch (state) {
               case AppLifecycleState.resumed:
                 ref.redux(localIpProvider).dispatch(InitLocalIpAction());
+                // Links may have died while in the background (mobile).
+                ref.notifier(chatProvider).retryLinksNow();
                 // [FOSS_REMOVE_START]
                 maybeCheckForUpdate(ref);
                 // [FOSS_REMOVE_END]

@@ -17,6 +17,18 @@ const chatWsMinProtocolVersion = 1;
 /// Upper bound of ids in one [ChatAckFrame], keeps frames small.
 const chatMaxIdsPerAck = 500;
 
+/// Longest text of one [ChatMessageFrame], in UTF-16 code units (like
+/// WhatsApp). Longer texts are split by the sender; a longer frame is
+/// rejected as malformed.
+const chatMaxTextLength = 65536;
+
+/// Longest message id accepted (ids are UUIDs, 36 characters).
+const chatMaxIdLength = 64;
+
+/// Longer aliases and device models announced in a [ChatHelloFrame] are
+/// cut to this length: they are displayed, never trusted.
+const chatMaxNameLength = 64;
+
 /// A frame of the chat WebSocket protocol: a JSON object whose `t` field
 /// names the frame type.
 ///
@@ -92,7 +104,15 @@ class ChatHelloFrame extends ChatFrame {
     if (version < 1 || minVersion < 1 || minVersion > version) {
       throw const _InvalidFrame();
     }
-    return ChatHelloFrame(version: version, minVersion: minVersion, alias: alias, deviceModel: json['model'] as String?);
+    return ChatHelloFrame(
+      version: version,
+      minVersion: minVersion,
+      alias: _cut(alias),
+      deviceModel: switch (json['model'] as String?) {
+        final String model => _cut(model),
+        null => null,
+      },
+    );
   }
 
   /// The version both sides speak, or `null` if there is none.
@@ -137,18 +157,22 @@ class ChatMessageFrame extends ChatFrame {
 
   factory ChatMessageFrame._fromJson(Map<String, dynamic> json) {
     final id = json['id'] as String;
-    if (id.isEmpty) {
+    if (!_isValidId(id)) {
       throw const _InvalidFrame();
     }
     final contentType = ChatContentType.values.firstWhereOrNull((c) => c.name == json['ct']);
     if (contentType == null) {
       throw const _InvalidFrame();
     }
+    final text = json['txt'] as String?;
+    if (text != null && text.length > chatMaxTextLength) {
+      throw const _InvalidFrame();
+    }
     return ChatMessageFrame(
       id: id,
       timestamp: DateTime.fromMillisecondsSinceEpoch(json['ts'] as int, isUtc: true),
       contentType: contentType,
-      text: json['txt'] as String?,
+      text: text,
     );
   }
 
@@ -178,7 +202,7 @@ class ChatAckFrame extends ChatFrame {
 
   factory ChatAckFrame._fromJson(Map<String, dynamic> json) {
     final raw = json['ids'];
-    if (raw is! List || raw.isEmpty || raw.length > chatMaxIdsPerAck || raw.any((e) => e is! String)) {
+    if (raw is! List || raw.isEmpty || raw.length > chatMaxIdsPerAck || raw.any((e) => e is! String || !_isValidId(e))) {
       throw const _InvalidFrame();
     }
     final status = ChatReceiptStatus.values.firstWhereOrNull((s) => s.name == json['st']);
@@ -214,4 +238,34 @@ class ChatTypingFrame extends ChatFrame {
 
   @override
   Map<String, dynamic> toJson() => {'t': frameType, 'on': isTyping};
+}
+
+bool _isValidId(String id) => id.isNotEmpty && id.length <= chatMaxIdLength;
+
+/// [value] cut to [chatMaxNameLength], without splitting a surrogate pair.
+String _cut(String value) {
+  if (value.length <= chatMaxNameLength) {
+    return value;
+  }
+  final end = _isHighSurrogate(value.codeUnitAt(chatMaxNameLength - 1)) ? chatMaxNameLength - 1 : chatMaxNameLength;
+  return value.substring(0, end);
+}
+
+bool _isHighSurrogate(int codeUnit) => codeUnit >= 0xD800 && codeUnit <= 0xDBFF;
+
+/// Splits [text] into parts of at most [chatMaxTextLength] code units,
+/// never inside a surrogate pair (an emoji stays whole).
+List<String> splitChatText(String text) {
+  final parts = <String>[];
+  var start = 0;
+  while (text.length - start > chatMaxTextLength) {
+    var end = start + chatMaxTextLength;
+    if (_isHighSurrogate(text.codeUnitAt(end - 1))) {
+      end--;
+    }
+    parts.add(text.substring(start, end));
+    start = end;
+  }
+  parts.add(text.substring(start));
+  return parts;
 }

@@ -61,11 +61,12 @@ Device resolveDeviceByFingerprint(
   );
 }
 
-/// Whether [fingerprint] is reachable right now (as opposed to just
-/// "known"): it has a ready chat link, or discovery currently sees it.
-/// Rebuilds [context] whenever either changes.
+/// Whether a message to [fingerprint] would arrive right now: it has a
+/// ready chat link. Being seen by discovery is not enough (the chat may be
+/// unreachable, e.g. encryption off or an older app); `ChatLinkSupervisor`
+/// links discovered contacts within seconds anyway.
+/// Rebuilds [context] whenever it changes.
 bool watchPeerOnline(BuildContext context, String fingerprint) {
-  final linked = context.watch(chatProvider.select((s) => s.onlinePeerFingerprints.contains(fingerprint)));
-  final discovered = context.watch(nearbyDevicesProvider.select((s) => s.devices.values.any((d) => d.fingerprint == fingerprint)));
-  return linked || discovered;
+  final upper = fingerprint.toUpperCase();
+  return context.watch(chatProvider.select((s) => s.onlinePeerFingerprints.contains(upper)));
 }

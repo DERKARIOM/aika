@@ -37,8 +37,29 @@ class _BrokenSecureStorage implements FlutterSecureStorage {
 }
 
 bool _hasPlaintextHeader(String path) {
-  final bytes = File(path).openSync().readSync(16);
-  return String.fromCharCodes(bytes) == 'SQLite format 3\u0000';
+  // Closed right away: on Windows an open file cannot be deleted.
+  final file = File(path).openSync();
+  try {
+    return String.fromCharCodes(file.readSync(16)) == 'SQLite format 3\u0000';
+  } finally {
+    file.closeSync();
+  }
+}
+
+/// Deletes [dir], retrying briefly: on Windows, SQLite may release its file
+/// handles a moment after `close()`.
+Future<void> _deleteDirectory(Directory dir) async {
+  for (var attempt = 0;; attempt++) {
+    try {
+      dir.deleteSync(recursive: true);
+      return;
+    } on FileSystemException {
+      if (attempt >= 10) {
+        rethrow;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+  }
 }
 
 void main() {
@@ -52,10 +73,11 @@ void main() {
   setUp(() {
     tmp = Directory.systemTemp.createTempSync('aika_chat_test');
     dbPath = p.join(tmp.path, 'aika_chat.sqlite');
-  });
-
-  tearDown(() {
-    tmp.deleteSync(recursive: true);
+    // Tear-downs run in reverse order of registration: registered here,
+    // first, this one runs last, after each test closed its databases with
+    // its own `addTearDown` (a group `tearDown` would run before those).
+    final dir = tmp;
+    addTearDown(() => _deleteDirectory(dir));
   });
 
   group('loadOrCreateChatDatabaseKey', () {

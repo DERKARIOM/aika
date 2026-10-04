@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:localsend_app/pages/debug/chat_debug_page.dart';
 import 'package:localsend_app/pages/debug/discovery_debug_page.dart';
 import 'package:localsend_app/pages/debug/http_logs_page.dart';
 import 'package:localsend_app/pages/debug/security_debug_page.dart';
@@ -75,6 +76,10 @@ class DebugPage extends StatelessWidget {
               FilledButton(
                 onPressed: () async => context.push(() => const HttpLogsPage()),
                 child: const Text('HTTP Logs'),
+              ),
+              FilledButton(
+                onPressed: () async => context.push(() => const ChatDebugPage()),
+                child: const Text('Chat'),
               ),
               if (kDebugMode)
                 FilledButton(

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:collection/collection.dart';
+import 'package:localsend_isolates/model/dto/file_dto.dart';
 
 /// Schema version of the chat envelope protocol.
 /// Bump this whenever the JSON shape below changes in a
@@ -18,6 +19,15 @@ const chatEnvelopeSchemaVersion = 1;
 /// platforms; it is only there to make the convention visually obvious to
 /// anyone reading logs or a captured request.
 const kChatEnvelopeFileName = '.aika-chat.v1.json';
+
+/// Whether [file], from an incoming `prepare-upload` request, is the chat
+/// envelope ([kChatEnvelopeFileName] with its JSON in the preview).
+///
+/// Its type is deliberately not checked: the sender derives the type sent
+/// on the wire from the file name, so `.json` travels as
+/// `application/json` and arrives as `FileType.other`, never as
+/// `FileType.text`. The preview is validated by [ChatEnvelope.tryDecode].
+bool isChatEnvelopeFile(FileDto file) => file.fileName == kChatEnvelopeFileName && file.preview != null;
 
 /// What a [ChatEnvelope] represents.
 ///

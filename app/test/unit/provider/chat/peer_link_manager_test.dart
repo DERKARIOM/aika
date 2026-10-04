@@ -213,6 +213,63 @@ void main() {
     });
   });
 
+  group('flood protection', () {
+    test('Should close a link that sends too many frames', () async {
+      final id = transport.open(_peer, outbound: false, answerHello: true);
+      await settle();
+      expect(manager.isReady(_peer), true);
+
+      // `now` is frozen: everything falls in the same one-second window.
+      for (var i = 0; i < 1001; i++) {
+        transport.receive(id, const ChatTypingFrame(isTyping: true));
+      }
+      await settle();
+
+      expect(transport.closed, [id]);
+      expect(frames.length, lessThan(1001));
+    });
+
+    test('Should allow the same amount spread over time', () async {
+      final id = transport.open(_peer, outbound: false, answerHello: true);
+      await settle();
+
+      for (var i = 0; i < 1500; i++) {
+        transport.receive(id, const ChatTypingFrame(isTyping: true));
+        if (i == 900) {
+          await settle();
+          now = now.add(const Duration(seconds: 1));
+        }
+      }
+      await settle();
+
+      expect(transport.closed, isEmpty);
+      expect(frames.length, 1500);
+    });
+  });
+
+  group('diagnostics', () {
+    test('Should remember the last attempt and the last disconnection', () async {
+      expect(manager.diagnosticsOf(_peer), isNull);
+
+      transport.onConnect = () => ChatLinkResultEvent(error: const ChatLinkError(ChatLinkErrorKind.timeout));
+      await manager.ensureLink(_peerAddress);
+      final failed = manager.diagnosticsOf(_peer.toLowerCase())!;
+      expect(failed.lastAttempt, PeerLinkStatus.unreachable);
+      expect(failed.lastAttemptAt, now);
+      expect(failed.lastError, contains('timeout'));
+
+      transport.onConnect = null;
+      await manager.ensureLink(_peerAddress);
+      expect(manager.diagnosticsOf(_peer)!.lastAttempt, PeerLinkStatus.ready);
+      expect(manager.diagnosticsOf(_peer)!.lastError, isNull);
+
+      manager.disconnect(_peer);
+      await settle();
+      expect(manager.diagnosticsOf(_peer)!.lastDisconnectReason, 'closed locally');
+      expect(manager.diagnosticsOf(_peer)!.lastDisconnectAt, now);
+    });
+  });
+
   group('send', () {
     test('Should fail without a ready link', () async {
       expect(await manager.send(_peer, const ChatTypingFrame(isTyping: true)), false);

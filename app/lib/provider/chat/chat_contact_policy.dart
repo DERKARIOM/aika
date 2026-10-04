@@ -9,6 +9,34 @@ import 'package:localsend_isolates/model/device.dart';
 import 'package:refena_flutter/refena_flutter.dart';
 import 'package:routerino/routerino.dart';
 
+/// What is known about a chat sender, without asking the user.
+enum ChatSenderVerdict {
+  /// Never accepted.
+  blocked,
+
+  /// Has a conversation, or is a favorite: always accepted.
+  known,
+
+  /// First contact: the user decides, see [acceptChatSender].
+  unknown,
+}
+
+/// Classifies [sender] right away (no dialog), so a caller that must answer
+/// the network quickly can do it before the user is asked.
+Future<ChatSenderVerdict> chatSenderVerdict(Ref ref, Device sender) async {
+  final fingerprint = sender.fingerprint;
+  if (ref.read(blockedDevicesProvider).isFingerprintBlocked(fingerprint)) {
+    return ChatSenderVerdict.blocked;
+  }
+  if (await ref.read(chatDatabaseProvider).getConversation(fingerprint) != null) {
+    return ChatSenderVerdict.known;
+  }
+  if (ref.read(favoritesProvider).any((f) => f.fingerprint == fingerprint)) {
+    return ChatSenderVerdict.known;
+  }
+  return ChatSenderVerdict.unknown;
+}
+
 /// Whether chat traffic from [sender] may be accepted, whatever the
 /// transport (legacy envelope or WebSocket):
 /// - blocked devices: never;
@@ -34,15 +62,13 @@ Future<bool> acceptChatSender(Ref ref, Device sender) async {
 final _pending = <String, Future<bool>>{};
 
 Future<bool> _decide(Ref ref, Device sender) async {
-  final fingerprint = sender.fingerprint;
-  if (ref.read(blockedDevicesProvider).isFingerprintBlocked(fingerprint)) {
-    return false;
-  }
-  if (await ref.read(chatDatabaseProvider).getConversation(fingerprint) != null) {
-    return true;
-  }
-  if (ref.read(favoritesProvider).any((f) => f.fingerprint == fingerprint)) {
-    return true;
+  switch (await chatSenderVerdict(ref, sender)) {
+    case ChatSenderVerdict.blocked:
+      return false;
+    case ChatSenderVerdict.known:
+      return true;
+    case ChatSenderVerdict.unknown:
+      break;
   }
 
   // First message ever from this device: ask once, explicitly.
@@ -53,7 +79,7 @@ Future<bool> _decide(Ref ref, Device sender) async {
   );
   if (accepted == false) {
     // The user explicitly chose "Block" rather than dismissing the dialog.
-    await ref.redux(blockedDevicesProvider).dispatchAsync(BlockDeviceAction(fingerprint: fingerprint, alias: sender.alias));
+    await ref.redux(blockedDevicesProvider).dispatchAsync(BlockDeviceAction(fingerprint: sender.fingerprint, alias: sender.alias));
   }
   return accepted == true;
 }

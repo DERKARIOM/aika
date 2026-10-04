@@ -31,13 +31,22 @@ const _peerHello = ChatHelloFrame(version: chatWsProtocolVersion, minVersion: ch
 class _FakeTransport implements ChatLinkTransport {
   final events = StreamController<ChatLinkEvent>();
   final sent = <ChatFrame>[];
+  int connects = 0;
   int _nextId = 0;
+
+  /// When set, every connect() fails with it (the peer is not linkable).
+  ChatLinkError? connectError;
 
   @override
   Stream<ChatLinkEvent> start() => events.stream;
 
   @override
   Future<ChatLinkResultEvent> connect({required String ip, required int port, required String fingerprint}) async {
+    connects++;
+    final error = connectError;
+    if (error != null) {
+      return ChatLinkResultEvent(error: error);
+    }
     return ChatLinkResultEvent(connectionId: open());
   }
 
@@ -230,6 +239,143 @@ void main() {
 
     final read = transport.sentOf<ChatAckFrame>().where((a) => a.status == ChatReceiptStatus.read).single;
     expect(read.ids, ['m1', 'm2']);
+  });
+
+  test('Should file a message dated in the future at its reception time', () async {
+    transport.open();
+    await settle();
+    final now = DateTime.now().toUtc();
+    transport.receive(ChatMessageFrame(id: 'future', timestamp: now.add(const Duration(days: 1)), contentType: ChatContentType.text, text: 'a'));
+    await settle();
+
+    final row = await onlyMessage();
+    expect(row.createdAt.difference(now).inMinutes.abs(), lessThan(1));
+  });
+
+  test('Should split a too long text into ordered messages', () async {
+    transport.open();
+    await settle();
+
+    await chat.sendText(target: _bob, text: '${'a' * chatMaxTextLength}fin');
+    await settle();
+
+    final sent = transport.sentOf<ChatMessageFrame>();
+    expect(sent.map((m) => m.text), ['a' * chatMaxTextLength, 'fin']);
+    expect(sent[1].timestamp.isAfter(sent[0].timestamp), true);
+  });
+
+  test('Should send on reconnection the read receipts lost with the link', () async {
+    transport.open();
+    await settle();
+    transport.close('c0');
+    await settle();
+
+    // Read while offline: the receipt cannot leave.
+    transport.connectError = const ChatLinkError(ChatLinkErrorKind.timeout);
+    await db.insertMessage(
+      ChatMessagesCompanion.insert(
+        id: 'offline',
+        conversationId: _peer,
+        direction: ChatMessageDirectionColumn.incoming,
+        contentType: ChatContentType.text.name,
+        status: ChatMessageStatusColumn.delivered,
+        createdAt: DateTime.now().toUtc(),
+        body: const Value('lu hors ligne'),
+      ),
+    );
+    await chat.markConversationRead(_bob);
+    await settle();
+    expect(transport.sentOf<ChatAckFrame>().where((a) => a.status == ChatReceiptStatus.read), isEmpty);
+
+    transport.connectError = null;
+    transport.open();
+    await settle();
+
+    final read = transport.sentOf<ChatAckFrame>().where((a) => a.status == ChatReceiptStatus.read).single;
+    expect(read.ids, ['offline']);
+  });
+
+  group('without a chat link', () {
+    /// The message is kept, unsent, for a later attempt: never handed to the
+    /// file-transfer pipeline (no HTTP client is even available here).
+    Future<ChatMessage> expectHeldInOutbox() async {
+      final row = await onlyMessage();
+      expect(row.status, ChatMessageStatusColumn.pending);
+      expect(transport.sentOf<ChatMessageFrame>(), isEmpty);
+      expect(await db.watchOutboxSize().first, 1);
+      expect(await db.dueOutboxMessages(DateTime.now().toUtc()), isEmpty);
+      return row;
+    }
+
+    test('Should keep a message for an unreachable peer, without an error', () async {
+      transport.connectError = const ChatLinkError(ChatLinkErrorKind.timeout);
+
+      await chat.sendText(target: _bob, text: 'salut');
+      await settle();
+
+      expect((await expectHeldInOutbox()).errorMessage, isNull);
+    });
+
+    test('Should tell when the peer app has no instant messaging', () async {
+      transport.connectError = const ChatLinkError(ChatLinkErrorKind.unsupported, status: 404);
+
+      await chat.sendText(target: _bob, text: 'salut');
+      await settle();
+
+      expect((await expectHeldInOutbox()).errorMessage, contains('Mettez-le à jour'));
+    });
+
+    test('Should tell when the peer has encryption off, without dialing it', () async {
+      await chat.sendText(target: _bob.copyWith(https: false), text: 'salut');
+      await settle();
+
+      expect((await expectHeldInOutbox()).errorMessage, contains('chiffrement'));
+      expect(transport.connects, 0);
+    });
+
+    test('Should hold back a message for an impostor', () async {
+      transport.connectError = const ChatLinkError(ChatLinkErrorKind.fingerprintMismatch);
+
+      await chat.sendText(target: _bob, text: 'salut');
+      await settle();
+
+      expect((await expectHeldInOutbox()).errorMessage, contains('identité'));
+    });
+
+    test('Should dial an offline peer once per outbox pass', () async {
+      transport.connectError = const ChatLinkError(ChatLinkErrorKind.timeout);
+      for (final id in ['q1', 'q2', 'q3']) {
+        await db.insertMessage(
+          ChatMessagesCompanion.insert(
+            id: id,
+            conversationId: _peer,
+            direction: ChatMessageDirectionColumn.outgoing,
+            contentType: ChatContentType.text.name,
+            status: ChatMessageStatusColumn.pending,
+            createdAt: DateTime.utc(2026),
+            body: Value(id),
+          ),
+        );
+        await db.enqueueOutbox(id);
+      }
+      // Bob is on the network, but its chat link cannot be opened.
+      await container.redux(nearbyDevicesProvider).dispatchAsync(RegisterDeviceAction(_bob));
+
+      await chat.retryDueOutbox();
+      await settle();
+
+      expect(transport.connects, 1);
+      expect(transport.sentOf<ChatMessageFrame>(), isEmpty);
+      expect(await db.dueOutboxMessages(DateTime.now().toUtc()), isEmpty);
+    });
+
+    test('Should not send nor dial for a typing signal', () async {
+      await chat.setTyping(target: _bob, isTyping: true);
+      await settle();
+
+      expect(transport.connects, 0);
+      expect(transport.sent, isEmpty);
+    });
   });
 
   test('Should forget presence and typing when the link goes', () async {

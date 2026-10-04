@@ -9,8 +9,10 @@ import 'package:localsend_app/model/chat/chat_frame.dart';
 import 'package:localsend_app/model/cross_file.dart';
 import 'package:localsend_app/provider/chat/blocked_devices_provider.dart';
 import 'package:localsend_app/provider/chat/chat_contact_policy.dart';
+import 'package:localsend_app/provider/chat/chat_conversations_provider.dart';
 import 'package:localsend_app/provider/chat/chat_database_provider.dart';
 import 'package:localsend_app/provider/chat/chat_link_provider.dart';
+import 'package:localsend_app/provider/chat/chat_link_supervisor.dart';
 import 'package:localsend_app/provider/chat/peer_link_manager.dart';
 import 'package:localsend_app/provider/device_info_provider.dart';
 import 'package:localsend_app/provider/http_provider.dart';
@@ -33,12 +35,36 @@ import 'package:uuid/uuid.dart';
 final _logger = Logger('Chat');
 const _uuid = Uuid();
 
-/// Max message ids per batched receipt, keeps each envelope a few KB.
-const _maxIdsPerReceipt = 100;
-
 /// How long a message sent over a chat link may wait for the peer's
 /// `delivered` ack before it is sent again.
 const _ackTimeout = Duration(seconds: 30);
+
+/// Longest wait between two link attempts for a queued text message.
+/// A contact that reappears is normally linked by [ChatLinkSupervisor],
+/// which flushes its messages at once; this bounds the delay otherwise
+/// (e.g. a peer only known from an earlier link, not from discovery).
+const _maxLinkRetryDelay = Duration(seconds: 60);
+
+/// How far in the future an incoming message's timestamp may be (clocks
+/// of two devices differ a little). Later timestamps are replaced by the
+/// reception time, so a wrong or hostile clock cannot pin a message at
+/// the bottom of the conversation.
+const _maxClockSkew = Duration(minutes: 2);
+
+/// Read receipts are sent again, on reconnection, for messages read from
+/// this long before the link went down: one may have been lost with it
+/// (the peer ignores duplicates).
+const _readResyncMargin = Duration(minutes: 1);
+
+/// How long to wait before asking again a peer without a chat link, which
+/// only changes when its app is updated. Matches `PeerLinkManager`.
+const _legacyPeerRetryDelay = Duration(minutes: 10);
+
+// Why a queued text message is not delivered, when waiting alone will not
+// fix it. Shown under the message (French, like the other chat errors).
+const _legacyPeerError = "Cet appareil utilise une version d'Aika sans messagerie instantanée. Mettez-le à jour pour recevoir ce message.";
+const _unencryptedPeerError = 'Le chiffrement est désactivé sur cet appareil. Activez-le dans ses réglages pour discuter.';
+const _impostorError = "L'identité de l'appareil n'a pas pu être vérifiée, message retenu.";
 
 /// Ephemeral (non-persisted) chat UI state: who is currently typing towards
 /// us, and who is reachable over a chat link right now. Everything else
@@ -63,15 +89,18 @@ class ChatUiState {
 
 /// High-level chat API used by the UI (send text/media, mark read, block,
 /// export/delete) and by [ReceiveController] (route an incoming chat
-/// envelope). This is the only place that talks to the low-level
-/// `prepare-upload`/`upload` HTTP pipeline for chat purposes; everything
-/// above this layer only deals with [Device]/[ChatMessage]/[CrossFile].
+/// envelope). Everything above this layer only deals with
+/// [Device]/[ChatMessage]/[CrossFile].
 ///
-/// No Rust/FFI code was added for this feature: every network operation
-/// below reuses the exact same `httpProvider`/`parentIsolateProvider`
-/// surface the regular file-transfer feature already uses. See
-/// [kChatEnvelopeFileName] for how a chat payload is smuggled through the
-/// existing `prepare-upload` request.
+/// Two transports, strictly separated:
+/// - **Chat link** (persistent mTLS WebSocket, see [PeerLinkManager]): the
+///   only transport for text messages, typing indicators and receipts.
+///   When there is no link, they wait in the outbox (messages) or are
+///   dropped (typing); they never fall back to the file-transfer pipeline.
+/// - **File transfer** (`prepare-upload`/`upload`): media messages only,
+///   with their [ChatEnvelope] smuggled in a reserved file (see
+///   [kChatEnvelopeFileName]). Envelopes from older peers are still
+///   received, see [handleIncomingEnvelope].
 final chatProvider = NotifierProvider<ChatService, ChatUiState>((ref) {
   return ChatService();
 });
@@ -92,10 +121,9 @@ class ChatService extends Notifier<ChatUiState> {
   /// already looking at.
   String? currentlyOpenConversationFingerprint;
 
-  /// Serializes our own outbound `prepare-upload` requests per peer so a
-  /// lightweight signal (typing/receipt) can never race - and thus abort,
-  /// per the Rust server's single-active-session invariant - a real message
-  /// or media upload already in flight to the same peer.
+  /// Serializes our own outbound media `prepare-upload` requests per peer
+  /// so two of them never race for the peer's single transfer session
+  /// (the Rust server answers `409` to the second one).
   final Map<String, Future<void>> _peerLocks = {};
 
   /// Correlates an accepted incoming attachment's file id back to the chat
@@ -109,6 +137,16 @@ class ChatService extends Notifier<ChatUiState> {
   /// What each connected peer announced in its hello, and from which IP,
   /// to describe a sender that discovery has not seen (yet).
   final Map<String, (ChatHelloFrame, String)> _linkPeers = {};
+
+  /// When this service started, and when each peer lost its last link:
+  /// the read receipts to send again on reconnection start there.
+  final DateTime _startedAt = DateTime.now().toUtc();
+  final Map<String, DateTime> _linkLostAt = {};
+
+  /// Reconnects to contacts on the network, see [startLinks].
+  ChatLinkSupervisor? _supervisor;
+  StreamSubscription<Object?>? _nearbySubscription;
+  StreamSubscription<Object?>? _conversationsSubscription;
 
   /// The Rust server's `sessionId` of the chat-media download currently (or
   /// most recently) in flight, if any. `ReceiveController` cannot tag
@@ -136,6 +174,8 @@ class ChatService extends Notifier<ChatUiState> {
   // Outgoing: user-initiated sends
   // -------------------------------------------------------------------
 
+  /// Sends [text] (trimmed) as one message, or as several in a row when it
+  /// is longer than a chat frame allows ([chatMaxTextLength]).
   Future<void> sendText({required Device target, required String text}) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty || await _isBlocked(target)) {
@@ -145,31 +185,36 @@ class ChatService extends Notifier<ChatUiState> {
     final db = ref.read(chatDatabaseProvider);
     await _touchConversation(target);
 
-    final messageId = _uuid.v4();
-    final now = DateTime.now().toUtc();
-    await db.insertMessage(
-      ChatMessagesCompanion.insert(
-        id: messageId,
-        conversationId: target.fingerprint,
-        direction: ChatMessageDirectionColumn.outgoing,
-        contentType: ChatContentType.text.name,
-        status: ChatMessageStatusColumn.pending,
-        createdAt: now,
-        body: Value(trimmed),
-      ),
-    );
-    await db.updateLastMessagePreview(target.fingerprint, preview: trimmed, at: now);
+    final parts = splitChatText(trimmed);
+    final start = DateTime.now().toUtc();
+    for (var i = 0; i < parts.length; i++) {
+      final messageId = _uuid.v4();
+      // One millisecond apart, so the parts keep their order everywhere.
+      final createdAt = start.add(Duration(milliseconds: i));
+      await db.insertMessage(
+        ChatMessagesCompanion.insert(
+          id: messageId,
+          conversationId: target.fingerprint,
+          direction: ChatMessageDirectionColumn.outgoing,
+          contentType: ChatContentType.text.name,
+          status: ChatMessageStatusColumn.pending,
+          createdAt: createdAt,
+          body: Value(parts[i]),
+        ),
+      );
+      await db.updateLastMessagePreview(target.fingerprint, preview: parts[i], at: createdAt);
 
-    await _dispatchOutgoing(
-      target: target,
-      messageId: messageId,
-      envelope: ChatEnvelope.message(messageId: messageId, contentType: ChatContentType.text, text: trimmed, timestamp: now),
-    );
+      await _dispatchOutgoing(
+        target: target,
+        messageId: messageId,
+        envelope: ChatEnvelope.message(messageId: messageId, contentType: ChatContentType.text, text: parts[i], timestamp: createdAt),
+      );
+    }
   }
 
   /// Sends [file] (image/video/document) as a chat message, optionally with
   /// a text [caption]. The file travels in the very same `prepare-upload`
-  /// batch as the chat envelope - see [_trySend].
+  /// batch as the chat envelope - see [_sendMedia].
   Future<void> sendMedia({required Device target, required CrossFile file, String? caption}) async {
     if (await _isBlocked(target)) {
       return;
@@ -213,11 +258,13 @@ class ChatService extends Notifier<ChatUiState> {
     );
   }
 
-  /// Best-effort "I am typing" / "I stopped typing" signal. Never queued,
-  /// never retried: if it is lost, the next keystroke (or its absence)
-  /// naturally corrects the peer's view within a couple of seconds.
+  /// Best-effort "I am typing" / "I stopped typing" signal, sent only over
+  /// an existing chat link. Never queued, never retried, never opens a link:
+  /// if it is lost, the next keystroke (or its absence) naturally corrects
+  /// the peer's view within a couple of seconds.
   Future<void> setTyping({required Device target, required bool isTyping}) async {
-    if (await _isBlocked(target)) {
+    final links = ref.read(peerLinkManagerProvider);
+    if (!links.isReady(target.fingerprint) || await _isBlocked(target)) {
       return;
     }
     final now = DateTime.now();
@@ -225,31 +272,16 @@ class ChatService extends Notifier<ChatUiState> {
       return;
     }
     _lastTypingSentAt = isTyping ? now : null;
-
-    final links = ref.read(peerLinkManagerProvider);
-    if (links.isReady(target.fingerprint)) {
-      unawaited(links.send(target.fingerprint, ChatTypingFrame(isTyping: isTyping)));
-      return;
-    }
-
-    unawaited(
-      Future(() async {
-        try {
-          await _trySend(
-            target: target,
-            envelope: ChatEnvelope.typing(isTyping: isTyping),
-          );
-        } catch (e) {
-          _logger.fine('Typing signal not delivered (ignored): $e');
-        }
-      }),
-    );
+    unawaited(links.send(target.fingerprint, ChatTypingFrame(isTyping: isTyping)));
   }
 
   /// Marks every unread incoming message of this conversation as read,
-  /// resets the unread badge, and best-effort notifies the peer with one
-  /// batched receipt (per [_maxIdsPerReceipt] messages) instead of one
-  /// request per message.
+  /// resets the unread badge, and best-effort notifies the peer over the
+  /// chat link with batched read receipts.
+  ///
+  /// Without a link the receipts are not sent (they never go through the
+  /// file-transfer pipeline): they are sent on reconnection instead, see
+  /// [_resendReadReceipts].
   Future<void> markConversationRead(Device target) async {
     final db = ref.read(chatDatabaseProvider);
     onConversationRead?.call(target.fingerprint);
@@ -259,33 +291,13 @@ class ChatService extends Notifier<ChatUiState> {
 
     // Opening a conversation is the right moment to (re)establish the link:
     // the user is likely to answer.
-    final link = await _ensureLink(target);
-    if (link == PeerLinkStatus.ready) {
-      final links = ref.read(peerLinkManagerProvider);
-      for (var i = 0; i < readIds.length; i += chatMaxIdsPerAck) {
-        final chunk = readIds.sublist(i, (i + chatMaxIdsPerAck).clamp(0, readIds.length));
-        unawaited(links.send(target.fingerprint, ChatAckFrame(ids: chunk, status: ChatReceiptStatus.read)));
-      }
+    if (!_isLinkable(target) || await _ensureLink(target) != PeerLinkStatus.ready) {
       return;
     }
-    if (link == PeerLinkStatus.impostor) {
-      return;
-    }
-
-    for (var i = 0; i < readIds.length; i += _maxIdsPerReceipt) {
-      final chunk = readIds.sublist(i, (i + _maxIdsPerReceipt).clamp(0, readIds.length));
-      unawaited(
-        Future(() async {
-          try {
-            await _trySend(
-              target: target,
-              envelope: ChatEnvelope.batchReceipt(messageIds: chunk, status: ChatReceiptStatus.read),
-            );
-          } catch (e) {
-            _logger.fine('Read receipt not delivered (ignored): $e');
-          }
-        }),
-      );
+    final links = ref.read(peerLinkManagerProvider);
+    for (var i = 0; i < readIds.length; i += chatMaxIdsPerAck) {
+      final chunk = readIds.sublist(i, (i + chatMaxIdsPerAck).clamp(0, readIds.length));
+      unawaited(links.send(target.fingerprint, ChatAckFrame(ids: chunk, status: ChatReceiptStatus.read)));
     }
   }
 
@@ -362,20 +374,10 @@ class ChatService extends Notifier<ChatUiState> {
         return const {};
 
       case ChatEnvelopeKind.message:
+        // No delivered receipt: it would have to travel back through the
+        // file-transfer pipeline. The sender (an older app, or a media
+        // message) only waits for one to show the double tick.
         await _storeIncomingMessage(sender, envelope);
-
-        // Best-effort delivered-receipt; a missed one is harmless, the
-        // read-receipt sent when the recipient opens the chat subsumes it.
-        unawaited(
-          Future(() async {
-            try {
-              await _trySend(
-                target: sender,
-                envelope: ChatEnvelope.receipt(messageId: envelope.messageId, status: ChatReceiptStatus.delivered),
-              );
-            } catch (_) {}
-          }),
-        );
 
         final attachmentId = envelope.attachmentFileId;
         if (attachmentId != null && allFilesInBatch.containsKey(attachmentId)) {
@@ -393,6 +395,8 @@ class ChatService extends Notifier<ChatUiState> {
     if (await db.messageExists(envelope.messageId)) {
       return;
     }
+    final now = DateTime.now().toUtc();
+    final createdAt = envelope.timestamp.isAfter(now.add(_maxClockSkew)) ? now : envelope.timestamp;
     await db.upsertConversation(
       peerFingerprint: sender.fingerprint,
       peerAlias: sender.alias,
@@ -406,7 +410,7 @@ class ChatService extends Notifier<ChatUiState> {
         direction: ChatMessageDirectionColumn.incoming,
         contentType: (envelope.contentType ?? ChatContentType.text).name,
         status: ChatMessageStatusColumn.delivered,
-        createdAt: envelope.timestamp,
+        createdAt: createdAt,
         body: Value(envelope.text),
         attachmentFileName: Value(envelope.attachmentFileName),
         attachmentSize: Value(envelope.attachmentSize),
@@ -417,7 +421,7 @@ class ChatService extends Notifier<ChatUiState> {
     await db.updateLastMessagePreview(
       sender.fingerprint,
       preview: _previewFor(envelope.contentType ?? ChatContentType.text, envelope.text, envelope.attachmentFileName),
-      at: envelope.timestamp,
+      at: createdAt,
     );
     onIncomingMessage?.call(sender, envelope);
   }
@@ -426,32 +430,67 @@ class ChatService extends Notifier<ChatUiState> {
   // Chat links (WebSocket transport)
   // -------------------------------------------------------------------
 
-  /// Starts the chat hub and routes its frames here. Call once, after the
-  /// isolates are set up.
+  /// Starts the chat hub and routes its frames here, then keeps a link open
+  /// with every contact discovery sees (see [ChatLinkSupervisor]). Call
+  /// once, after the isolates are set up.
   void startLinks() {
-    ref.read(peerLinkManagerProvider)
+    final links = ref.read(peerLinkManagerProvider)
       ..onFrame = _onLinkFrame
       ..onPeerReady = _onPeerReady
       ..onPeerGone = _onPeerGone
       ..start();
+    _supervisor ??= ChatLinkSupervisor(
+      links: links,
+      isAllowed: (fingerprint) => !ref.read(blockedDevicesProvider).any((d) => d.fingerprint.toUpperCase() == fingerprint),
+    );
+    _nearbySubscription ??= ref.stream(nearbyDevicesProvider).listen((_) => _updateLinkCandidates());
+    _conversationsSubscription ??= ref.stream(chatConversationsProvider).listen((_) => _updateLinkCandidates());
+    _updateLinkCandidates();
   }
 
-  /// Returns a chat link to [target], or why there is none. Peers without
-  /// TLS cannot have one (their identity could not be verified).
+  /// Retries the links to every contact on the network right away, e.g.
+  /// when the app comes back to the foreground.
+  void retryLinksNow() => _supervisor?.retryNow();
+
+  /// Contacts (devices with a conversation) that discovery sees over HTTPS
+  /// are the peers to stay linked with.
+  void _updateLinkCandidates() {
+    final supervisor = _supervisor;
+    if (supervisor == null) {
+      return;
+    }
+    final contacts = {
+      for (final conversation in ref.read(chatConversationsProvider)) conversation.peerFingerprint.toUpperCase(),
+    };
+    supervisor.setCandidates([
+      for (final device in ref.read(nearbyDevicesProvider).devices.values)
+        if (device.https && device.ip != null && device.port > 0 && contacts.contains(device.fingerprint.toUpperCase()))
+          PeerAddress(fingerprint: device.fingerprint, ip: device.ip!, port: device.port),
+    ]);
+  }
+
+  /// Whether a chat link to [target] exists or can be opened: links are
+  /// mutually authenticated TLS, so dialing the peer needs it to serve
+  /// HTTPS. (A peer with encryption off can still dial us: its link counts.)
+  bool _isLinkable(Device target) => target.https || ref.read(peerLinkManagerProvider).isReady(target.fingerprint);
+
+  /// Returns a chat link to [target], or why there is none.
+  /// Callers check [_isLinkable] first.
   Future<PeerLinkStatus> _ensureLink(Device target) async {
     final links = ref.read(peerLinkManagerProvider);
     if (links.isReady(target.fingerprint)) {
       return PeerLinkStatus.ready;
     }
     final ip = target.ip;
-    if (ip == null || !target.https || target.port <= 0) {
-      return PeerLinkStatus.legacy;
+    if (ip == null || target.port <= 0) {
+      return PeerLinkStatus.unreachable;
     }
     return links.ensureLink(PeerAddress(fingerprint: target.fingerprint, ip: ip, port: target.port));
   }
 
   void _onPeerReady(String fingerprint, int version, ChatHelloFrame hello, String ip) {
     _linkPeers[fingerprint] = (hello, ip);
+    final linkLostAt = _linkLostAt.remove(fingerprint) ?? _startedAt;
     state = state.copyWith(onlinePeerFingerprints: {...state.onlinePeerFingerprints, fingerprint});
     unawaited(
       Future(() async {
@@ -462,11 +501,26 @@ class ChatService extends Notifier<ChatUiState> {
         // Whatever waited for this peer goes out now, not at the next tick.
         await db.makeOutboxDueNow(fingerprint, now);
         await retryDueOutbox();
+        // Reads since the previous link went down (or since the app
+        // started, if there was none) were not acknowledged.
+        await _resendReadReceipts(fingerprint, since: linkLostAt.subtract(_readResyncMargin));
       }),
     );
   }
 
+  /// Read receipts for the messages read since [since]: those sent while
+  /// there was no link never left this device. The peer ignores the ones
+  /// it already has (a status never moves backwards).
+  Future<void> _resendReadReceipts(String fingerprint, {required DateTime since}) async {
+    final ids = await ref.read(chatDatabaseProvider).incomingReadSince(fingerprint, since, limit: chatMaxIdsPerAck);
+    if (ids.isNotEmpty) {
+      await ref.read(peerLinkManagerProvider).send(fingerprint, ChatAckFrame(ids: ids, status: ChatReceiptStatus.read));
+    }
+  }
+
   void _onPeerGone(String fingerprint) {
+    _linkLostAt[fingerprint] = DateTime.now().toUtc();
+    _supervisor?.onPeerGone(fingerprint);
     state = state.copyWith(
       onlinePeerFingerprints: {...state.onlinePeerFingerprints}..remove(fingerprint),
       typingPeerFingerprints: {...state.typingPeerFingerprints}..remove(fingerprint),
@@ -596,6 +650,11 @@ class ChatService extends Notifier<ChatUiState> {
   Future<void> _retryDueOutboxOnce() async {
     final db = ref.read(chatDatabaseProvider);
     final due = await db.dueOutboxMessages(DateTime.now().toUtc());
+    // Oldest first, so messages written offline go out in the order typed.
+    due.sort((a, b) => a.$1.createdAt.compareTo(b.$1.createdAt));
+    // One link attempt per peer and pass: ten queued messages to an offline
+    // peer cost one connection timeout, not ten.
+    final links = <String, PeerLinkStatus>{};
     for (final (message, attempts) in due) {
       final target = _resolveDevice(message.conversationId) ?? _linkSender(message.conversationId);
       if (target == null) {
@@ -603,11 +662,11 @@ class ChatService extends Notifier<ChatUiState> {
         // next periodic tick (or the peer reappearing) will retry it.
         continue;
       }
-      await _retryOutboxMessage(message, attempts, target);
+      await _retryOutboxMessage(message, attempts, target, links);
     }
   }
 
-  Future<void> _retryOutboxMessage(ChatMessage message, int attempts, Device target) async {
+  Future<void> _retryOutboxMessage(ChatMessage message, int attempts, Device target, Map<String, PeerLinkStatus> links) async {
     final db = ref.read(chatDatabaseProvider);
     final contentType = ChatContentType.values.byName(message.contentType);
 
@@ -644,11 +703,12 @@ class ChatService extends Notifier<ChatUiState> {
       timestamp: message.createdAt,
     );
 
-    if (media == null && await _sendOverLink(target, envelope, attempts: attempts)) {
+    if (media == null) {
+      await _sendTextOverLink(target, envelope, attempts: attempts, links: links);
       return;
     }
 
-    final outcome = await _trySend(target: target, envelope: envelope, media: media);
+    final outcome = await _sendMedia(target: target, envelope: envelope, media: media);
     if (outcome.success) {
       await db.updateMessageStatus(message.id, ChatMessageStatusColumn.sent);
       await db.removeFromOutbox(message.id);
@@ -687,91 +747,137 @@ class ChatService extends Notifier<ChatUiState> {
     required ChatEnvelope envelope,
     CrossFile? media,
   }) async {
-    final db = ref.read(chatDatabaseProvider);
-    if (media == null && await _sendOverLink(target, envelope, attempts: 0)) {
+    if (media == null) {
+      await _sendTextOverLink(target, envelope, attempts: 0);
       return;
     }
 
-    final outcome = await _trySend(target: target, envelope: envelope, media: media);
+    final db = ref.read(chatDatabaseProvider);
+    final outcome = await _sendMedia(target: target, envelope: envelope, media: media);
     if (outcome.success) {
       // No-op if the peer's "delivered" receipt was processed first.
       await db.updateMessageStatus(messageId, ChatMessageStatusColumn.sent);
       await db.removeFromOutbox(messageId);
     } else {
-      final stillPending = await db.updateMessageStatus(messageId, ChatMessageStatusColumn.pending, errorMessage: outcome.errorMessage);
-      // A text message the peer already acknowledged needs no retry; a media
-      // one may still lack its attachment bytes, so it is retried anyway.
-      if (stillPending || media != null) {
-        await db.enqueueOutbox(messageId, nextAttemptAt: DateTime.now().toUtc().add(_backoffFor(1)));
-      }
+      await db.updateMessageStatus(messageId, ChatMessageStatusColumn.pending, errorMessage: outcome.errorMessage);
+      // Retried even if the peer acknowledged the text part: the
+      // attachment bytes may still be missing.
+      await db.enqueueOutbox(messageId, nextAttemptAt: DateTime.now().toUtc().add(_backoffFor(1)));
     }
   }
 
-  /// Sends a text message over the chat link if the peer has one. Returns
-  /// `true` when the message was handled (sent, or held back because the
-  /// peer's identity could not be verified); `false` means: use the legacy
-  /// transport.
+  /// Sends a text message over the chat link, the only transport text
+  /// messages use.
   ///
-  /// A message sent this way stays queued until the peer's `delivered` ack
-  /// (see `ChatDatabase.applyReceipt`) and is sent again after [_ackTimeout]
-  /// otherwise; the peer deduplicates it by id.
-  Future<bool> _sendOverLink(Device target, ChatEnvelope envelope, {required int attempts}) async {
-    final db = ref.read(chatDatabaseProvider);
+  /// - Sent: the message stays queued until the peer's `delivered` ack (see
+  ///   `ChatDatabase.applyReceipt`) and is sent again after [_ackTimeout]
+  ///   otherwise; the peer deduplicates it by id.
+  /// - Not sent: it stays `pending` in the outbox and is tried again later.
+  ///   A reason is shown only when waiting alone will not fix it.
+  ///
+  /// [links] caches the link status per peer during one outbox pass.
+  Future<void> _sendTextOverLink(
+    Device target,
+    ChatEnvelope envelope, {
+    required int attempts,
+    Map<String, PeerLinkStatus>? links,
+  }) async {
     final messageId = envelope.messageId;
-    final link = await _ensureLink(target);
-    switch (link) {
+    final nextAttempts = attempts + 1;
+
+    if ((envelope.text?.length ?? 0) > chatMaxTextLength) {
+      // Queued before texts were split ([sendText]): the peer would reject
+      // it as malformed, and it would be sent again forever.
+      final db = ref.read(chatDatabaseProvider);
+      await db.updateMessageStatus(messageId, ChatMessageStatusColumn.failed, errorMessage: 'Message trop long pour être envoyé.');
+      await db.removeFromOutbox(messageId);
+      return;
+    }
+
+    if (!_isLinkable(target)) {
+      await _holdInOutbox(messageId, nextAttempts, _linkRetryDelay(nextAttempts), errorMessage: _unencryptedPeerError);
+      return;
+    }
+
+    final status = links?[target.fingerprint] ?? await _ensureLink(target);
+    links?[target.fingerprint] = status;
+    if (status != PeerLinkStatus.ready) {
+      _logger.fine('Message $messageId kept in the outbox: no chat link to ${target.alias} (${status.name})');
+    }
+    switch (status) {
       case PeerLinkStatus.ready:
-        final sent = await ref
-            .read(peerLinkManagerProvider)
-            .send(
-              target.fingerprint,
-              ChatMessageFrame(
-                id: messageId,
-                timestamp: envelope.timestamp,
-                contentType: envelope.contentType ?? ChatContentType.text,
-                text: envelope.text,
-              ),
-            );
-        if (!sent) {
-          return false;
-        }
-        await db.updateMessageStatus(messageId, ChatMessageStatusColumn.sent);
-        await db.enqueueOutbox(messageId, nextAttemptAt: DateTime.now().toUtc().add(_ackTimeout));
-        await db.rescheduleOutbox(messageId, DateTime.now().toUtc().add(_ackTimeout), attempts + 1);
-        return true;
-      case PeerLinkStatus.impostor:
-        // Never fall back: the legacy transport cannot verify who answers.
-        await db.updateMessageStatus(
-          messageId,
-          ChatMessageStatusColumn.pending,
-          errorMessage: "L'identité de l'appareil n'a pas pu être vérifiée, message retenu.",
+        final frame = ChatMessageFrame(
+          id: messageId,
+          timestamp: envelope.timestamp,
+          contentType: envelope.contentType ?? ChatContentType.text,
+          text: envelope.text,
         );
-        final nextAttempts = attempts + 1;
-        await db.enqueueOutbox(messageId);
-        await db.rescheduleOutbox(messageId, DateTime.now().toUtc().add(_backoffFor(nextAttempts)), nextAttempts);
-        return true;
-      case PeerLinkStatus.legacy:
+        if (await ref.read(peerLinkManagerProvider).send(target.fingerprint, frame)) {
+          final db = ref.read(chatDatabaseProvider);
+          final ackDue = DateTime.now().toUtc().add(_ackTimeout);
+          await db.updateMessageStatus(messageId, ChatMessageStatusColumn.sent);
+          await db.enqueueOutbox(messageId, nextAttemptAt: ackDue);
+          await db.rescheduleOutbox(messageId, ackDue, nextAttempts);
+          return;
+        }
+        // The link closed meanwhile.
+        links?[target.fingerprint] = PeerLinkStatus.unreachable;
+        await _holdInOutbox(messageId, nextAttempts, _linkRetryDelay(nextAttempts));
       case PeerLinkStatus.unreachable:
-        return false;
+        await _holdInOutbox(messageId, nextAttempts, _linkRetryDelay(nextAttempts));
+      case PeerLinkStatus.legacy:
+        await _holdInOutbox(messageId, nextAttempts, _legacyPeerRetryDelay, errorMessage: _legacyPeerError);
+      case PeerLinkStatus.impostor:
+        await _holdInOutbox(messageId, nextAttempts, _backoffFor(nextAttempts), errorMessage: _impostorError);
     }
   }
 
-  Future<_ChatSendOutcome> _trySend({
+  /// Keeps an unsent text message `pending` in the outbox until [delay]
+  /// has passed, with [errorMessage] (or none) as the reason shown.
+  /// A message the peer already acknowledged just leaves the outbox.
+  Future<void> _holdInOutbox(String messageId, int attempts, Duration delay, {String? errorMessage}) async {
+    final db = ref.read(chatDatabaseProvider);
+    final message = await db.getMessage(messageId);
+    if (message == null || message.status == ChatMessageStatusColumn.delivered || message.status == ChatMessageStatusColumn.read) {
+      await db.removeFromOutbox(messageId);
+      return;
+    }
+    // Refused (kept as is) for a message already `sent`, waiting for its ack.
+    await db.updateMessageStatus(messageId, ChatMessageStatusColumn.pending, errorMessage: errorMessage);
+    final at = DateTime.now().toUtc().add(delay);
+    await db.enqueueOutbox(messageId, nextAttemptAt: at);
+    await db.rescheduleOutbox(messageId, at, attempts);
+  }
+
+  /// [_backoffFor] capped at [_maxLinkRetryDelay]: 10 s, 20 s, 40 s, then 60 s.
+  Duration _linkRetryDelay(int attempts) {
+    final delay = _backoffFor(attempts);
+    return delay > _maxLinkRetryDelay ? _maxLinkRetryDelay : delay;
+  }
+
+  /// Sends a media message through the file-transfer pipeline: its
+  /// envelope and the file in one `prepare-upload` batch, then the bytes.
+  /// Serialized per peer, see [_peerLocks].
+  Future<_ChatSendOutcome> _sendMedia({
     required Device target,
     required ChatEnvelope envelope,
-    CrossFile? media,
+    required CrossFile media,
   }) {
     final previous = _peerLocks[target.fingerprint] ?? Future<void>.value();
-    final result = previous.then((_) => _trySendLocked(target: target, envelope: envelope, media: media));
+    final result = previous.then((_) => _sendMediaLocked(target: target, envelope: envelope, media: media));
     _peerLocks[target.fingerprint] = result.then((_) {}, onError: (_) {});
     return result;
   }
 
-  Future<_ChatSendOutcome> _trySendLocked({
+  Future<_ChatSendOutcome> _sendMediaLocked({
     required Device target,
     required ChatEnvelope envelope,
-    CrossFile? media,
+    required CrossFile media,
   }) async {
+    final mediaFileId = envelope.attachmentFileId;
+    if (mediaFileId == null) {
+      return const _ChatSendOutcome.failure(_ChatSendFailureReason.network, 'Pièce jointe invalide.');
+    }
     if (target.ip == null) {
       return const _ChatSendOutcome.failure(_ChatSendFailureReason.network, 'Appareil injoignable (pas d\'adresse IP connue).');
     }
@@ -793,7 +899,6 @@ class ChatService extends Notifier<ChatUiState> {
     }
 
     final envelopeFileId = _uuid.v4();
-    final mediaFileId = envelope.attachmentFileId;
 
     final files = <String, rust_model.FileDto>{
       envelopeFileId: FileDto(
@@ -805,18 +910,17 @@ class ChatService extends Notifier<ChatUiState> {
         preview: envelope.encode(),
         metadata: null,
       ).toRust(),
-      if (media != null && mediaFileId != null)
-        mediaFileId: FileDto(
-          id: mediaFileId,
-          fileName: media.name,
-          size: media.size,
-          fileType: media.fileType,
-          hash: null,
-          preview: null,
-          metadata: media.lastModified != null || media.lastAccessed != null
-              ? FileMetadata(lastModified: media.lastModified, lastAccessed: media.lastAccessed)
-              : null,
-        ).toRust(),
+      mediaFileId: FileDto(
+        id: mediaFileId,
+        fileName: media.name,
+        size: media.size,
+        fileType: media.fileType,
+        hash: null,
+        preview: null,
+        metadata: media.lastModified != null || media.lastAccessed != null
+            ? FileMetadata(lastModified: media.lastModified, lastAccessed: media.lastAccessed)
+            : null,
+      ).toRust(),
     };
 
     final originDevice = ref.read(deviceFullInfoProvider);
@@ -847,14 +951,6 @@ class ChatService extends Notifier<ChatUiState> {
       };
     } catch (e) {
       return _ChatSendOutcome.failure(_ChatSendFailureReason.network, e.humanErrorMessage);
-    }
-
-    if (media == null || mediaFileId == null) {
-      // Text-only signal: its full content already traveled inside the
-      // envelope's `preview` field, exactly like the pre-existing "send a
-      // text message" feature. No byte-upload is necessary; a 204 (or an
-      // empty file map) confirms the peer fully consumed it that way.
-      return const _ChatSendOutcome.success();
     }
 
     final fileMap = response.statusCode == 204 ? const <String, String>{} : (response.response?.files ?? const <String, String>{});

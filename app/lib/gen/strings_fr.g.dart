@@ -753,6 +753,14 @@ class _Translations$chat$fr extends Translations$chat$en {
   @override
   String get offline => 'Hors ligne';
   @override
+  String get connecting => 'Connexion…';
+  @override
+  String pendingMessages({required Object count}) => 'En attente d\'envoi : ${count}. Envoi automatique dès que l\'appareil sera joignable.';
+  @override
+  String get encryptionOff => 'Le chiffrement est désactivé sur cet appareil : la discussion est indisponible.';
+  @override
+  String get scrollToLatest => 'Derniers messages';
+  @override
   String get messageHint => 'Message';
   @override
   String get attachment => 'Pièce jointe';

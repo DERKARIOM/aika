@@ -45,6 +45,19 @@ class PeerAddress {
   const PeerAddress({required this.fingerprint, required this.ip, required this.port});
 }
 
+/// What happened last on the links to one peer, for the chat debug page.
+class PeerLinkDiagnostics {
+  /// Outcome of the last [PeerLinkManager.ensureLink] that tried to connect.
+  PeerLinkStatus? lastAttempt;
+  DateTime? lastAttemptAt;
+
+  /// Transport error of that attempt, if any.
+  String? lastError;
+
+  String? lastDisconnectReason;
+  DateTime? lastDisconnectAt;
+}
+
 class _Link {
   final String connectionId;
   final String fingerprint;
@@ -53,6 +66,13 @@ class _Link {
   ChatHelloFrame? peerHello;
   int? version;
   Timer? helloTimeout;
+
+  /// Frames received in the current one-second window, see [PeerLinkManager._overRate].
+  int framesInWindow = 0;
+  DateTime? windowStart;
+
+  /// Closed for flooding: later frames already in flight are ignored.
+  bool closing = false;
 
   _Link({required this.connectionId, required this.fingerprint, required this.ip, required this.outbound});
 
@@ -71,6 +91,7 @@ class PeerLinkManager {
   final bool Function(String fingerprint) _isBlocked;
   final Duration _helloTimeout;
   final Duration _legacyRetryAfter;
+  final int _maxFramesPerSecond;
   final DateTime Function() _now;
 
   /// A frame (other than hello) received from a peer on its active link.
@@ -89,6 +110,7 @@ class PeerLinkManager {
   final Map<String, DateTime> _legacyUntil = {};
   final Map<String, Future<PeerLinkStatus>> _connecting = {};
   final Map<String, List<Completer<void>>> _readyWaiters = {};
+  final Map<String, PeerLinkDiagnostics> _diagnostics = {};
   StreamSubscription<ChatLinkEvent>? _subscription;
 
   PeerLinkManager({
@@ -98,6 +120,7 @@ class PeerLinkManager {
     required bool Function(String fingerprint) isBlocked,
     Duration helloTimeout = const Duration(seconds: 5),
     Duration legacyRetryAfter = const Duration(minutes: 10),
+    int maxFramesPerSecond = 1000,
     DateTime Function()? now,
   }) : _transport = transport,
        _ownFingerprint = ownFingerprint.toUpperCase(),
@@ -105,12 +128,16 @@ class PeerLinkManager {
        _isBlocked = isBlocked,
        _helloTimeout = helloTimeout,
        _legacyRetryAfter = legacyRetryAfter,
+       _maxFramesPerSecond = maxFramesPerSecond,
        _now = now ?? DateTime.now;
 
   /// Peers with a ready link, i.e. online right now.
   Set<String> get readyPeers => _active.keys.toSet();
 
   bool isReady(String fingerprint) => _active.containsKey(fingerprint.toUpperCase());
+
+  /// Last attempt and disconnection for [fingerprint], if any.
+  PeerLinkDiagnostics? diagnosticsOf(String fingerprint) => _diagnostics[fingerprint.toUpperCase()];
 
   /// Negotiated protocol version with a peer, if it is connected.
   int? versionOf(String fingerprint) {
@@ -148,7 +175,11 @@ class PeerLinkManager {
     final attempt = _connect(fingerprint, peer);
     _connecting[fingerprint] = attempt;
     try {
-      return await attempt;
+      final status = await attempt;
+      _diagnosticsFor(fingerprint)
+        ..lastAttempt = status
+        ..lastAttemptAt = _now();
+      return status;
     } finally {
       // Discards the returned future on purpose: it is `attempt` itself.
       unawaited(_connecting.remove(fingerprint));
@@ -161,6 +192,7 @@ class PeerLinkManager {
     final ready = _waitReady(fingerprint);
     final result = await _transport.connect(ip: peer.ip, port: peer.port, fingerprint: fingerprint);
     final error = result.error;
+    _diagnosticsFor(fingerprint).lastError = error?.toString();
     if (error != null) {
       _cancelWaiter(fingerprint, ready);
       switch (error.kind) {
@@ -240,7 +272,15 @@ class PeerLinkManager {
 
   void _onMessage(ChatLinkMessageEvent event) {
     final link = _links[event.connectionId];
-    if (link == null) {
+    if (link == null || link.closing) {
+      return;
+    }
+    if (_overRate(link)) {
+      // Far above a normal peer, even one flushing hundreds of queued
+      // messages at once: this one floods the database and notifications.
+      _logger.warning('Too many chat frames from ${link.fingerprint}, closing ${link.connectionId}');
+      link.closing = true;
+      _transport.close(link.connectionId);
       return;
     }
     final frame = ChatFrame.tryDecode(event.text);
@@ -306,6 +346,9 @@ class PeerLinkManager {
       return;
     }
     link.helloTimeout?.cancel();
+    _diagnosticsFor(link.fingerprint)
+      ..lastDisconnectReason = event.reason
+      ..lastDisconnectAt = _now();
     if (_active[link.fingerprint] != link.connectionId) {
       return;
     }
@@ -317,6 +360,22 @@ class PeerLinkManager {
       onPeerGone?.call(link.fingerprint);
     }
   }
+
+  /// Counts a received frame; `true` once [link] exceeds
+  /// [_maxFramesPerSecond] within one second.
+  bool _overRate(_Link link) {
+    final now = _now();
+    final start = link.windowStart;
+    if (start == null || now.difference(start) >= const Duration(seconds: 1)) {
+      link
+        ..windowStart = now
+        ..framesInWindow = 0;
+    }
+    link.framesInWindow++;
+    return link.framesInWindow > _maxFramesPerSecond;
+  }
+
+  PeerLinkDiagnostics _diagnosticsFor(String fingerprint) => _diagnostics[fingerprint] ??= PeerLinkDiagnostics();
 
   void _markLegacy(String fingerprint) {
     _legacyUntil[fingerprint] = _now().add(_legacyRetryAfter);
