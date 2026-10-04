@@ -79,6 +79,10 @@ class _HomePageState extends State<HomePage> with Refena {
     final vm = context.watch(homePageControllerProvider);
 
     return DropTarget(
+      // A drop target keeps receiving drag events under a pushed page (e.g.
+      // an open conversation, which has its own): only the visible home
+      // page may take dropped files for a transfer.
+      enable: ModalRoute.of(context)?.isCurrent ?? true,
       onDragEntered: (_) {
         setState(() {
           _dragAndDropIndicator = true;

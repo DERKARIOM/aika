@@ -928,6 +928,15 @@ class Translations$chat$en {
 
   // Translations
 
+  /// en: 'Search'
+  String get search => 'Search';
+
+  /// en: 'Search messages'
+  String get searchHint => 'Search messages';
+
+  /// en: 'No messages found.'
+  String get noResults => 'No messages found.';
+
   /// en: 'Messages'
   String get title => 'Messages';
 

@@ -595,6 +595,9 @@
     }
   },
   "chat": {
+    "search": "Search",
+    "searchHint": "Search messages",
+    "noResults": "No messages found.",
     "title": "Messages",
     "newConversation": "New conversation",
     "empty": "No conversations yet.\nStart one from the + button.",

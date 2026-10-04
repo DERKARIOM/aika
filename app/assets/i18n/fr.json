@@ -525,6 +525,9 @@
     }
   },
   "chat": {
+    "search": "Rechercher",
+    "searchHint": "Rechercher dans les messages",
+    "noResults": "Aucun message trouvé.",
     "title": "Messages",
     "newConversation": "Nouvelle discussion",
     "empty": "Aucune discussion pour le moment.\nDémarrez-en une avec le bouton +.",

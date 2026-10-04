@@ -10,6 +10,7 @@ import 'package:localsend_app/util/chat/chat_time_format.dart';
 import 'package:localsend_app/util/file_size_helper.dart';
 import 'package:localsend_app/util/native/open_file.dart' as native;
 import 'package:localsend_app/widget/chat/chat_style.dart';
+import 'package:localsend_app/widget/chat/content_uri_image.dart';
 import 'package:localsend_isolates/model/file_type.dart';
 import 'package:refena_flutter/refena_flutter.dart';
 
@@ -52,7 +53,7 @@ class ChatMessageBubble extends StatelessWidget {
 
   bool get _isMedia => message.contentType != ChatContentType.text.name;
 
-  bool get _isImage => message.contentType == ChatContentType.image.name && _canPreview(message.attachmentPath);
+  bool get _isImage => message.contentType == ChatContentType.image.name && _canPreview(message.attachmentPath, message.attachmentSize);
 
   String? get _body => (message.body?.isNotEmpty ?? false) ? message.body : null;
 
@@ -375,7 +376,7 @@ class _AttachmentPreview extends StatelessWidget {
   Widget _content(BuildContext context, double? progress, Duration? elapsed) {
     final path = message.attachmentPath;
     final isImage = message.contentType == ChatContentType.image.name;
-    final content = isImage && _canPreview(path) ? _image(context, path!, progress) : _fileRow(path, progress, elapsed);
+    final content = isImage && _canPreview(path, message.attachmentSize) ? _image(context, path!, progress) : _fileRow(path, progress, elapsed);
     if (path == null) {
       return content;
     }
@@ -399,11 +400,14 @@ class _AttachmentPreview extends StatelessWidget {
         child: Stack(
           alignment: Alignment.center,
           children: [
-            Image.file(
-              File(path),
-              width: width,
+            Image(
               // Decoded at display size: a 12 MP photo would otherwise take ~48 MB.
-              cacheWidth: (width * pixelRatio).round(),
+              image: ResizeImage.resizeIfNeeded(
+                (width * pixelRatio).round(),
+                null,
+                path.startsWith('content://') ? ContentUriImage(path) : FileImage(File(path)),
+              ),
+              width: width,
               fit: BoxFit.cover,
               errorBuilder: (_, _, _) => _fileRow(path, progress, null),
             ),
@@ -535,10 +539,21 @@ class _CancelableRing extends StatelessWidget {
   }
 }
 
-/// A local file that `Image.file` can decode. An Android `content://` URI
-/// (an attachment picked with the system picker) is shown as a file card
-/// and opened with the system viewer instead.
-bool _canPreview(String? path) => path != null && !path.startsWith('content://');
+/// An Android `content://` image (picked with the system picker) is read
+/// whole before being decoded: above this size, a file card is shown.
+const _maxContentUriPreviewBytes = 40 * 1024 * 1024;
+
+/// Whether the image at [path] can be shown in the bubble: any local file,
+/// and an Android `content://` image up to [_maxContentUriPreviewBytes].
+bool _canPreview(String? path, int? size) {
+  if (path == null) {
+    return false;
+  }
+  if (!path.startsWith('content://')) {
+    return true;
+  }
+  return size != null && size <= _maxContentUriPreviewBytes;
+}
 
 /// "12.0 MB / 40.0 MB · 2.4 MB/s · 12 s" while a transfer runs: what was
 /// sent, the speed and the time left. During the first second the speed is

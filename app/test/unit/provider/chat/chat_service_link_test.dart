@@ -283,6 +283,18 @@ void main() {
     expect(conversation.lastMessagePreview, 'moi');
   });
 
+  test('Should send a retraction stored while the link was down once it is back', () async {
+    // E.g. an attachment cancelled offline, then the app restarted.
+    await db.addPendingRetraction(_peer, 'gone');
+
+    transport.open();
+    await settle();
+    await settle();
+
+    expect(transport.sentOf<ChatRetractFrame>().single.ids, ['gone']);
+    expect(await db.pendingRetractions(_peer, limit: 10), isEmpty);
+  });
+
   test('Should file a message dated in the future at its reception time', () async {
     transport.open();
     await settle();

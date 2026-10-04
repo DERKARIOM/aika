@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
@@ -17,6 +18,7 @@ import 'package:localsend_app/util/native/channel/android_channel.dart' as andro
 import 'package:localsend_app/util/native/cross_file_converters.dart';
 import 'package:localsend_app/widget/chat/chat_composer.dart';
 import 'package:localsend_app/widget/chat/chat_connection_banner.dart';
+import 'package:localsend_app/widget/chat/chat_drop_zone.dart';
 import 'package:localsend_app/widget/chat/chat_message_bubble.dart';
 import 'package:localsend_app/widget/chat/chat_style.dart';
 import 'package:localsend_app/widget/dialogs/chat_delete_conversation_dialog.dart';
@@ -36,7 +38,10 @@ final _logger = Logger('ChatConversationPage');
 class ChatConversationPage extends StatefulWidget {
   final String peerFingerprint;
 
-  const ChatConversationPage({required this.peerFingerprint});
+  /// Scrolled to and briefly highlighted once loaded (from a search result).
+  final String? highlightMessageId;
+
+  const ChatConversationPage({required this.peerFingerprint, this.highlightMessageId});
 
   @override
   State<ChatConversationPage> createState() => _ChatConversationPageState();
@@ -60,6 +65,14 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
   /// Scrolled up far enough to offer a jump back to the latest message.
   bool _showScrollToLatest = false;
 
+  /// Message to reveal as soon as it is part of the loaded messages.
+  String? _pendingReveal;
+
+  /// Message currently highlighted, carrying [_highlightKey].
+  String? _flashId;
+  final _highlightKey = GlobalKey();
+  Timer? _flashTimer;
+
   @override
   void initState() {
     super.initState();
@@ -68,6 +81,10 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
       // Once on open: resets the badge and (re)opens the chat link.
       _markRead(ref);
       _watchMessages(ref);
+      final highlight = widget.highlightMessageId;
+      if (highlight != null) {
+        unawaited(_prepareReveal(ref, highlight));
+      }
     });
     _scrollController.addListener(_onScroll);
   }
@@ -78,6 +95,11 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
     _messagesSub = ref.read(chatDatabaseProvider).watchMessages(widget.peerFingerprint, limit: _limit).listen((messages) {
       if (mounted) {
         setState(() => _messages = messages);
+        final reveal = _pendingReveal;
+        if (reveal != null && messages.any((m) => m.id == reveal)) {
+          _pendingReveal = null;
+          WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_reveal(reveal)));
+        }
       }
       // New messages can arrive while this screen is already open; mark
       // them read as they come in. Other updates (e.g. the status of our
@@ -103,6 +125,55 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
     }
   }
 
+  /// Loads enough history to include [messageId], then reveals it.
+  Future<void> _prepareReveal(Ref ref, String messageId) async {
+    final db = ref.read(chatDatabaseProvider);
+    final target = await db.getMessage(messageId);
+    if (!mounted || target == null || target.conversationId.toUpperCase() != widget.peerFingerprint.toUpperCase()) {
+      return;
+    }
+    final newer = await db.countMessagesSince(target.conversationId, target.createdAt);
+    if (!mounted) {
+      return;
+    }
+    _pendingReveal = messageId;
+    // A margin for messages written at the same instant.
+    final needed = newer + 20;
+    if (needed > _limit) {
+      _limit = (needed / _pageSize).ceil() * _pageSize;
+    }
+    _watchMessages(ref);
+  }
+
+  /// Scrolls until the bubble of [messageId] is built (the list builds
+  /// lazily), centers it and highlights it for a moment.
+  Future<void> _reveal(String messageId) async {
+    setState(() => _flashId = messageId);
+    await WidgetsBinding.instance.endOfFrame;
+    for (var step = 0; step < 200 && mounted; step++) {
+      final target = _highlightKey.currentContext;
+      if (target != null) {
+        await Scrollable.ensureVisible(target, alignment: 0.5, duration: const Duration(milliseconds: 300), curve: Curves.easeOutCubic);
+        _flashTimer?.cancel();
+        _flashTimer = Timer(const Duration(seconds: 2), () {
+          if (mounted) {
+            setState(() => _flashId = null);
+          }
+        });
+        return;
+      }
+      if (!_scrollController.hasClients) {
+        return;
+      }
+      final position = _scrollController.position;
+      if (position.pixels >= position.maxScrollExtent) {
+        return;
+      }
+      _scrollController.jumpTo(min(position.pixels + position.viewportDimension * 0.8, position.maxScrollExtent));
+      await WidgetsBinding.instance.endOfFrame;
+    }
+  }
+
   void _scrollToLatest() {
     unawaited(_scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOutCubic));
   }
@@ -117,6 +188,7 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
 
   @override
   void dispose() {
+    _flashTimer?.cancel();
     unawaited(_messagesSub?.cancel());
     _scrollController.dispose();
     final chatService = ref.notifier(chatProvider);
@@ -237,7 +309,10 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
           ),
         ],
       ),
-      body: ChatBackground(
+      body: ChatDropZone(
+        enabled: !blocked,
+        onFilesDropped: (paths) => unawaited(_sendPaths(ref, device, paths)),
+        child: ChatBackground(
         child: SafeArea(
           child: Column(
           children: [
@@ -282,7 +357,21 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
         ),
         ),
       ),
+      ),
     );
+  }
+
+  /// Files dropped from the desktop: each sent as its own message, in the
+  /// order they were dropped.
+  Future<void> _sendPaths(Ref ref, Device device, List<String> paths) async {
+    final chat = ref.notifier(chatProvider);
+    for (final path in paths) {
+      try {
+        await chat.sendMedia(target: device, file: await CrossFileConverters.convertXFile(XFile(path)));
+      } catch (e) {
+        _logger.warning('Could not send dropped file', e);
+      }
+    }
   }
 
   /// Picks one or more files and sends each as its own message.
@@ -322,7 +411,7 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
         final message = _messages[position];
         final previous = position > 0 ? _messages[position - 1] : null;
         final next = position < _messages.length - 1 ? _messages[position + 1] : null;
-        final bubble = ChatMessageBubble(
+        final plainBubble = ChatMessageBubble(
           key: ValueKey(message.id),
           message: message,
           groupedWithPrevious: previous != null && _sameGroup(previous, message),
@@ -330,6 +419,7 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
           onRetry: () => unawaited(ref.notifier(chatProvider).retryMessage(message.id)),
           onCancelTransfer: () => ref.notifier(chatProvider).cancelAttachment(message.id),
         );
+        final bubble = message.id == _flashId ? _Highlight(key: _highlightKey, child: plainBubble) : plainBubble;
         // The list is reversed: the separator goes above the first message
         // of each day.
         final firstOfDay = previous == null || !isSameChatDay(previous.createdAt, message.createdAt);
@@ -384,6 +474,24 @@ class _DaySeparator extends StatelessWidget {
           child: Text(label, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: colors.onChip)),
         ),
       ),
+    );
+  }
+}
+
+/// Tints the message found by a search for a moment.
+class _Highlight extends StatelessWidget {
+  final Widget child;
+
+  const _Highlight({required this.child, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: ChatColors.of(context).accent.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: child,
     );
   }
 }

@@ -346,11 +346,6 @@ class ChatService extends Notifier<ChatUiState> {
     ref.redux(parentIsolateProvider).dispatch(IsolateHttpUploadCancelAction(taskId: taskId));
   }
 
-  /// Retractions not delivered yet, per peer: sent as soon as its link is
-  /// up again. Kept in memory: after a restart the receiver keeps the
-  /// bubble of an interrupted attachment, which shows it was not received.
-  final Map<String, Set<String>> _pendingRetractions = {};
-
   /// Deletes the outgoing message [messageId] here, then asks the peer to
   /// delete its copy.
   Future<void> _retractOutgoing(String fingerprint, String messageId) async {
@@ -360,22 +355,24 @@ class ChatService extends Notifier<ChatUiState> {
       await _deleteMessageRow(message);
     }
     final fp = fingerprint.toUpperCase();
-    (_pendingRetractions[fp] ??= {}).add(messageId);
+    // Stored first: if the link is down (or the app is closed before it
+    // comes back), the retraction goes out on the next link to this peer.
+    await db.addPendingRetraction(fp, messageId);
     await _sendPendingRetractions(fp);
   }
 
+  /// Sends the retractions waiting for [fingerprint]; those delivered to
+  /// the link are forgotten, the others wait for the next link.
   Future<void> _sendPendingRetractions(String fingerprint) async {
     final fp = fingerprint.toUpperCase();
-    final ids = _pendingRetractions[fp];
-    if (ids == null || ids.isEmpty) {
-      return;
-    }
-    final batch = ids.take(chatMaxIdsPerAck).toList();
-    if (await ref.read(peerLinkManagerProvider).send(fp, ChatRetractFrame(ids: batch))) {
-      ids.removeAll(batch);
-      if (ids.isEmpty) {
-        _pendingRetractions.remove(fp);
+    final db = ref.read(chatDatabaseProvider);
+    final links = ref.read(peerLinkManagerProvider);
+    while (links.isReady(fp)) {
+      final ids = await db.pendingRetractions(fp, limit: chatMaxIdsPerAck);
+      if (ids.isEmpty || !await links.send(fp, ChatRetractFrame(ids: ids))) {
+        return;
       }
+      await db.removePendingRetractions(fp, ids);
     }
   }
 

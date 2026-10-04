@@ -440,6 +440,8 @@ class ReceiveController {
             ),
           );
 
+      await _verifyWrittenSize(target, expected: receivingFile.file.size);
+
       await applyFileTimestamps(
         target: target,
         lastModified: receivingFile.file.metadata?.lastModified,
@@ -870,6 +872,24 @@ extension on ReceiveSessionState {
           ),
         ),
     );
+  }
+}
+
+/// Second line of defence against truncated files: whatever the transfer
+/// layer reported, a file whose size on disk differs from the announced one
+/// is a failed file (the caller marks it so), never a received one.
+///
+/// A size check costs one `stat`, unlike a hash that would read the whole
+/// file again (100 GB); the bytes themselves are already protected in
+/// transit by TLS. Skipped for Android SAF targets (file descriptor only).
+Future<void> _verifyWrittenSize(FileSaveTarget target, {required int expected}) async {
+  final path = target.path;
+  if (path == null || target.fileDescriptor != null) {
+    return;
+  }
+  final actual = await File(path).length();
+  if (actual != expected) {
+    throw StateError('Incomplete file: received $actual of $expected bytes');
   }
 }
 

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/chat/chat_database.dart';
 import 'package:localsend_app/pages/chat/chat_conversation_page.dart';
+import 'package:localsend_app/pages/chat/chat_search_page.dart';
 import 'package:localsend_app/pages/chat/new_conversation_page.dart';
 import 'package:localsend_app/provider/chat/chat_conversations_provider.dart';
 import 'package:localsend_app/provider/chat/chat_provider.dart';
@@ -39,6 +40,14 @@ class ChatTab extends StatelessWidget {
               Expanded(
                 child: Text(t.chat.title, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
               ),
+              if (conversations.isNotEmpty)
+                IconButton(
+                  tooltip: t.chat.search,
+                  icon: const Icon(Icons.search_rounded),
+                  onPressed: () async {
+                    await context.push(() => const ChatSearchPage());
+                  },
+                ),
               IconButton.filledTonal(
                 tooltip: t.chat.newConversation,
                 icon: const Icon(Icons.edit_square),

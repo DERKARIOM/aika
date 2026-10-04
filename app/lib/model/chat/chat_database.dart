@@ -224,6 +224,25 @@ class ChatDatabase extends _$ChatDatabase {
     );
   }
 
+  /// Created on first use rather than by a migration: no generated code
+  /// and no schema version bump for this small side table, and the drift
+  /// schema (checked by `chat_database_migration_test`) stays unchanged.
+  Future<void>? _pendingRetractionsTable;
+
+  Future<void> _ensurePendingRetractionsTable() => _pendingRetractionsTable ??= customStatement(_createPendingRetractions);
+
+  static const _createPendingRetractions = """
+    CREATE TABLE IF NOT EXISTS chat_pending_retractions (
+      peer_fingerprint TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (peer_fingerprint, message_id)
+    ) WITHOUT ROWID""";
+
+  /// How long an undelivered retraction is kept: a peer gone for longer
+  /// keeps the bubble of the interrupted attachment, marked not received.
+  static const _pendingRetractionTtl = Duration(days: 30);
+
   // ---------------------------------------------------------------------
   // Conversations
   // ---------------------------------------------------------------------
@@ -289,7 +308,9 @@ class ChatDatabase extends _$ChatDatabase {
     );
   }
 
-  Future<void> deleteConversation(String peerFingerprint) {
+  Future<void> deleteConversation(String peerFingerprint) async {
+    // Outside the transaction: a rollback must not undo the creation.
+    await _ensurePendingRetractionsTable();
     return transaction(() async {
       // Queued messages of this conversation must not be sent any more.
       final messageIds = selectOnly(chatMessages)
@@ -298,6 +319,11 @@ class ChatDatabase extends _$ChatDatabase {
       await (delete(chatOutboxEntries)..where((t) => t.messageId.isInQuery(messageIds))).go();
       await (delete(chatMessages)..where((t) => t.conversationId.equals(peerFingerprint))).go();
       await (delete(chatConversations)..where((t) => t.peerFingerprint.equals(peerFingerprint))).go();
+      await customUpdate(
+        'DELETE FROM chat_pending_retractions WHERE peer_fingerprint = ?',
+        variables: [Variable.withString(peerFingerprint)],
+        updateKind: UpdateKind.delete,
+      );
     });
   }
 
@@ -322,15 +348,35 @@ class ChatDatabase extends _$ChatDatabase {
         .map((rows) => rows.reversed.toList());
   }
 
-  /// Full-text-ish search across all conversations (simple LIKE; more than
-  /// good enough for a local, per-user message store).
-  Future<List<ChatMessage>> searchMessages(String query) {
-    final like = '%${query.replaceAll('%', r'\%')}%';
+  /// Messages whose text or attachment name contains [query], newest
+  /// first, across all conversations.
+  ///
+  /// A plain substring match (`instr`), case-insensitive for ASCII: unlike
+  /// `LIKE`, characters such as `%` and `_` in the query match themselves.
+  /// Plenty for a local, per-user message store.
+  Future<List<ChatMessage>> searchMessages(String query, {int limit = 200}) {
+    final needle = query.trim().toLowerCase();
+    if (needle.isEmpty) {
+      return Future.value(const []);
+    }
+    Expression<bool> contains(Expression<String> column) =>
+        FunctionCallExpression<int>('instr', [column.lower(), Variable.withString(needle)]).isBiggerThanValue(0);
     return (select(chatMessages)
-          ..where((t) => t.body.like(like))
-          ..orderBy([(t) => OrderingTerm.desc(t.createdAt)])
-          ..limit(200))
+          ..where((t) => contains(t.body) | contains(t.attachmentFileName))
+          ..orderBy([(t) => OrderingTerm.desc(t.createdAt), (t) => OrderingTerm.desc(t.id)])
+          ..limit(limit))
         .get();
+  }
+
+  /// How many messages of [conversationId] were written at or after
+  /// [since]: the position of a message counted from the latest one.
+  Future<int> countMessagesSince(String conversationId, DateTime since) async {
+    final count = chatMessages.id.count();
+    final row = await (selectOnly(chatMessages)
+          ..addColumns([count])
+          ..where(chatMessages.conversationId.equals(conversationId) & chatMessages.createdAt.isBiggerOrEqualValue(since)))
+        .getSingle();
+    return row.read(count) ?? 0;
   }
 
   Future<void> insertMessage(ChatMessagesCompanion message) {
@@ -556,6 +602,51 @@ class ChatDatabase extends _$ChatDatabase {
       ..where(condition);
     return (update(chatOutboxEntries)..where((t) => t.messageId.isInQuery(messageIds))).write(
       ChatOutboxEntriesCompanion(nextAttemptAt: Value(now)),
+    );
+  }
+
+  // ---------------------------------------------------------------------
+  // Pending retractions: "forget this message" frames for a peer whose
+  // chat link is down, sent when it comes back (survives app restarts).
+  // ---------------------------------------------------------------------
+
+  Future<void> addPendingRetraction(String peerFingerprint, String messageId) async {
+    await _ensurePendingRetractionsTable();
+    await customInsert(
+      'INSERT OR IGNORE INTO chat_pending_retractions (peer_fingerprint, message_id, created_at) VALUES (?, ?, ?)',
+      variables: [
+        Variable.withString(peerFingerprint),
+        Variable.withString(messageId),
+        Variable.withInt(DateTime.now().millisecondsSinceEpoch),
+      ],
+    );
+  }
+
+  /// The oldest [limit] retractions waiting for [peerFingerprint]. Expired
+  /// ones (see [_pendingRetractionTtl]) are dropped first.
+  Future<List<String>> pendingRetractions(String peerFingerprint, {required int limit}) async {
+    await _ensurePendingRetractionsTable();
+    await customUpdate(
+      'DELETE FROM chat_pending_retractions WHERE created_at < ?',
+      variables: [Variable.withInt(DateTime.now().subtract(_pendingRetractionTtl).millisecondsSinceEpoch)],
+      updateKind: UpdateKind.delete,
+    );
+    final rows = await customSelect(
+      'SELECT message_id FROM chat_pending_retractions WHERE peer_fingerprint = ? ORDER BY created_at LIMIT ?',
+      variables: [Variable.withString(peerFingerprint), Variable.withInt(limit)],
+    ).get();
+    return [for (final row in rows) row.read<String>('message_id')];
+  }
+
+  Future<void> removePendingRetractions(String peerFingerprint, List<String> messageIds) async {
+    if (messageIds.isEmpty) {
+      return;
+    }
+    await _ensurePendingRetractionsTable();
+    await customUpdate(
+      'DELETE FROM chat_pending_retractions WHERE peer_fingerprint = ? AND message_id IN (${List.filled(messageIds.length, '?').join(', ')})',
+      variables: [Variable.withString(peerFingerprint), for (final id in messageIds) Variable.withString(id)],
+      updateKind: UpdateKind.delete,
     );
   }
 
