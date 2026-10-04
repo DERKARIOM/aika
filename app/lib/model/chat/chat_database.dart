@@ -234,31 +234,61 @@ class ChatDatabase extends _$ChatDatabase {
     await customStatement(_createPendingRetractions);
     await customStatement(_createReplies);
     await customStatement(_createReactions);
+    await customStatement(_createPendingReactions);
+    await customStatement(_createEdits);
+    await customStatement(_createPendingEdits);
   }();
 
-  static const _createPendingRetractions = """
+  static const _createPendingRetractions = '''
     CREATE TABLE IF NOT EXISTS chat_pending_retractions (
       peer_fingerprint TEXT NOT NULL,
       message_id TEXT NOT NULL,
       created_at INTEGER NOT NULL,
       PRIMARY KEY (peer_fingerprint, message_id)
-    ) WITHOUT ROWID""";
+    ) WITHOUT ROWID''';
 
   /// Which message a message replies to.
-  static const _createReplies = """
+  static const _createReplies = '''
     CREATE TABLE IF NOT EXISTS chat_message_replies (
       message_id TEXT NOT NULL PRIMARY KEY,
       reply_to_id TEXT NOT NULL
-    ) WITHOUT ROWID""";
+    ) WITHOUT ROWID''';
 
   /// At most one reaction per side (ours, the peer's) and message.
-  static const _createReactions = """
+  static const _createReactions = '''
     CREATE TABLE IF NOT EXISTS chat_reactions (
       message_id TEXT NOT NULL,
       from_peer INTEGER NOT NULL,
       emoji TEXT NOT NULL,
       PRIMARY KEY (message_id, from_peer)
-    ) WITHOUT ROWID""";
+    ) WITHOUT ROWID''';
+
+  /// Our reactions not delivered yet; a `NULL` emoji is a removal.
+  static const _createPendingReactions = '''
+    CREATE TABLE IF NOT EXISTS chat_pending_reactions (
+      peer_fingerprint TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      emoji TEXT,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (peer_fingerprint, message_id)
+    ) WITHOUT ROWID''';
+
+  /// Messages whose text was edited after being sent, and when.
+  static const _createEdits = '''
+    CREATE TABLE IF NOT EXISTS chat_message_edits (
+      message_id TEXT NOT NULL PRIMARY KEY,
+      edited_at INTEGER NOT NULL
+    ) WITHOUT ROWID''';
+
+  /// Our edits not delivered yet: only the latest text per message.
+  static const _createPendingEdits = '''
+    CREATE TABLE IF NOT EXISTS chat_pending_edits (
+      peer_fingerprint TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      text TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (peer_fingerprint, message_id)
+    ) WITHOUT ROWID''';
 
   /// How long an undelivered retraction is kept: a peer gone for longer
   /// keeps the bubble of the interrupted attachment, marked not received.
@@ -338,7 +368,7 @@ class ChatDatabase extends _$ChatDatabase {
         ..addColumns([chatMessages.id])
         ..where(chatMessages.conversationId.equals(peerFingerprint));
       await (delete(chatOutboxEntries)..where((t) => t.messageId.isInQuery(messageIds))).go();
-      for (final table in const ['chat_message_replies', 'chat_reactions']) {
+      for (final table in const ['chat_message_replies', 'chat_reactions', 'chat_message_edits']) {
         await customUpdate(
           'DELETE FROM $table WHERE message_id IN (SELECT id FROM chat_messages WHERE conversation_id = ?)',
           variables: [Variable.withString(peerFingerprint)],
@@ -347,11 +377,13 @@ class ChatDatabase extends _$ChatDatabase {
       }
       await (delete(chatMessages)..where((t) => t.conversationId.equals(peerFingerprint))).go();
       await (delete(chatConversations)..where((t) => t.peerFingerprint.equals(peerFingerprint))).go();
-      await customUpdate(
-        'DELETE FROM chat_pending_retractions WHERE peer_fingerprint = ?',
-        variables: [Variable.withString(peerFingerprint)],
-        updateKind: UpdateKind.delete,
-      );
+      for (final table in const ['chat_pending_retractions', 'chat_pending_reactions', 'chat_pending_edits']) {
+        await customUpdate(
+          'DELETE FROM $table WHERE peer_fingerprint = ?',
+          variables: [Variable.withString(peerFingerprint)],
+          updateKind: UpdateKind.delete,
+        );
+      }
     });
   }
 
@@ -423,7 +455,7 @@ class ChatDatabase extends _$ChatDatabase {
     await _ensureSideTables();
     return transaction(() async {
       await removeFromOutbox(message.id);
-      for (final table in const ['chat_message_replies', 'chat_reactions']) {
+      for (final table in const ['chat_message_replies', 'chat_reactions', 'chat_pending_reactions', 'chat_message_edits', 'chat_pending_edits']) {
         await customUpdate(
           'DELETE FROM $table WHERE message_id = ?',
           variables: [Variable.withString(message.id)],
@@ -695,12 +727,15 @@ class ChatDatabase extends _$ChatDatabase {
              q.body AS quoted_body,
              q.attachment_file_name AS quoted_file_name,
              (SELECT emoji FROM chat_reactions WHERE message_id = m.id AND from_peer = 0) AS my_reaction,
-             (SELECT emoji FROM chat_reactions WHERE message_id = m.id AND from_peer = 1) AS peer_reaction
+             (SELECT emoji FROM chat_reactions WHERE message_id = m.id AND from_peer = 1) AS peer_reaction,
+             EXISTS (SELECT 1 FROM chat_message_edits e WHERE e.message_id = m.id) AS edited
       FROM chat_messages m
       LEFT JOIN chat_message_replies r ON r.message_id = m.id
       LEFT JOIN chat_messages q ON q.id = r.reply_to_id AND q.conversation_id = m.conversation_id
       WHERE m.conversation_id = ?
-        AND (r.message_id IS NOT NULL OR EXISTS (SELECT 1 FROM chat_reactions x WHERE x.message_id = m.id))
+        AND (r.message_id IS NOT NULL
+             OR EXISTS (SELECT 1 FROM chat_reactions x WHERE x.message_id = m.id)
+             OR EXISTS (SELECT 1 FROM chat_message_edits e WHERE e.message_id = m.id))
       ''',
       variables: [Variable.withString(conversationId)],
       // The side tables are unknown to drift: their writers notify through
@@ -712,6 +747,115 @@ class ChatDatabase extends _$ChatDatabase {
   /// Wakes the queries reading `chat_messages`, e.g. [watchExtras].
   void _notifyMessagesChanged() {
     notifyUpdates({TableUpdate.onTable(chatMessages, kind: UpdateKind.update)});
+  }
+
+  /// Replaces the text of [messageId] and marks it edited.
+  Future<void> editMessageBody(String messageId, String text) async {
+    await _ensureSideTables();
+    await transaction(() async {
+      await (update(chatMessages)..where((t) => t.id.equals(messageId))).write(ChatMessagesCompanion(body: Value(text)));
+      await customInsert(
+        'INSERT OR REPLACE INTO chat_message_edits (message_id, edited_at) VALUES (?, ?)',
+        variables: [Variable.withString(messageId), Variable.withInt(DateTime.now().millisecondsSinceEpoch)],
+      );
+    });
+    _notifyMessagesChanged();
+  }
+
+  /// The latest message of [conversationId], for its preview in the list.
+  Future<ChatMessage?> latestMessage(String conversationId) {
+    return (select(chatMessages)
+          ..where((t) => t.conversationId.equals(conversationId))
+          ..orderBy([(t) => OrderingTerm.desc(t.createdAt), (t) => OrderingTerm.desc(t.id)])
+          ..limit(1))
+        .getSingleOrNull();
+  }
+
+  // ---------------------------------------------------------------------
+  // Pending edits: like pending reactions, the latest text per message.
+  // ---------------------------------------------------------------------
+
+  Future<void> addPendingEdit(String peerFingerprint, String messageId, String text) async {
+    await _ensureSideTables();
+    await customInsert(
+      'INSERT OR REPLACE INTO chat_pending_edits (peer_fingerprint, message_id, text, created_at) VALUES (?, ?, ?, ?)',
+      variables: [
+        Variable.withString(peerFingerprint),
+        Variable.withString(messageId),
+        Variable.withString(text),
+        Variable.withInt(DateTime.now().millisecondsSinceEpoch),
+      ],
+    );
+  }
+
+  Future<List<({String messageId, String text})>> pendingEdits(String peerFingerprint, {required int limit}) async {
+    await _ensureSideTables();
+    await customUpdate(
+      'DELETE FROM chat_pending_edits WHERE created_at < ?',
+      variables: [Variable.withInt(DateTime.now().subtract(_pendingRetractionTtl).millisecondsSinceEpoch)],
+      updateKind: UpdateKind.delete,
+    );
+    final rows = await customSelect(
+      'SELECT message_id, text FROM chat_pending_edits WHERE peer_fingerprint = ? ORDER BY created_at LIMIT ?',
+      variables: [Variable.withString(peerFingerprint), Variable.withInt(limit)],
+    ).get();
+    return [for (final row in rows) (messageId: row.read<String>('message_id'), text: row.read<String>('text'))];
+  }
+
+  /// Forgets a delivered edit, unless the text was changed again since.
+  Future<void> removePendingEdit(String peerFingerprint, String messageId, String text) async {
+    await _ensureSideTables();
+    await customUpdate(
+      'DELETE FROM chat_pending_edits WHERE peer_fingerprint = ? AND message_id = ? AND text = ?',
+      variables: [Variable.withString(peerFingerprint), Variable.withString(messageId), Variable.withString(text)],
+      updateKind: UpdateKind.delete,
+    );
+  }
+
+  // ---------------------------------------------------------------------
+  // Pending reactions: ours, for a peer whose chat link is down, sent when
+  // it comes back (survives app restarts). Only the latest per message.
+  // ---------------------------------------------------------------------
+
+  /// [emoji] `null`: the pending change is the removal of our reaction.
+  Future<void> addPendingReaction(String peerFingerprint, String messageId, String? emoji) async {
+    await _ensureSideTables();
+    await customInsert(
+      'INSERT OR REPLACE INTO chat_pending_reactions (peer_fingerprint, message_id, emoji, created_at) VALUES (?, ?, ?, ?)',
+      variables: [
+        Variable.withString(peerFingerprint),
+        Variable.withString(messageId),
+        Variable<String>(emoji),
+        Variable.withInt(DateTime.now().millisecondsSinceEpoch),
+      ],
+    );
+  }
+
+  /// The oldest [limit] reactions waiting for [peerFingerprint]. Expired
+  /// ones (same lifetime as retractions) are dropped first.
+  Future<List<({String messageId, String? emoji})>> pendingReactions(String peerFingerprint, {required int limit}) async {
+    await _ensureSideTables();
+    await customUpdate(
+      'DELETE FROM chat_pending_reactions WHERE created_at < ?',
+      variables: [Variable.withInt(DateTime.now().subtract(_pendingRetractionTtl).millisecondsSinceEpoch)],
+      updateKind: UpdateKind.delete,
+    );
+    final rows = await customSelect(
+      'SELECT message_id, emoji FROM chat_pending_reactions WHERE peer_fingerprint = ? ORDER BY created_at LIMIT ?',
+      variables: [Variable.withString(peerFingerprint), Variable.withInt(limit)],
+    ).get();
+    return [for (final row in rows) (messageId: row.read<String>('message_id'), emoji: row.readNullable<String>('emoji'))];
+  }
+
+  /// Forgets a delivered reaction, unless it was changed again since
+  /// (then the newer one is still to be sent).
+  Future<void> removePendingReaction(String peerFingerprint, String messageId, String? emoji) async {
+    await _ensureSideTables();
+    await customUpdate(
+      'DELETE FROM chat_pending_reactions WHERE peer_fingerprint = ? AND message_id = ? AND emoji IS ?',
+      variables: [Variable.withString(peerFingerprint), Variable.withString(messageId), Variable<String>(emoji)],
+      updateKind: UpdateKind.delete,
+    );
   }
 
   // ---------------------------------------------------------------------
@@ -840,15 +984,22 @@ class ChatMessageExtras {
   /// Our reaction and the peer's.
   final Map<String, ({String? mine, String? peer})> reactions;
 
-  const ChatMessageExtras({this.quotes = const {}, this.reactions = const {}});
+  /// Messages whose text was edited after being sent.
+  final Set<String> edited;
+
+  const ChatMessageExtras({this.quotes = const {}, this.reactions = const {}, this.edited = const {}});
 
   static const empty = ChatMessageExtras();
 
   static ChatMessageExtras _fromRows(List<QueryRow> rows) {
     final quotes = <String, ChatQuotedMessage>{};
     final reactions = <String, ({String? mine, String? peer})>{};
+    final edited = <String>{};
     for (final row in rows) {
       final id = row.read<String>('id');
+      if (row.read<int>('edited') != 0) {
+        edited.add(id);
+      }
       final replyTo = row.readNullable<String>('reply_to_id');
       if (replyTo != null) {
         final direction = row.readNullable<String>('quoted_direction');
@@ -866,6 +1017,6 @@ class ChatMessageExtras {
         reactions[id] = (mine: mine, peer: peer);
       }
     }
-    return ChatMessageExtras(quotes: quotes, reactions: reactions);
+    return ChatMessageExtras(quotes: quotes, reactions: reactions, edited: edited);
   }
 }

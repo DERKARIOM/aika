@@ -80,4 +80,25 @@ void main() {
     expect(extras.reactions, isEmpty);
     expect(await db.replyToOf('b'), isNull);
   });
+
+  test('Should keep only the latest pending reaction per message, removals included', () async {
+    await db.addPendingReaction('P', 'a', '👍');
+    await db.addPendingReaction('P', 'a', '❤️');
+    await db.addPendingReaction('P', 'b', null);
+
+    expect(await db.pendingReactions('P', limit: 10), [(messageId: 'a', emoji: '❤️'), (messageId: 'b', emoji: null)]);
+
+    // A delivery of an outdated value must not drop the newer one.
+    await db.removePendingReaction('P', 'a', '👍');
+    await db.removePendingReaction('P', 'b', null);
+    expect(await db.pendingReactions('P', limit: 10), [(messageId: 'a', emoji: '❤️')]);
+  });
+
+  test('Should forget the pending reactions of a deleted conversation', () async {
+    await db.addPendingReaction('P', 'a', '👍');
+
+    await db.deleteConversation('P');
+
+    expect(await db.pendingReactions('P', limit: 10), isEmpty);
+  });
 }

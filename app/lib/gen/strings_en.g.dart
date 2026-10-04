@@ -946,6 +946,24 @@ class Translations$chat$en {
   /// en: 'Message unavailable'
   String get quoteUnavailable => 'Message unavailable';
 
+  /// en: 'Delete this message?'
+  String get deleteMessageTitle => 'Delete this message?';
+
+  /// en: 'Delete for me'
+  String get deleteForMe => 'Delete for me';
+
+  /// en: 'Delete for everyone'
+  String get deleteForEveryone => 'Delete for everyone';
+
+  /// en: 'Edit'
+  String get edit => 'Edit';
+
+  /// en: 'edited'
+  String get edited => 'edited';
+
+  /// en: 'Edit message'
+  String get editingMessage => 'Edit message';
+
   /// en: 'Messages'
   String get title => 'Messages';
 

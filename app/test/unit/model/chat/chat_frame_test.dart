@@ -69,6 +69,13 @@ void main() {
       expect(ChatFrame.tryDecode('{"t":"react","id":"m1","e":"${'x' * (chatMaxReactionLength + 1)}"}'), isNull);
     });
 
+    test('Should encode and decode an edit, never an empty or oversized one', () {
+      final edit = _roundTrip(const ChatEditFrame(id: 'm1', text: 'corrigé'));
+      expect((edit.id, edit.text), ('m1', 'corrigé'));
+      expect(ChatFrame.tryDecode('{"t":"edit","id":"m1","txt":"  "}'), isNull);
+      expect(ChatFrame.tryDecode(const ChatEditFrame(id: 'm1', text: 'a').encode().replaceFirst('"a"', '"${'a' * (chatMaxTextLength + 1)}"')), isNull);
+    });
+
     test('Should encode and decode typing', () {
       expect(_roundTrip(const ChatTypingFrame(isTyping: true)).isTyping, true);
     });

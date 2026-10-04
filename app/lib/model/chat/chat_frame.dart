@@ -62,6 +62,7 @@ sealed class ChatFrame {
         ChatTypingFrame.frameType => ChatTypingFrame._fromJson(decoded),
         ChatRetractFrame.frameType => ChatRetractFrame._fromJson(decoded),
         ChatReactFrame.frameType => ChatReactFrame._fromJson(decoded),
+        ChatEditFrame.frameType => ChatEditFrame._fromJson(decoded),
         _ => null,
       };
     } on _InvalidFrame {
@@ -294,6 +295,35 @@ class ChatReactFrame extends ChatFrame {
 
   @override
   Map<String, dynamic> toJson() => {'t': frameType, 'id': id, if (emoji != null) 'e': emoji};
+}
+
+/// "Here is the corrected text of my message [id]". Only the sender's own
+/// text messages can be edited; the receiver checks it.
+///
+/// Added without a protocol version bump: older peers ignore it (they keep
+/// the first text).
+class ChatEditFrame extends ChatFrame {
+  static const frameType = 'edit';
+
+  final String id;
+  final String text;
+
+  const ChatEditFrame({required this.id, required this.text});
+
+  factory ChatEditFrame._fromJson(Map<String, dynamic> json) {
+    final id = json['id'] as String;
+    final text = json['txt'] as String;
+    if (!_isValidId(id) || text.trim().isEmpty || text.length > chatMaxTextLength) {
+      throw const _InvalidFrame();
+    }
+    return ChatEditFrame(id: id, text: text);
+  }
+
+  @override
+  String get type => frameType;
+
+  @override
+  Map<String, dynamic> toJson() => {'t': frameType, 'id': id, 'txt': text};
 }
 
 /// A short, single-line string: displayed as is, never trusted further.

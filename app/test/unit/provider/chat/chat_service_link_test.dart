@@ -370,6 +370,103 @@ void main() {
     expect((await db.watchExtras(_peer).first).reactions['m1']?.mine, '👍');
   });
 
+  test('Should send a reaction made offline once the link is back', () async {
+    await db.insertMessage(
+      ChatMessagesCompanion.insert(
+        id: 'm1',
+        conversationId: _peer,
+        direction: ChatMessageDirectionColumn.incoming,
+        contentType: ChatContentType.text.name,
+        status: ChatMessageStatusColumn.delivered,
+        createdAt: DateTime.utc(2026),
+      ),
+    );
+    // No link yet: kept for later (survives a restart, it is in the database).
+    await chat.react(target: _bob, messageId: 'm1', emoji: '😂');
+    expect(transport.sentOf<ChatReactFrame>(), isEmpty);
+
+    transport.open();
+    await settle();
+    await settle();
+
+    final sent = transport.sentOf<ChatReactFrame>().single;
+    expect((sent.id, sent.emoji), ('m1', '😂'));
+    expect(await db.pendingReactions(_peer, limit: 10), isEmpty);
+  });
+
+  test('Should delete a message for me only, without telling the peer', () async {
+    transport.open();
+    await settle();
+    transport.receive(ChatMessageFrame(id: 'm1', timestamp: DateTime.utc(2026), contentType: ChatContentType.text, text: 'a'));
+    await settle();
+
+    await chat.deleteMessageForMe('m1');
+    await settle();
+
+    expect(await db.getMessage('m1'), isNull);
+    expect(transport.sentOf<ChatRetractFrame>(), isEmpty);
+  });
+
+  test('Should delete our message for everyone, never a received one', () async {
+    transport.open();
+    await settle();
+    transport.receive(ChatMessageFrame(id: 'in', timestamp: DateTime.utc(2026), contentType: ChatContentType.text, text: 'a'));
+    await chat.sendText(target: _bob, text: 'oups');
+    await settle();
+    final mine = transport.sentOf<ChatMessageFrame>().single.id;
+
+    await chat.deleteMessageForEveryone('in');
+    await chat.deleteMessageForEveryone(mine);
+    await settle();
+
+    expect(await db.getMessage('in'), isNotNull);
+    expect(await db.getMessage(mine), isNull);
+    expect(transport.sentOf<ChatRetractFrame>().single.ids, [mine]);
+  });
+
+  test('Should edit our text message here and at the peer', () async {
+    transport.open();
+    await settle();
+    await chat.sendText(target: _bob, text: 'bonjur');
+    await settle();
+    final id = transport.sentOf<ChatMessageFrame>().single.id;
+
+    await chat.editMessage(target: _bob, messageId: id, text: 'bonjour');
+    await settle();
+
+    expect((await db.getMessage(id))!.body, 'bonjour');
+    expect((await db.watchExtras(_peer).first).edited, {id});
+    expect((await db.getConversation(_peer))!.lastMessagePreview, 'bonjour');
+    final sent = transport.sentOf<ChatEditFrame>().single;
+    expect((sent.id, sent.text), (id, 'bonjour'));
+  });
+
+  test('Should apply an edit of the peer to its own text messages only', () async {
+    transport.open();
+    await settle();
+    transport.receive(ChatMessageFrame(id: 'm1', timestamp: DateTime.utc(2026), contentType: ChatContentType.text, text: 'bonjur'));
+    await settle();
+    await db.insertMessage(
+      ChatMessagesCompanion.insert(
+        id: 'mine',
+        conversationId: _peer,
+        direction: ChatMessageDirectionColumn.outgoing,
+        contentType: ChatContentType.text.name,
+        status: ChatMessageStatusColumn.delivered,
+        createdAt: DateTime.utc(2025),
+        body: const Value('à moi'),
+      ),
+    );
+
+    transport.receive(const ChatEditFrame(id: 'm1', text: 'bonjour'));
+    transport.receive(const ChatEditFrame(id: 'mine', text: 'piraté'));
+    await settle();
+    await settle();
+
+    expect((await db.getMessage('m1'))!.body, 'bonjour');
+    expect((await db.getMessage('mine'))!.body, 'à moi');
+  });
+
   test('Should file a message dated in the future at its reception time', () async {
     transport.open();
     await settle();

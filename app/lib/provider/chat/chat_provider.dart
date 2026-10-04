@@ -352,6 +352,44 @@ class ChatService extends Notifier<ChatUiState> {
     ref.redux(parentIsolateProvider).dispatch(IsolateHttpUploadCancelAction(taskId: taskId));
   }
 
+  /// "Delete for me": removes [messageId] from this device only; the peer
+  /// keeps its copy. A received attachment's file goes too (it lives in
+  /// Aika's chat folder); the user's own files are never touched.
+  Future<void> deleteMessageForMe(String messageId) async {
+    final db = ref.read(chatDatabaseProvider);
+    final message = await db.getMessage(messageId);
+    if (message == null) {
+      return;
+    }
+    if (isUploading(messageId)) {
+      // The peer never got the whole file: the cancellation retracts it.
+      cancelAttachment(messageId);
+    }
+    _pendingAttachmentFileIdToMessageId.removeWhere((_, id) => id == messageId);
+    ref.read(chatAttachmentProgressProvider).done(messageId);
+    await _deleteMessageRow(message);
+    final path = message.attachmentPath;
+    if (message.direction == ChatMessageDirectionColumn.incoming && path != null) {
+      await _deleteChatMediaFile(path);
+    }
+  }
+
+  /// "Delete for everyone": removes our message [messageId] here and at
+  /// the peer (through a [ChatRetractFrame], delivered even after a
+  /// restart). Only our own messages can be deleted for everyone.
+  Future<void> deleteMessageForEveryone(String messageId) async {
+    final message = await ref.read(chatDatabaseProvider).getMessage(messageId);
+    if (message == null || message.direction != ChatMessageDirectionColumn.outgoing) {
+      return;
+    }
+    if (isUploading(messageId)) {
+      // Cancelling already deletes it on both sides (see [_retractOutgoing]).
+      cancelAttachment(messageId);
+      return;
+    }
+    await _retractOutgoing(message.conversationId, messageId);
+  }
+
   /// Deletes the outgoing message [messageId] here, then asks the peer to
   /// delete its copy.
   Future<void> _retractOutgoing(String fingerprint, String messageId) async {
@@ -434,11 +472,6 @@ class ChatService extends Notifier<ChatUiState> {
     }
   }
 
-  /// Reactions made while the peer's link was down, per peer and message
-  /// (the latest one wins): sent when the link is back. Kept in memory: a
-  /// reaction is light, losing one to an app restart is acceptable.
-  final Map<String, Map<String, String?>> _pendingReactions = {};
-
   /// Sets our reaction to [messageId] ([emoji] `null`: removes it), here and
   /// at the peer. Only on messages both sides have: received ones, and sent
   /// ones the peer acknowledged.
@@ -453,8 +486,87 @@ class ChatService extends Notifier<ChatUiState> {
     }
     await db.setReaction(messageId, fromPeer: false, emoji: emoji);
     final fp = target.fingerprint.toUpperCase();
-    (_pendingReactions[fp] ??= {})[messageId] = emoji;
+    // Stored first: if the link is down (or the app is closed before it
+    // comes back), the reaction goes out on the next link to this peer.
+    await db.addPendingReaction(fp, messageId, emoji);
     await _sendPendingReactions(fp);
+  }
+
+  /// Replaces the text of our message [messageId], here and at the peer.
+  /// Only our own text messages; [text] must fit in one message.
+  Future<void> editMessage({required Device target, required String messageId, required String text}) async {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty || trimmed.length > chatMaxTextLength) {
+      return;
+    }
+    final db = ref.read(chatDatabaseProvider);
+    final message = await db.getMessage(messageId);
+    if (message == null ||
+        !canEdit(message) ||
+        message.conversationId.toUpperCase() != target.fingerprint.toUpperCase() ||
+        message.body == trimmed) {
+      return;
+    }
+    await db.editMessageBody(messageId, trimmed);
+    await _refreshPreview(message.conversationId);
+    // A message still in the outbox goes out with its new text anyway; the
+    // edit is sent all the same, the peer ignores it for a message it lacks.
+    final fp = target.fingerprint.toUpperCase();
+    await db.addPendingEdit(fp, messageId, trimmed);
+    await _sendPendingEdits(fp);
+  }
+
+  /// Whether [message] can be edited: our own text messages.
+  static bool canEdit(ChatMessage message) {
+    return message.direction == ChatMessageDirectionColumn.outgoing && message.contentType == ChatContentType.text.name;
+  }
+
+  Future<void> _sendPendingEdits(String fingerprint) async {
+    final fp = fingerprint.toUpperCase();
+    final db = ref.read(chatDatabaseProvider);
+    final links = ref.read(peerLinkManagerProvider);
+    while (links.isReady(fp)) {
+      final pending = await db.pendingEdits(fp, limit: _reactionBatch);
+      if (pending.isEmpty) {
+        return;
+      }
+      for (final edit in pending) {
+        if (!await links.send(fp, ChatEditFrame(id: edit.messageId, text: edit.text))) {
+          return;
+        }
+        await db.removePendingEdit(fp, edit.messageId, edit.text);
+      }
+      if (pending.length < _reactionBatch) {
+        return;
+      }
+    }
+  }
+
+  /// The peer edited one of its messages: only a text message it sent us.
+  Future<void> _onEdit(String fingerprint, ChatEditFrame frame) async {
+    final db = ref.read(chatDatabaseProvider);
+    final message = await db.getMessage(frame.id);
+    if (message == null ||
+        message.direction != ChatMessageDirectionColumn.incoming ||
+        message.contentType != ChatContentType.text.name ||
+        message.conversationId.toUpperCase() != fingerprint.toUpperCase()) {
+      return;
+    }
+    await db.editMessageBody(frame.id, frame.text);
+    await _refreshPreview(message.conversationId);
+  }
+
+  /// Shows the conversation's latest message in the list again.
+  Future<void> _refreshPreview(String conversationId) async {
+    final db = ref.read(chatDatabaseProvider);
+    final latest = await db.latestMessage(conversationId);
+    await db.updateLastMessagePreview(
+      conversationId,
+      preview: latest == null
+          ? null
+          : _previewFor(ChatContentType.values.byName(latest.contentType), latest.body, latest.attachmentFileName),
+      at: latest?.createdAt,
+    );
   }
 
   /// Whether a reaction to [message] can reach the peer: it has the message.
@@ -464,24 +576,26 @@ class ChatService extends Notifier<ChatUiState> {
         message.status == ChatMessageStatusColumn.read;
   }
 
+  /// Sends the reactions waiting for [fingerprint]; those delivered to the
+  /// link are forgotten, the others wait for the next link.
   Future<void> _sendPendingReactions(String fingerprint) async {
     final fp = fingerprint.toUpperCase();
-    final pending = _pendingReactions[fp];
-    if (pending == null) {
-      return;
-    }
+    final db = ref.read(chatDatabaseProvider);
     final links = ref.read(peerLinkManagerProvider);
-    for (final entry in pending.entries.toList()) {
-      if (!links.isReady(fp) || !await links.send(fp, ChatReactFrame(id: entry.key, emoji: entry.value))) {
+    while (links.isReady(fp)) {
+      final pending = await db.pendingReactions(fp, limit: _reactionBatch);
+      if (pending.isEmpty) {
         return;
       }
-      // Unless the user changed it again meanwhile.
-      if (pending[entry.key] == entry.value) {
-        pending.remove(entry.key);
+      for (final reaction in pending) {
+        if (!await links.send(fp, ChatReactFrame(id: reaction.messageId, emoji: reaction.emoji))) {
+          return;
+        }
+        await db.removePendingReaction(fp, reaction.messageId, reaction.emoji);
       }
-    }
-    if (pending.isEmpty) {
-      _pendingReactions.remove(fp);
+      if (pending.length < _reactionBatch) {
+        return;
+      }
     }
   }
 
@@ -711,6 +825,7 @@ class ChatService extends Notifier<ChatUiState> {
         // Whatever waited for this peer goes out now, not at the next tick.
         await _sendPendingRetractions(fingerprint);
         await _sendPendingReactions(fingerprint);
+        await _sendPendingEdits(fingerprint);
         await db.makeOutboxDueNow(fingerprint, now);
         await retryDueOutbox();
         // Reads since the previous link went down (or since the app
@@ -761,6 +876,8 @@ class ChatService extends Notifier<ChatUiState> {
         unawaited(_onRetract(fingerprint, frame.ids));
       case ChatReactFrame():
         unawaited(_onReact(fingerprint, frame));
+      case ChatEditFrame():
+        unawaited(_onEdit(fingerprint, frame));
       case ChatHelloFrame():
         break;
     }
@@ -1315,6 +1432,9 @@ FileType _contentTypeToFileType(ChatContentType contentType) {
 enum _ChatSendFailureReason { blocked, pinRequired, busy, tooManyAttempts, network, deferred, cancelled }
 
 const _cancelledError = 'Envoi annulé.';
+
+/// Pending reactions sent per database read.
+const _reactionBatch = 100;
 
 const _prepareUploadTimeout = Duration(seconds: 30);
 

@@ -67,6 +67,16 @@ class ChatMessageBubble extends StatelessWidget {
   /// Starts a reply to this message; offered on a long press when set.
   final VoidCallback? onReply;
 
+  /// Asks how to delete this message (for me / for everyone); offered on a
+  /// long press when set.
+  final VoidCallback? onDelete;
+
+  /// Starts editing this message's text; offered on a long press when set.
+  final VoidCallback? onEdit;
+
+  /// The text was changed after being sent: "edited" next to the time.
+  final bool edited;
+
   const ChatMessageBubble({
     required this.message,
     this.onRetry,
@@ -76,6 +86,9 @@ class ChatMessageBubble extends StatelessWidget {
     this.peerReaction,
     this.onReact,
     this.onReply,
+    this.onDelete,
+    this.onEdit,
+    this.edited = false,
     this.groupedWithPrevious = false,
     this.groupedWithNext = false,
     super.key,
@@ -195,7 +208,7 @@ class ChatMessageBubble extends StatelessWidget {
   }
 
   Widget _content(BuildContext context, ChatColors colors) {
-    final meta = _Meta(message: message, isOutgoing: _isOutgoing, colors: colors);
+    final meta = _Meta(message: message, isOutgoing: _isOutgoing, colors: colors, edited: edited);
     final body = _body;
 
     if (_isImage) {
@@ -215,7 +228,7 @@ class ChatMessageBubble extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.45), borderRadius: BorderRadius.circular(10)),
-                    child: _Meta(message: message, isOutgoing: _isOutgoing, colors: colors, onImage: true),
+                    child: _Meta(message: message, isOutgoing: _isOutgoing, colors: colors, edited: edited, onImage: true),
                   ),
                 ),
             ],
@@ -258,7 +271,7 @@ class ChatMessageBubble extends StatelessWidget {
     final error = _isOutgoing && message.status != ChatMessageStatusColumn.delivered && message.status != ChatMessageStatusColumn.read
         ? message.errorMessage
         : null;
-    if ((text == null || text.isEmpty) && !_canRetry && error == null && onReact == null && onReply == null) {
+    if ((text == null || text.isEmpty) && !_canRetry && error == null && onReact == null && onReply == null && onDelete == null && onEdit == null) {
       return;
     }
     showModalBottomSheet<void>(
@@ -320,6 +333,24 @@ class ChatMessageBubble extends StatelessWidget {
                   onRetry!();
                 },
               ),
+            if (onEdit != null)
+              ListTile(
+                leading: const Icon(Icons.edit_rounded),
+                title: Text(t.chat.edit),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  onEdit!();
+                },
+              ),
+            if (onDelete != null)
+              ListTile(
+                leading: Icon(Icons.delete_outline_rounded, color: Theme.of(context).colorScheme.error),
+                title: Text(t.general.delete, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  onDelete!();
+                },
+              ),
           ],
         ),
       ),
@@ -367,10 +398,13 @@ class _Meta extends StatelessWidget {
   /// Drawn over an image: white, for contrast.
   final bool onImage;
 
-  const _Meta({required this.message, required this.isOutgoing, required this.colors, this.onImage = false});
+  /// Prefixes the time with "edited".
+  final bool edited;
+
+  const _Meta({required this.message, required this.isOutgoing, required this.colors, this.edited = false, this.onImage = false});
 
   /// Room to keep free at the end of the text.
-  double get reservedWidth => isOutgoing ? 66 : 46;
+  double get reservedWidth => (isOutgoing ? 66 : 46) + (edited ? 56 : 0);
 
   @override
   Widget build(BuildContext context) {
@@ -379,6 +413,7 @@ class _Meta extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (edited) Text('${t.chat.edited} ', style: TextStyle(color: color, fontSize: 11, fontStyle: FontStyle.italic)),
         Text(formatChatClock(message.createdAt), style: TextStyle(color: color, fontSize: 11)),
         if (isOutgoing) ...[
           const SizedBox(width: 3),

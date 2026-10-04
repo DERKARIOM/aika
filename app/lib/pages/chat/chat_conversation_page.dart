@@ -23,6 +23,7 @@ import 'package:localsend_app/widget/chat/chat_connection_banner.dart';
 import 'package:localsend_app/widget/chat/chat_drop_zone.dart';
 import 'package:localsend_app/widget/chat/chat_message_bubble.dart';
 import 'package:localsend_app/widget/chat/chat_style.dart';
+import 'package:localsend_app/widget/chat/chat_swipe_to_reply.dart';
 import 'package:localsend_app/widget/dialogs/chat_delete_conversation_dialog.dart';
 import 'package:localsend_isolates/model/device.dart';
 import 'package:logging/logging.dart';
@@ -66,6 +67,9 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
 
   /// The message the next text answers, shown above the composer.
   ChatMessage? _replyingTo;
+
+  /// Our message whose text the composer is editing.
+  ChatMessage? _editing;
   List<ChatMessage> _messages = [];
 
   /// How many of the latest messages are watched (grows by [_pageSize]).
@@ -166,7 +170,7 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
     await WidgetsBinding.instance.endOfFrame;
     for (var step = 0; step < 200 && mounted; step++) {
       final target = _highlightKey.currentContext;
-      if (target != null) {
+      if (target != null && target.mounted) {
         await Scrollable.ensureVisible(target, alignment: 0.5, duration: const Duration(milliseconds: 300), curve: Curves.easeOutCubic);
         _flashTimer?.cancel();
         _flashTimer = Timer(const Duration(seconds: 2), () {
@@ -355,7 +359,14 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
                       ],
                     ),
             ),
-            if (_replyingTo != null && !blocked)
+            if (_editing != null && !blocked)
+              _ReplyBanner(
+                icon: Icons.edit_rounded,
+                author: t.chat.editingMessage,
+                text: _editing!.body ?? '',
+                onClose: _stopEditing,
+              )
+            else if (_replyingTo != null && !blocked)
               _ReplyBanner(
                 author: _authorOf(_replyingTo!.direction, device),
                 text: _previewOf(_replyingTo!.contentType, _replyingTo!.body, _replyingTo!.attachmentFileName),
@@ -366,6 +377,12 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
               blocked: blocked,
               onChanged: (text) => unawaited(ref.notifier(chatProvider).setTyping(target: device, isTyping: text.isNotEmpty)),
               onSend: (text) {
+                final editing = _editing;
+                if (editing != null) {
+                  setState(() => _editing = null);
+                  unawaited(ref.notifier(chatProvider).editMessage(target: device, messageId: editing.id, text: text));
+                  return;
+                }
                 final replyTo = _replyingTo;
                 if (replyTo != null) {
                   setState(() => _replyingTo = null);
@@ -425,6 +442,66 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
     }
   }
 
+  /// Puts [message]'s text in the composer; sending replaces it.
+  void _startEditing(ChatMessage message) {
+    final text = message.body ?? '';
+    setState(() {
+      _editing = message;
+      _replyingTo = null;
+    });
+    _textController.value = TextEditingValue(text: text, selection: TextSelection.collapsed(offset: text.length));
+  }
+
+  void _stopEditing() {
+    setState(() => _editing = null);
+    _textController.clear();
+  }
+
+  /// Asks whether to delete [message] for me only or, for our own
+  /// messages, for everyone, then does it.
+  Future<void> _confirmDelete(Ref ref, ChatMessage message) async {
+    final canDeleteForEveryone = message.direction == ChatMessageDirectionColumn.outgoing;
+    final choice = await showDialog<_DeleteChoice>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(t.chat.deleteMessageTitle),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(t.general.cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(_DeleteChoice.forMe),
+            child: Text(t.chat.deleteForMe),
+          ),
+          if (canDeleteForEveryone)
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(_DeleteChoice.forEveryone),
+              child: Text(t.chat.deleteForEveryone),
+            ),
+        ],
+      ),
+    );
+    if (choice == null || !mounted) {
+      return;
+    }
+    if (_replyingTo?.id == message.id) {
+      setState(() => _replyingTo = null);
+    }
+    if (_editing?.id == message.id) {
+      _stopEditing();
+    }
+    final chat = ref.notifier(chatProvider);
+    switch (choice) {
+      case _DeleteChoice.forMe:
+        await chat.deleteMessageForMe(message.id);
+      case _DeleteChoice.forEveryone:
+        await chat.deleteMessageForEveryone(message.id);
+    }
+  }
+
+  static bool get _isTouchPlatform => defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS;
+
   /// The quote shown above [message] if it replies to another one.
   ChatBubbleQuote? _quoteFor(Ref ref, ChatMessage message) {
     final quoted = _extras.quotes[message.id];
@@ -476,8 +553,17 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
               ? (emoji) => unawaited(ref.notifier(chatProvider).react(target: _resolveDevice(ref), messageId: message.id, emoji: emoji))
               : null,
           onReply: () => setState(() => _replyingTo = message),
+          onDelete: () => unawaited(_confirmDelete(ref, message)),
+          edited: _extras.edited.contains(message.id),
+          onEdit: ChatService.canEdit(message) ? () => _startEditing(message) : null,
         );
-        final bubble = message.id == _flashId ? _Highlight(key: _highlightKey, child: plainBubble) : plainBubble;
+        final highlighted = message.id == _flashId ? _Highlight(key: _highlightKey, child: plainBubble) : plainBubble;
+        final bubble = ChatSwipeToReply(
+          key: ValueKey('swipe-${message.id}'),
+          // Touch screens; on desktop, right click opens the actions.
+          onReply: _isTouchPlatform ? () => setState(() => _replyingTo = message) : null,
+          child: highlighted,
+        );
         // The list is reversed: the separator goes above the first message
         // of each day.
         final firstOfDay = previous == null || !isSameChatDay(previous.createdAt, message.createdAt);
@@ -556,11 +642,12 @@ class _Highlight extends StatelessWidget {
 
 /// "Replying to …" above the composer, with a button to cancel the reply.
 class _ReplyBanner extends StatelessWidget {
+  final IconData icon;
   final String author;
   final String text;
   final VoidCallback onClose;
 
-  const _ReplyBanner({required this.author, required this.text, required this.onClose});
+  const _ReplyBanner({required this.author, required this.text, required this.onClose, this.icon = Icons.reply_rounded});
 
   @override
   Widget build(BuildContext context) {
@@ -575,7 +662,7 @@ class _ReplyBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.reply_rounded, size: 20),
+          Icon(icon, size: 20),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
@@ -602,3 +689,5 @@ class _ReplyBanner extends StatelessWidget {
     );
   }
 }
+
+enum _DeleteChoice { forMe, forEveryone }

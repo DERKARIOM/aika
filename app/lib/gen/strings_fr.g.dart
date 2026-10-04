@@ -751,6 +751,18 @@ class _Translations$chat$fr extends Translations$chat$en {
   @override
   String get quoteUnavailable => 'Message indisponible';
   @override
+  String get deleteMessageTitle => 'Supprimer ce message ?';
+  @override
+  String get deleteForMe => 'Supprimer pour moi';
+  @override
+  String get deleteForEveryone => 'Supprimer pour tous';
+  @override
+  String get edit => 'Modifier';
+  @override
+  String get edited => 'modifié';
+  @override
+  String get editingMessage => 'Modifier le message';
+  @override
   String get title => 'Messages';
   @override
   String get newConversation => 'Nouvelle discussion';
