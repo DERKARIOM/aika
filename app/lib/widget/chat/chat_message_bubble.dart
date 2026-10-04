@@ -5,11 +5,13 @@ import 'package:flutter/services.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/chat/chat_database.dart';
 import 'package:localsend_app/model/chat/chat_envelope.dart';
+import 'package:localsend_app/provider/chat/chat_attachment_progress.dart';
 import 'package:localsend_app/util/chat/chat_time_format.dart';
 import 'package:localsend_app/util/file_size_helper.dart';
 import 'package:localsend_app/util/native/open_file.dart' as native;
 import 'package:localsend_app/widget/chat/chat_style.dart';
 import 'package:localsend_isolates/model/file_type.dart';
+import 'package:refena_flutter/refena_flutter.dart';
 
 /// Width of the bubble "tail" drawn outside the bubble.
 const _tailWidth = 8.0;
@@ -45,7 +47,7 @@ class ChatMessageBubble extends StatelessWidget {
 
   bool get _isMedia => message.contentType != ChatContentType.text.name;
 
-  bool get _isImage => message.contentType == ChatContentType.image.name && message.attachmentPath != null;
+  bool get _isImage => message.contentType == ChatContentType.image.name && _canPreview(message.attachmentPath);
 
   String? get _body => (message.body?.isNotEmpty ?? false) ? message.body : null;
 
@@ -355,9 +357,18 @@ class _AttachmentPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Only this preview listens: a running transfer repaints one bubble,
+    // never the conversation.
+    return ValueListenableBuilder<double?>(
+      valueListenable: context.ref.read(chatAttachmentProgressProvider).of(message.id),
+      builder: (context, progress, _) => _content(context, progress),
+    );
+  }
+
+  Widget _content(BuildContext context, double? progress) {
     final path = message.attachmentPath;
     final isImage = message.contentType == ChatContentType.image.name;
-    final content = isImage && path != null ? _image(context, path) : _fileRow(path);
+    final content = isImage && _canPreview(path) ? _image(context, path!, progress) : _fileRow(path, progress);
     if (path == null) {
       return content;
     }
@@ -371,27 +382,38 @@ class _AttachmentPreview extends StatelessWidget {
     );
   }
 
-  Widget _image(BuildContext context, String path) {
+  Widget _image(BuildContext context, String path, double? progress) {
     const width = 260.0;
     final pixelRatio = MediaQuery.devicePixelRatioOf(context);
     return ClipRRect(
       borderRadius: BorderRadius.circular(10),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxHeight: 340),
-        child: Image.file(
-          File(path),
-          width: width,
-          // Decoded at display size: a 12 MP photo would otherwise take ~48 MB.
-          cacheWidth: (width * pixelRatio).round(),
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => _fileRow(path),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Image.file(
+              File(path),
+              width: width,
+              // Decoded at display size: a 12 MP photo would otherwise take ~48 MB.
+              cacheWidth: (width * pixelRatio).round(),
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => _fileRow(path, progress),
+            ),
+            if (progress != null) _ImageProgress(progress: progress),
+          ],
         ),
       ),
     );
   }
 
-  Widget _fileRow(String? path) {
+  Widget _fileRow(String? path, double? progress) {
     final size = message.attachmentSize;
+    final sizeLabel = size == null
+        ? null
+        : progress == null
+        ? size.asReadableFileSize
+        : '${(size * progress).round().asReadableFileSize} / ${size.asReadableFileSize} · ${(progress * 100).floor()} %';
     return Container(
       width: 240,
       padding: const EdgeInsets.all(10),
@@ -405,8 +427,17 @@ class _AttachmentPreview extends StatelessWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(color: colors.accent.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
-            child: path == null
-                ? Padding(padding: const EdgeInsets.all(11), child: CircularProgressIndicator(strokeWidth: 2, color: colors.accent))
+            child: progress != null || path == null
+                ? Padding(
+                    padding: const EdgeInsets.all(9),
+                    // Determinate while bytes flow, indeterminate while waiting.
+                    child: CircularProgressIndicator(
+                      value: progress,
+                      strokeWidth: 2.5,
+                      color: colors.accent,
+                      backgroundColor: progress == null ? null : colors.accent.withValues(alpha: 0.2),
+                    ),
+                  )
                 : Icon(_iconFor(message.contentType), color: colors.accent),
           ),
           const SizedBox(width: 10),
@@ -421,7 +452,7 @@ class _AttachmentPreview extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
-                if (size != null) Text(size.asReadableFileSize, style: TextStyle(color: colors.meta, fontSize: 12)),
+                if (sizeLabel != null) Text(sizeLabel, style: TextStyle(color: colors.meta, fontSize: 12)),
               ],
             ),
           ),
@@ -437,3 +468,31 @@ class _AttachmentPreview extends StatelessWidget {
     return Icons.insert_drive_file_outlined;
   }
 }
+
+/// Ring over an image whose bytes are still being transferred.
+class _ImageProgress extends StatelessWidget {
+  final double progress;
+
+  const _ImageProgress({required this.progress});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 52,
+      height: 52,
+      padding: const EdgeInsets.all(10),
+      decoration: const BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
+      child: CircularProgressIndicator(
+        value: progress,
+        strokeWidth: 3,
+        color: Colors.white,
+        backgroundColor: Colors.white24,
+      ),
+    );
+  }
+}
+
+/// A local file that `Image.file` can decode. An Android `content://` URI
+/// (an attachment picked with the system picker) is shown as a file card
+/// and opened with the system viewer instead.
+bool _canPreview(String? path) => path != null && !path.startsWith('content://');

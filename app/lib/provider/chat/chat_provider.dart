@@ -8,6 +8,7 @@ import 'package:localsend_app/model/chat/chat_envelope.dart';
 import 'package:localsend_app/model/chat/chat_frame.dart';
 import 'package:localsend_app/model/cross_file.dart';
 import 'package:localsend_app/provider/chat/blocked_devices_provider.dart';
+import 'package:localsend_app/provider/chat/chat_attachment_progress.dart';
 import 'package:localsend_app/provider/chat/chat_contact_policy.dart';
 import 'package:localsend_app/provider/chat/chat_conversations_provider.dart';
 import 'package:localsend_app/provider/chat/chat_database_provider.dart';
@@ -593,7 +594,26 @@ class ChatService extends Notifier<ChatUiState> {
     if (messageId == null) {
       return;
     }
+    ref.read(chatAttachmentProgressProvider).done(messageId);
     unawaited(ref.read(chatDatabaseProvider).attachLocalFile(messageId, path: path));
+  }
+
+  /// Download progress of an accepted incoming attachment, shown in its
+  /// message bubble.
+  void onAttachmentProgress({required String fileId, required double progress}) {
+    final messageId = _pendingAttachmentFileIdToMessageId[fileId];
+    if (messageId != null) {
+      ref.read(chatAttachmentProgressProvider).set(messageId, progress);
+    }
+  }
+
+  /// The download of an incoming attachment failed: the sender retries it
+  /// later (its outbox), the bubble stops showing progress meanwhile.
+  void onAttachmentFailed({required String fileId}) {
+    final messageId = _pendingAttachmentFileIdToMessageId.remove(fileId);
+    if (messageId != null) {
+      ref.read(chatAttachmentProgressProvider).done(messageId);
+    }
   }
 
   void _setTypingPeer(String fingerprint, bool isTyping) {
@@ -673,8 +693,12 @@ class ChatService extends Notifier<ChatUiState> {
     CrossFile? media;
     String? attachmentFileId;
     if (contentType != ChatContentType.text && message.attachmentPath != null) {
-      final file = File(message.attachmentPath!);
-      if (!await file.exists()) {
+      final path = message.attachmentPath!;
+      // An Android `content://` URI (from the system picker) is not a file
+      // path: `File.exists` would always say no. The upload resolves it.
+      final isContentUri = path.startsWith('content://');
+      final file = File(path);
+      if (!isContentUri && !await file.exists()) {
         await db.updateMessageStatus(message.id, ChatMessageStatusColumn.failed, errorMessage: 'Fichier local introuvable, envoi annulé.');
         await db.removeFromOutbox(message.id);
         return;
@@ -683,7 +707,7 @@ class ChatService extends Notifier<ChatUiState> {
       media = CrossFile(
         name: message.attachmentFileName ?? file.uri.pathSegments.last,
         fileType: _contentTypeToFileType(contentType),
-        size: message.attachmentSize ?? await file.length(),
+        size: message.attachmentSize ?? (isContentUri ? 0 : await file.length()),
         thumbnail: null,
         asset: null,
         path: message.attachmentPath,
@@ -980,14 +1004,22 @@ class ChatService extends Notifier<ChatUiState> {
           ),
         );
 
+    final progress = ref.read(chatAttachmentProgressProvider);
     try {
       await for (final event in taskResult.events) {
-        if (event is HttpUploadFileFailedEvent) {
-          return _ChatSendOutcome.failure(_ChatSendFailureReason.network, event.error);
+        switch (event) {
+          case HttpUploadFileProgressEvent():
+            progress.set(envelope.messageId, event.progress);
+          case HttpUploadFileFailedEvent():
+            return _ChatSendOutcome.failure(_ChatSendFailureReason.network, event.error);
+          default:
+            break;
         }
       }
     } catch (e) {
       return _ChatSendOutcome.failure(_ChatSendFailureReason.network, e.humanErrorMessage);
+    } finally {
+      progress.done(envelope.messageId);
     }
 
     return const _ChatSendOutcome.success();

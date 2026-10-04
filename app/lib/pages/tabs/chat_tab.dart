@@ -9,6 +9,8 @@ import 'package:localsend_app/provider/chat/chat_conversations_provider.dart';
 import 'package:localsend_app/provider/chat/chat_provider.dart';
 import 'package:localsend_app/util/chat/chat_device_resolver.dart';
 import 'package:localsend_app/util/chat/chat_time_format.dart';
+import 'package:localsend_app/util/device_type_ext.dart';
+import 'package:localsend_app/widget/chat/chat_style.dart';
 import 'package:localsend_app/widget/dialogs/chat_delete_conversation_dialog.dart';
 import 'package:localsend_app/widget/responsive_list_view.dart';
 import 'package:refena_flutter/refena_flutter.dart';
@@ -25,144 +27,155 @@ class ChatTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final conversations = context.watch(chatConversationsProvider);
+    final colorScheme = Theme.of(context).colorScheme;
 
     return ResponsiveListView(
-      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(t.chat.title, style: Theme.of(context).textTheme.headlineSmall),
-            ),
-            IconButton(
-              tooltip: t.chat.newConversation,
-              icon: const Icon(Icons.add_comment_outlined),
-              onPressed: () async {
-                await context.push(() => const NewConversationPage());
-              },
-            ),
-          ],
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 4, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(t.chat.title, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
+              ),
+              IconButton.filledTonal(
+                tooltip: t.chat.newConversation,
+                icon: const Icon(Icons.edit_square),
+                onPressed: () async {
+                  await context.push(() => const NewConversationPage());
+                },
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 10),
         if (conversations.isEmpty)
-          // Centré verticalement dans la zone visible (et pas juste collé sous
-          // l'en-tête) : la liste est dans un SingleChildScrollView qui ne
-          // contraint pas sa hauteur, donc on impose nous-mêmes une hauteur
-          // minimale (une bonne partie de l'écran) pour que le Center ait de
-          // quoi centrer son contenu.
+          // Centré verticalement dans la zone visible : la liste ne contraint
+          // pas sa hauteur, d'où une hauteur minimale imposée.
           ConstrainedBox(
-            constraints: BoxConstraints(minHeight: MediaQuery.of(context).size.height * 0.55),
+            constraints: BoxConstraints(minHeight: MediaQuery.sizeOf(context).height * 0.55),
             child: Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.chat_bubble_outline_rounded, size: 56, color: Theme.of(context).colorScheme.outline),
-                  const SizedBox(height: 16),
+                  Container(
+                    width: 88,
+                    height: 88,
+                    decoration: BoxDecoration(color: colorScheme.primaryContainer, shape: BoxShape.circle),
+                    child: Icon(Icons.forum_rounded, size: 42, color: colorScheme.onPrimaryContainer),
+                  ),
+                  const SizedBox(height: 18),
                   Text(
                     t.chat.empty,
                     textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: colorScheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 18),
+                  FilledButton.icon(
+                    icon: const Icon(Icons.edit_square),
+                    label: Text(t.chat.newConversation),
+                    onPressed: () async {
+                      await context.push(() => const NewConversationPage());
+                    },
                   ),
                 ],
               ),
             ),
           )
         else
-          ...conversations.map((conversation) => _ConversationTile(conversation: conversation)),
+          ...conversations.map((conversation) => _ConversationTile(key: ValueKey(conversation.peerFingerprint), conversation: conversation)),
       ],
     );
   }
 }
 
+/// One conversation: avatar, name, last message (or "typing…"), time, and
+/// the unread count. Unread conversations stand out (bold, accent time).
 class _ConversationTile extends StatelessWidget {
   final ChatConversation conversation;
 
-  const _ConversationTile({required this.conversation});
+  const _ConversationTile({required this.conversation, super.key});
 
   @override
   Widget build(BuildContext context) {
     final ref = context.ref;
     final online = watchPeerOnline(context, conversation.peerFingerprint);
-    final typing = ref.watch(chatProvider.select((s) => s.typingPeerFingerprints.contains(conversation.peerFingerprint)));
-    final colorScheme = Theme.of(context).colorScheme;
+    final typing = ref.watch(chatProvider.select((s) => s.typingPeerFingerprints.contains(conversation.peerFingerprint.toUpperCase())));
+    final device = resolveConversationDevice(ref, conversation);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final unread = conversation.unreadCount > 0;
+    final lastAt = conversation.lastMessageAt;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Material(
-        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(18),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: () async {
-            await context.push(() => ChatConversationPage(peerFingerprint: conversation.peerFingerprint));
-          },
-          onLongPress: () => _showQuickActions(context, ref),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: [
-                Stack(
-                  children: [
-                    CircleAvatar(radius: 24, child: const Icon(Icons.person_outline)),
-                    if (online)
-                      Positioned(
-                        right: 0,
-                        bottom: 0,
-                        child: Container(
-                          width: 12,
-                          height: 12,
-                          decoration: BoxDecoration(
-                            color: Colors.green,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Theme.of(context).scaffoldBackgroundColor, width: 2),
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () async {
+        await context.push(() => ChatConversationPage(peerFingerprint: conversation.peerFingerprint));
+      },
+      onLongPress: () => _showQuickActions(context, ref),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            ChatAvatar(icon: device.deviceType.icon, online: online, radius: 26, ringColor: theme.scaffoldBackgroundColor),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          conversation.peerAlias,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      if (lastAt != null)
+                        Text(
+                          formatConversationTimestamp(lastAt),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: unread ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                            fontWeight: unread ? FontWeight.w600 : FontWeight.normal,
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          typing ? t.chat.typing : (conversation.lastMessagePreview ?? t.chat.noMessagesYet),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: typing ? colorScheme.primary : (unread ? colorScheme.onSurface : colorScheme.onSurfaceVariant),
+                            fontWeight: unread && !typing ? FontWeight.w500 : FontWeight.normal,
                           ),
                         ),
                       ),
-                  ],
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(conversation.peerAlias, style: Theme.of(context).textTheme.titleMedium),
-                      const SizedBox(height: 2),
-                      Text(
-                        typing ? t.chat.typing : (conversation.lastMessagePreview ?? t.chat.noMessagesYet),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: typing ? colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant,
-                          fontStyle: typing ? FontStyle.italic : FontStyle.normal,
+                      if (unread) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          constraints: const BoxConstraints(minWidth: 22),
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(color: colorScheme.primary, borderRadius: BorderRadius.circular(999)),
+                          child: Text(
+                            conversation.unreadCount > 99 ? '99+' : '${conversation.unreadCount}',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: colorScheme.onPrimary, fontSize: 12, fontWeight: FontWeight.w700),
+                          ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
-                ),
-                const SizedBox(width: 8),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    if (conversation.lastMessageAt != null)
-                      Text(
-                        formatConversationTimestamp(conversation.lastMessageAt!),
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
-                      ),
-                    const SizedBox(height: 6),
-                    if (conversation.unreadCount > 0)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                        decoration: BoxDecoration(color: colorScheme.primary, borderRadius: BorderRadius.circular(999)),
-                        child: Text(
-                          conversation.unreadCount > 99 ? '99+' : '${conversation.unreadCount}',
-                          style: TextStyle(color: colorScheme.onPrimary, fontSize: 11, fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                  ],
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );

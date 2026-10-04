@@ -393,6 +393,7 @@ class ReceiveController {
     final fileType = receivingFile.file.fileType;
     final shouldSaveToGallery = receiveState.saveToGallery && (fileType == FileType.image || fileType == FileType.video);
 
+    final isChatAttachment = server.ref.notifier(chatProvider).isChatSession(event.sessionId);
     String? filePath;
     bool savedToGallery = false;
     try {
@@ -425,6 +426,9 @@ class ReceiveController {
                       fileId: fileId,
                       progress: progress,
                     );
+                if (isChatAttachment) {
+                  server.ref.notifier(chatProvider).onAttachmentProgress(fileId: fileId, progress: progress);
+                }
               },
             ),
           );
@@ -462,7 +466,7 @@ class ReceiveController {
         ),
       );
 
-      if (server.ref.notifier(chatProvider).isChatSession(event.sessionId)) {
+      if (isChatAttachment) {
         // Chat attachment: it lives in the conversation, not in the
         // general receive history / gallery-open flow.
         if (filePath != null) {
@@ -501,6 +505,9 @@ class ReceiveController {
         ),
       );
       _logger.severe('Failed to save file', e, st);
+      if (isChatAttachment) {
+        server.ref.notifier(chatProvider).onAttachmentFailed(fileId: fileId);
+      }
 
       // If the failure happened before the upload target was dispatched
       // (e.g. preparing the save target failed), the Rust server is still

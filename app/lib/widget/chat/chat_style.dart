@@ -159,3 +159,52 @@ class _MotifPainter extends CustomPainter {
   @override
   bool shouldRepaint(_MotifPainter oldDelegate) => oldDelegate.color != color;
 }
+
+/// A chat peer's picture: its device type on a tinted disc, with a green
+/// dot while it is online.
+class ChatAvatar extends StatelessWidget {
+  final IconData icon;
+  final bool online;
+  final double radius;
+
+  /// Ring around the online dot, the color behind the avatar.
+  final Color ringColor;
+
+  const ChatAvatar({required this.icon, required this.online, required this.ringColor, this.radius = 21, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final dot = radius * 0.55;
+    return SizedBox.square(
+      dimension: radius * 2,
+      child: Stack(
+        children: [
+          CircleAvatar(
+            radius: radius,
+            backgroundColor: colorScheme.primaryContainer,
+            foregroundColor: colorScheme.onPrimaryContainer,
+            child: Icon(icon, size: radius * 1.05),
+          ),
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: AnimatedScale(
+              scale: online ? 1 : 0,
+              duration: const Duration(milliseconds: 200),
+              child: Container(
+                width: dot,
+                height: dot,
+                decoration: BoxDecoration(
+                  color: Colors.greenAccent.shade700,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: ringColor, width: 2),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

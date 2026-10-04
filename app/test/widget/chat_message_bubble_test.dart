@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/chat/chat_database.dart';
+import 'package:localsend_app/provider/chat/chat_attachment_progress.dart';
 import 'package:localsend_app/widget/chat/chat_message_bubble.dart';
+import 'package:refena_flutter/refena_flutter.dart';
 
 ChatMessage _message({
   ChatMessageDirectionColumn direction = ChatMessageDirectionColumn.outgoing,
@@ -96,5 +98,42 @@ void main() {
 
     expect(find.text(t.chat.copy), findsOneWidget);
     expect(find.text(t.chat.retry), findsNothing);
+  });
+
+  testWidgets('Should show the transfer progress of an attachment, then its icon', (tester) async {
+    final container = RefenaContainer();
+    final progress = container.read(chatAttachmentProgressProvider);
+    final message = ChatMessage(
+      id: 'f1',
+      conversationId: 'fp',
+      direction: ChatMessageDirectionColumn.outgoing,
+      contentType: 'file',
+      body: '',
+      status: ChatMessageStatusColumn.pending,
+      attachmentFileName: 'rapport.pdf',
+      attachmentSize: 1000,
+      attachmentPath: '/tmp/rapport.pdf',
+      createdAt: DateTime.utc(2026, 10, 4, 12),
+    );
+    await tester.pumpWidget(
+      RefenaScope.withContainer(
+        container: container,
+        child: MaterialApp(
+          home: Scaffold(body: ChatMessageBubble(message: message)),
+        ),
+      ),
+    );
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    progress.set('f1', 0.42);
+    await tester.pump();
+    final ring = tester.widget<CircularProgressIndicator>(find.byType(CircularProgressIndicator));
+    expect(ring.value, 0.42);
+    expect(find.textContaining('42 %'), findsOneWidget);
+
+    progress.done('f1');
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byIcon(Icons.insert_drive_file_outlined), findsOneWidget);
   });
 }

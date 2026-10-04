@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/chat/chat_database.dart';
+import 'package:localsend_app/model/cross_file.dart';
 import 'package:localsend_app/provider/chat/blocked_devices_provider.dart';
 import 'package:localsend_app/provider/chat/chat_conversations_provider.dart';
 import 'package:localsend_app/provider/chat/chat_database_provider.dart';
@@ -11,6 +13,7 @@ import 'package:localsend_app/provider/chat/chat_provider.dart';
 import 'package:localsend_app/util/chat/chat_device_resolver.dart';
 import 'package:localsend_app/util/chat/chat_time_format.dart';
 import 'package:localsend_app/util/device_type_ext.dart';
+import 'package:localsend_app/util/native/channel/android_channel.dart' as android_channel;
 import 'package:localsend_app/util/native/cross_file_converters.dart';
 import 'package:localsend_app/widget/chat/chat_composer.dart';
 import 'package:localsend_app/widget/chat/chat_connection_banner.dart';
@@ -18,6 +21,7 @@ import 'package:localsend_app/widget/chat/chat_message_bubble.dart';
 import 'package:localsend_app/widget/chat/chat_style.dart';
 import 'package:localsend_app/widget/dialogs/chat_delete_conversation_dialog.dart';
 import 'package:localsend_isolates/model/device.dart';
+import 'package:logging/logging.dart';
 import 'package:refena_flutter/refena_flutter.dart';
 
 /// A single 1:1 conversation screen: message list + composer, WhatsApp/
@@ -26,6 +30,9 @@ import 'package:refena_flutter/refena_flutter.dart';
 /// countdown `Timer`) rather than routing the (potentially large, and only
 /// ever needed while this exact screen is visible) message list through a
 /// global provider - see the architecture notes in `chat_provider.dart`.
+
+final _logger = Logger('ChatConversationPage');
+
 class ChatConversationPage extends StatefulWidget {
   final String peerFingerprint;
 
@@ -168,7 +175,7 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
         titleSpacing: 0,
         title: Row(
           children: [
-            _PeerAvatar(icon: device.deviceType.icon, online: online),
+            ChatAvatar(icon: device.deviceType.icon, online: online, ringColor: colors.bar),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -269,20 +276,39 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
                   _scrollToLatest();
                 }
               },
-              onAttach: () async {
-                final file = await openFile();
-                if (file == null) {
-                  return;
-                }
-                final crossFile = await CrossFileConverters.convertXFile(file);
-                await ref.notifier(chatProvider).sendMedia(target: device, file: crossFile);
-              },
+              onAttach: () => unawaited(_pickAndSend(ref, device)),
             ),
           ],
         ),
         ),
       ),
     );
+  }
+
+  /// Picks one or more files and sends each as its own message.
+  ///
+  /// On Android, the system picker hands back `content://` URIs that the
+  /// upload streams directly: no copy, nothing loaded in memory. The
+  /// `file_selector` picker would first copy or read the whole file, which
+  /// takes seconds and can kill the app for a large video.
+  Future<void> _pickAndSend(Ref ref, Device device) async {
+    final List<CrossFile> files;
+    try {
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        final picked = await android_channel.pickFilesAndroid() ?? const [];
+        files = await Future.wait(picked.map(CrossFileConverters.convertFileInfo));
+      } else {
+        final picked = await openFiles();
+        files = await Future.wait(picked.map(CrossFileConverters.convertXFile));
+      }
+    } catch (e) {
+      _logger.warning('Could not pick chat attachments', e);
+      return;
+    }
+    final chat = ref.notifier(chatProvider);
+    for (final file in files) {
+      await chat.sendMedia(target: device, file: file);
+    }
   }
 
   Widget _buildMessageList(Ref ref) {
@@ -356,50 +382,6 @@ class _DaySeparator extends StatelessWidget {
           ),
           child: Text(label, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: colors.onChip)),
         ),
-      ),
-    );
-  }
-}
-
-/// The peer's picture in the app bar: its device type on a tinted disc,
-/// with a dot while it is online.
-class _PeerAvatar extends StatelessWidget {
-  final IconData icon;
-  final bool online;
-
-  const _PeerAvatar({required this.icon, required this.online});
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return SizedBox.square(
-      dimension: 42,
-      child: Stack(
-        children: [
-          CircleAvatar(
-            radius: 21,
-            backgroundColor: colorScheme.primaryContainer,
-            foregroundColor: colorScheme.onPrimaryContainer,
-            child: Icon(icon, size: 22),
-          ),
-          Positioned(
-            right: 0,
-            bottom: 0,
-            child: AnimatedScale(
-              scale: online ? 1 : 0,
-              duration: const Duration(milliseconds: 200),
-              child: Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: Colors.greenAccent.shade700,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: ChatColors.of(context).bar, width: 2),
-                ),
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
