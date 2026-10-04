@@ -241,6 +241,48 @@ void main() {
     expect(read.ids, ['m1', 'm2']);
   });
 
+  test('Should delete only the retracted messages this peer sent us', () async {
+    transport.open();
+    await settle();
+    transport.receive(ChatMessageFrame(id: 'm1', timestamp: DateTime.utc(2026), contentType: ChatContentType.text, text: 'a'));
+    await settle();
+    // Our own message, and a message from another contact: a peer must
+    // never be able to delete those.
+    await db.insertMessage(
+      ChatMessagesCompanion.insert(
+        id: 'mine',
+        conversationId: _peer,
+        direction: ChatMessageDirectionColumn.outgoing,
+        contentType: ChatContentType.text.name,
+        status: ChatMessageStatusColumn.sent,
+        createdAt: DateTime.utc(2025),
+        body: const Value('moi'),
+      ),
+    );
+    await db.upsertConversation(peerFingerprint: 'DDDD', peerAlias: 'Eve');
+    await db.insertMessage(
+      ChatMessagesCompanion.insert(
+        id: 'other',
+        conversationId: 'DDDD',
+        direction: ChatMessageDirectionColumn.incoming,
+        contentType: ChatContentType.text.name,
+        status: ChatMessageStatusColumn.delivered,
+        createdAt: DateTime.utc(2025),
+      ),
+    );
+    expect((await db.getConversation(_peer))!.unreadCount, 1);
+
+    transport.receive(const ChatRetractFrame(ids: ['m1', 'mine', 'other']));
+    await settle();
+
+    expect(await db.getMessage('m1'), isNull);
+    expect(await db.getMessage('mine'), isNotNull);
+    expect(await db.getMessage('other'), isNotNull);
+    final conversation = (await db.getConversation(_peer))!;
+    expect(conversation.unreadCount, 0);
+    expect(conversation.lastMessagePreview, 'moi');
+  });
+
   test('Should file a message dated in the future at its reception time', () async {
     transport.open();
     await settle();

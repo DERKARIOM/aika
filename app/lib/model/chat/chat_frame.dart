@@ -60,6 +60,7 @@ sealed class ChatFrame {
         ChatMessageFrame.frameType => ChatMessageFrame._fromJson(decoded),
         ChatAckFrame.frameType => ChatAckFrame._fromJson(decoded),
         ChatTypingFrame.frameType => ChatTypingFrame._fromJson(decoded),
+        ChatRetractFrame.frameType => ChatRetractFrame._fromJson(decoded),
         _ => null,
       };
     } on _InvalidFrame {
@@ -221,6 +222,34 @@ class ChatAckFrame extends ChatFrame {
     'ids': ids,
     'st': status.name,
   };
+}
+
+/// "Forget these messages of mine": the sender cancelled them (e.g. an
+/// attachment stopped while being sent). The receiver deletes them, but
+/// only messages it received from this very peer.
+///
+/// Added without a protocol version bump: older peers ignore unknown frame
+/// types (they just keep the bubble).
+class ChatRetractFrame extends ChatFrame {
+  static const frameType = 'retract';
+
+  final List<String> ids;
+
+  const ChatRetractFrame({required this.ids});
+
+  factory ChatRetractFrame._fromJson(Map<String, dynamic> json) {
+    final raw = json['ids'];
+    if (raw is! List || raw.isEmpty || raw.length > chatMaxIdsPerAck || raw.any((e) => e is! String || !_isValidId(e))) {
+      throw const _InvalidFrame();
+    }
+    return ChatRetractFrame(ids: List.unmodifiable(raw.cast<String>()));
+  }
+
+  @override
+  String get type => frameType;
+
+  @override
+  Map<String, dynamic> toJson() => {'t': frameType, 'ids': ids};
 }
 
 /// Best-effort typing indicator, never retransmitted.

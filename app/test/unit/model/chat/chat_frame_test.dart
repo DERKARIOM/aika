@@ -38,6 +38,18 @@ void main() {
       expect(ack.status, ChatReceiptStatus.read);
     });
 
+    test('Should encode and decode a retraction', () {
+      final decoded = ChatFrame.tryDecode(const ChatRetractFrame(ids: ['a', 'b']).encode());
+      expect(decoded, isA<ChatRetractFrame>().having((f) => f.ids, 'ids', ['a', 'b']));
+    });
+
+    test('Should reject an empty or oversized retraction', () {
+      expect(ChatFrame.tryDecode('{"t":"retract","ids":[]}'), isNull);
+      expect(ChatFrame.tryDecode('{"t":"retract","ids":[1]}'), isNull);
+      final tooMany = List.generate(chatMaxIdsPerAck + 1, (i) => '"$i"').join(',');
+      expect(ChatFrame.tryDecode('{"t":"retract","ids":[$tooMany]}'), isNull);
+    });
+
     test('Should encode and decode typing', () {
       expect(_roundTrip(const ChatTypingFrame(isTyping: true)).isTyping, true);
     });

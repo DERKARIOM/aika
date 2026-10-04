@@ -21,6 +21,7 @@ import 'package:localsend_app/provider/network/nearby_devices_provider.dart';
 import 'package:localsend_app/provider/network/send_provider.dart';
 import 'package:localsend_app/provider/network/server/server_provider.dart';
 import 'package:localsend_app/util/chat/chat_preview.dart';
+import 'package:localsend_app/util/native/directories.dart';
 import 'package:localsend_isolates/isolate.dart';
 import 'package:localsend_isolates/model/device.dart';
 import 'package:localsend_isolates/model/dto/file_dto.dart';
@@ -30,6 +31,7 @@ import 'package:localsend_isolates/rust/api/http.dart' as rust_http;
 import 'package:localsend_isolates/rust/api/model.dart' as rust_model;
 import 'package:localsend_isolates/util/rust.dart';
 import 'package:logging/logging.dart';
+import 'package:path/path.dart' as p;
 import 'package:refena_flutter/refena_flutter.dart';
 import 'package:uuid/uuid.dart';
 
@@ -331,9 +333,10 @@ class ChatService extends Notifier<ChatUiState> {
   /// Whether the attachment of [messageId] is being sent right now.
   bool isUploading(String messageId) => _runningUploads.containsKey(messageId);
 
-  /// Stops sending the attachment of [messageId]. The message is marked
-  /// "not sent" and leaves the outbox; "Retry" sends it again from scratch.
-  /// The receiver drops the partial file on its own (failed upload).
+  /// Stops sending the attachment of [messageId] and removes the message on
+  /// both sides: here right away, at the receiver through a
+  /// [ChatRetractFrame] (see [_retractOutgoing]). The user's original file
+  /// is never touched; the receiver drops the partial copy.
   void cancelAttachment(String messageId) {
     final taskId = _runningUploads[messageId];
     if (taskId == null) {
@@ -341,6 +344,91 @@ class ChatService extends Notifier<ChatUiState> {
     }
     _cancelledUploads.add(messageId);
     ref.redux(parentIsolateProvider).dispatch(IsolateHttpUploadCancelAction(taskId: taskId));
+  }
+
+  /// Retractions not delivered yet, per peer: sent as soon as its link is
+  /// up again. Kept in memory: after a restart the receiver keeps the
+  /// bubble of an interrupted attachment, which shows it was not received.
+  final Map<String, Set<String>> _pendingRetractions = {};
+
+  /// Deletes the outgoing message [messageId] here, then asks the peer to
+  /// delete its copy.
+  Future<void> _retractOutgoing(String fingerprint, String messageId) async {
+    final db = ref.read(chatDatabaseProvider);
+    final message = await db.getMessage(messageId);
+    if (message != null) {
+      await _deleteMessageRow(message);
+    }
+    final fp = fingerprint.toUpperCase();
+    (_pendingRetractions[fp] ??= {}).add(messageId);
+    await _sendPendingRetractions(fp);
+  }
+
+  Future<void> _sendPendingRetractions(String fingerprint) async {
+    final fp = fingerprint.toUpperCase();
+    final ids = _pendingRetractions[fp];
+    if (ids == null || ids.isEmpty) {
+      return;
+    }
+    final batch = ids.take(chatMaxIdsPerAck).toList();
+    if (await ref.read(peerLinkManagerProvider).send(fp, ChatRetractFrame(ids: batch))) {
+      ids.removeAll(batch);
+      if (ids.isEmpty) {
+        _pendingRetractions.remove(fp);
+      }
+    }
+  }
+
+  /// The peer cancelled messages it sent us: delete those, and only those.
+  /// A peer can never delete our own messages nor another contact's.
+  Future<void> _onRetract(String fingerprint, List<String> ids) async {
+    final db = ref.read(chatDatabaseProvider);
+    for (final id in ids) {
+      final message = await db.getMessage(id);
+      if (message == null ||
+          message.direction != ChatMessageDirectionColumn.incoming ||
+          message.conversationId.toUpperCase() != fingerprint.toUpperCase()) {
+        continue;
+      }
+      _pendingAttachmentFileIdToMessageId.removeWhere((_, messageId) => messageId == id);
+      ref.read(chatAttachmentProgressProvider).done(id);
+      await _deleteMessageRow(message);
+      final path = message.attachmentPath;
+      if (path != null) {
+        await _deleteChatMediaFile(path);
+      }
+    }
+  }
+
+  /// Deletes [message] and refreshes its conversation's preview.
+  Future<void> _deleteMessageRow(ChatMessage message) async {
+    final db = ref.read(chatDatabaseProvider);
+    final latest = await db.deleteMessage(message);
+    await db.updateLastMessagePreview(
+      message.conversationId,
+      preview: latest == null
+          ? null
+          : _previewFor(ChatContentType.values.byName(latest.contentType), latest.body, latest.attachmentFileName),
+      at: latest?.createdAt,
+    );
+  }
+
+  /// Deletes a received attachment, only if it lies in Aika's own chat
+  /// folder: a path coming from the database is never trusted beyond it.
+  Future<void> _deleteChatMediaFile(String path) async {
+    try {
+      final mediaDir = p.normalize(await getChatMediaDirectory());
+      final file = p.normalize(path);
+      if (!p.isWithin(mediaDir, file)) {
+        return;
+      }
+      final entity = File(file);
+      if (await entity.exists()) {
+        await entity.delete();
+      }
+    } catch (e) {
+      _logger.warning('Could not delete retracted chat attachment', e);
+    }
   }
 
   Future<void> deleteConversation(Device target) {
@@ -498,7 +586,8 @@ class ChatService extends Notifier<ChatUiState> {
         final db = ref.read(chatDatabaseProvider);
         final now = DateTime.now().toUtc();
         for (final fingerprint in appeared) {
-          await db.makeOutboxDueNow(fingerprint, now);
+          // Texts are not concerned: they go out when the link comes up.
+          await db.makeOutboxDueNow(fingerprint, now, attachmentsOnly: true);
         }
         await retryDueOutbox();
       }),
@@ -556,6 +645,7 @@ class ChatService extends Notifier<ChatUiState> {
         await db.setPeerChatProtocol(fingerprint, version);
         await db.touchLastSeen(fingerprint, now);
         // Whatever waited for this peer goes out now, not at the next tick.
+        await _sendPendingRetractions(fingerprint);
         await db.makeOutboxDueNow(fingerprint, now);
         await retryDueOutbox();
         // Reads since the previous link went down (or since the app
@@ -602,6 +692,8 @@ class ChatService extends Notifier<ChatUiState> {
         );
       case ChatTypingFrame():
         _setTypingPeer(fingerprint, frame.isTyping);
+      case ChatRetractFrame():
+        unawaited(_onRetract(fingerprint, frame.ids));
       case ChatHelloFrame():
         break;
     }
@@ -792,9 +884,10 @@ class ChatService extends Notifier<ChatUiState> {
     if (outcome.success) {
       await db.updateMessageStatus(message.id, ChatMessageStatusColumn.sent);
       await db.removeFromOutbox(message.id);
-    } else if (outcome.failureReason == _ChatSendFailureReason.blocked || outcome.failureReason == _ChatSendFailureReason.cancelled) {
-      // Hard decline, or cancelled by the user: retrying would just hammer
-      // the peer for nothing, or resend what the user stopped.
+    } else if (outcome.failureReason == _ChatSendFailureReason.cancelled) {
+      await _retractOutgoing(target.fingerprint, message.id);
+    } else if (outcome.failureReason == _ChatSendFailureReason.blocked) {
+      // Hard decline: retrying would just hammer the peer for nothing.
       await db.updateMessageStatus(message.id, ChatMessageStatusColumn.failed, errorMessage: outcome.errorMessage);
       await db.removeFromOutbox(message.id);
     } else {
@@ -840,8 +933,7 @@ class ChatService extends Notifier<ChatUiState> {
       await db.updateMessageStatus(messageId, ChatMessageStatusColumn.sent);
       await db.removeFromOutbox(messageId);
     } else if (outcome.failureReason == _ChatSendFailureReason.cancelled) {
-      await db.updateMessageStatus(messageId, ChatMessageStatusColumn.failed, errorMessage: outcome.errorMessage);
-      await db.removeFromOutbox(messageId);
+      await _retractOutgoing(target.fingerprint, messageId);
     } else {
       await db.updateMessageStatus(messageId, ChatMessageStatusColumn.pending, errorMessage: outcome.errorMessage);
       // Retried even if the peer acknowledged the text part: the

@@ -263,7 +263,8 @@ class ChatDatabase extends _$ChatDatabase {
   /// Updates the conversation-list preview. Called once per message (both
   /// directions), separately from [touchLastSeen] so lightweight signals
   /// (typing) never touch the preview.
-  Future<void> updateLastMessagePreview(String peerFingerprint, {required String preview, required DateTime at}) {
+  /// `null` [preview] and [at]: the conversation has no message any more.
+  Future<void> updateLastMessagePreview(String peerFingerprint, {required String? preview, required DateTime? at}) {
     return (update(chatConversations)..where((t) => t.peerFingerprint.equals(peerFingerprint))).write(
       ChatConversationsCompanion(lastMessagePreview: Value(preview), lastMessageAt: Value(at)),
     );
@@ -338,6 +339,29 @@ class ChatDatabase extends _$ChatDatabase {
 
   Future<ChatMessage?> getMessage(String messageId) {
     return (select(chatMessages)..where((t) => t.id.equals(messageId))).getSingleOrNull();
+  }
+
+  /// Deletes a message and its outbox entry; an unread incoming message no
+  /// longer counts as unread. Returns the conversation's latest remaining
+  /// message (for its preview in the list), or `null` if none is left.
+  Future<ChatMessage?> deleteMessage(ChatMessage message) {
+    return transaction(() async {
+      await removeFromOutbox(message.id);
+      await (delete(chatMessages)..where((t) => t.id.equals(message.id))).go();
+      if (message.direction == ChatMessageDirectionColumn.incoming && message.readAt == null) {
+        final conversation = await getConversation(message.conversationId);
+        if (conversation != null && conversation.unreadCount > 0) {
+          await (update(chatConversations)..where((t) => t.peerFingerprint.equals(message.conversationId))).write(
+            ChatConversationsCompanion(unreadCount: Value(conversation.unreadCount - 1)),
+          );
+        }
+      }
+      return (select(chatMessages)
+            ..where((t) => t.conversationId.equals(message.conversationId))
+            ..orderBy([(t) => OrderingTerm.desc(t.createdAt), (t) => OrderingTerm.desc(t.id)])
+            ..limit(1))
+          .getSingleOrNull();
+    });
   }
 
   /// Moves a message to [status] unless that would be a step backwards
@@ -517,13 +541,19 @@ class ChatDatabase extends _$ChatDatabase {
   /// Makes the queued messages of [conversationId] that were not sent yet
   /// due now, e.g. because the peer just came online. Messages already
   /// sent and waiting for their ack keep their own timer.
-  Future<void> makeOutboxDueNow(String conversationId, DateTime now) {
+  ///
+  /// [attachmentsOnly]: only messages carrying a file (they wait for the
+  /// peer to be discovered, texts wait for its chat link).
+  Future<void> makeOutboxDueNow(String conversationId, DateTime now, {bool attachmentsOnly = false}) {
+    var condition =
+        chatMessages.conversationId.equals(conversationId) &
+        chatMessages.status.isInValues([ChatMessageStatusColumn.pending, ChatMessageStatusColumn.failed]);
+    if (attachmentsOnly) {
+      condition = condition & chatMessages.contentType.equals(ChatContentType.text.name).not();
+    }
     final messageIds = selectOnly(chatMessages)
       ..addColumns([chatMessages.id])
-      ..where(
-        chatMessages.conversationId.equals(conversationId) &
-            chatMessages.status.isInValues([ChatMessageStatusColumn.pending, ChatMessageStatusColumn.failed]),
-      );
+      ..where(condition);
     return (update(chatOutboxEntries)..where((t) => t.messageId.isInQuery(messageIds))).write(
       ChatOutboxEntriesCompanion(nextAttemptAt: Value(now)),
     );
