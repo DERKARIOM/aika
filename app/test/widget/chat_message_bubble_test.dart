@@ -39,10 +39,10 @@ void main() {
   testWidgets('Should tell read from delivered', (tester) async {
     final semantics = tester.ensureSemantics();
     await _pump(tester, _message(status: ChatMessageStatusColumn.delivered));
-    final delivered = tester.widget<Icon>(find.byIcon(Icons.done_all));
+    final delivered = tester.widget<Icon>(find.byIcon(Icons.done_all_rounded));
 
     await _pump(tester, _message(status: ChatMessageStatusColumn.read));
-    final read = tester.widget<Icon>(find.byIcon(Icons.done_all));
+    final read = tester.widget<Icon>(find.byIcon(Icons.done_all_rounded));
 
     expect(read.color, isNot(delivered.color));
     // Merged with the text and time into one node, read out as a whole.
@@ -59,7 +59,7 @@ void main() {
     );
 
     expect(find.text(t.chat.notSentTapToRetry), findsOneWidget);
-    await tester.tap(find.text('Bonjour'));
+    await tester.tap(find.textContaining('Bonjour'));
     expect(retries, 1);
   });
 
@@ -76,7 +76,7 @@ void main() {
       onRetry: () {},
     );
 
-    await tester.longPress(find.text('Bonjour'));
+    await tester.longPress(find.textContaining('Bonjour'));
     await tester.pumpAndSettle();
 
     expect(find.text('Refused by the recipient.'), findsOneWidget);
@@ -91,7 +91,7 @@ void main() {
       onRetry: () {},
     );
 
-    await tester.longPress(find.text('Bonjour'));
+    await tester.longPress(find.textContaining('Bonjour'));
     await tester.pumpAndSettle();
 
     expect(find.text(t.chat.copy), findsOneWidget);

@@ -15,6 +15,7 @@ import 'package:localsend_app/util/native/cross_file_converters.dart';
 import 'package:localsend_app/widget/chat/chat_composer.dart';
 import 'package:localsend_app/widget/chat/chat_connection_banner.dart';
 import 'package:localsend_app/widget/chat/chat_message_bubble.dart';
+import 'package:localsend_app/widget/chat/chat_style.dart';
 import 'package:localsend_app/widget/dialogs/chat_delete_conversation_dialog.dart';
 import 'package:localsend_isolates/model/device.dart';
 import 'package:refena_flutter/refena_flutter.dart';
@@ -155,24 +156,42 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
       presence = formatLastSeen(lastSeenAt) ?? t.chat.offline;
     }
     final blocked = context.watch(blockedDevicesProvider).isFingerprintBlocked(widget.peerFingerprint);
+    final colors = ChatColors.of(context);
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
+      backgroundColor: colors.background,
       appBar: AppBar(
+        backgroundColor: colors.bar,
+        surfaceTintColor: Colors.transparent,
+        scrolledUnderElevation: 0,
+        titleSpacing: 0,
         title: Row(
           children: [
-            CircleAvatar(radius: 18, child: Icon(device.deviceType.icon, size: 18)),
-            const SizedBox(width: 10),
+            _PeerAvatar(icon: device.deviceType.icon, online: online),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(device.alias, style: const TextStyle(fontSize: 16)),
                   Text(
-                    presence,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: typing ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant,
+                    device.alias,
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    child: Text(
+                      presence,
+                      key: ValueKey(presence),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: typing || online ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                 ],
@@ -211,15 +230,14 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
           ),
         ],
       ),
-      body: SafeArea(
-        child: Column(
+      body: ChatBackground(
+        child: SafeArea(
+          child: Column(
           children: [
             ChatConnectionBanner(peerFingerprint: widget.peerFingerprint),
             Expanded(
               child: _messages.isEmpty
-                  ? Center(
-                      child: Text(t.chat.noMessagesYet, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                    )
+                  ? Center(child: _DaySeparator(label: t.chat.noMessagesYet))
                   : Stack(
                       children: [
                         _buildMessageList(ref),
@@ -262,6 +280,7 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
             ),
           ],
         ),
+        ),
       ),
     );
   }
@@ -270,7 +289,7 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
     return ListView.builder(
       controller: _scrollController,
       reverse: true,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
       itemCount: _messages.length,
       itemBuilder: (context, index) {
         final position = _messages.length - 1 - index;
@@ -324,18 +343,63 @@ class _DaySeparator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final colors = ChatColors.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.symmetric(vertical: 12),
       child: Center(
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
           decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(999),
+            color: colors.chip,
+            borderRadius: BorderRadius.circular(10),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 1, offset: const Offset(0, 1))],
           ),
-          child: Text(label, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant)),
+          child: Text(label, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: colors.onChip)),
         ),
+      ),
+    );
+  }
+}
+
+/// The peer's picture in the app bar: its device type on a tinted disc,
+/// with a dot while it is online.
+class _PeerAvatar extends StatelessWidget {
+  final IconData icon;
+  final bool online;
+
+  const _PeerAvatar({required this.icon, required this.online});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return SizedBox.square(
+      dimension: 42,
+      child: Stack(
+        children: [
+          CircleAvatar(
+            radius: 21,
+            backgroundColor: colorScheme.primaryContainer,
+            foregroundColor: colorScheme.onPrimaryContainer,
+            child: Icon(icon, size: 22),
+          ),
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: AnimatedScale(
+              scale: online ? 1 : 0,
+              duration: const Duration(milliseconds: 200),
+              child: Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: Colors.greenAccent.shade700,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: ChatColors.of(context).bar, width: 2),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
