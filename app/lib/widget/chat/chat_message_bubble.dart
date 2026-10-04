@@ -28,6 +28,10 @@ class ChatMessageBubble extends StatelessWidget {
   /// Sends an outgoing message again; offered while it is not delivered.
   final VoidCallback? onRetry;
 
+  /// Stops sending the attachment; offered (tap on the progress ring)
+  /// while its bytes are being sent.
+  final VoidCallback? onCancelTransfer;
+
   /// Same author just before / just after: the bubbles of a group sit
   /// closer together, and only the first one has a tail.
   final bool groupedWithPrevious;
@@ -36,6 +40,7 @@ class ChatMessageBubble extends StatelessWidget {
   const ChatMessageBubble({
     required this.message,
     this.onRetry,
+    this.onCancelTransfer,
     this.groupedWithPrevious = false,
     this.groupedWithNext = false,
     super.key,
@@ -134,7 +139,7 @@ class ChatMessageBubble extends StatelessWidget {
         children: [
           Stack(
             children: [
-              _AttachmentPreview(message: message, colors: colors),
+              _AttachmentPreview(message: message, colors: colors, onCancel: _isOutgoing ? onCancelTransfer : null),
               if (body == null)
                 Positioned(
                   right: 6,
@@ -157,7 +162,7 @@ class ChatMessageBubble extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.end,
         mainAxisSize: MainAxisSize.min,
         children: [
-          _AttachmentPreview(message: message, colors: colors),
+          _AttachmentPreview(message: message, colors: colors, onCancel: _isOutgoing ? onCancelTransfer : null),
           const SizedBox(height: 4),
           if (body != null) _TextWithMeta(text: body, meta: meta, colors: colors) else meta,
         ],
@@ -346,8 +351,9 @@ class _TailPainter extends CustomPainter {
 class _AttachmentPreview extends StatelessWidget {
   final ChatMessage message;
   final ChatColors colors;
+  final VoidCallback? onCancel;
 
-  const _AttachmentPreview({required this.message, required this.colors});
+  const _AttachmentPreview({required this.message, required this.colors, this.onCancel});
 
   FileType get _fileType => switch (message.contentType) {
     'image' => FileType.image,
@@ -359,16 +365,17 @@ class _AttachmentPreview extends StatelessWidget {
   Widget build(BuildContext context) {
     // Only this preview listens: a running transfer repaints one bubble,
     // never the conversation.
+    final transfers = context.ref.read(chatAttachmentProgressProvider);
     return ValueListenableBuilder<double?>(
-      valueListenable: context.ref.read(chatAttachmentProgressProvider).of(message.id),
-      builder: (context, progress, _) => _content(context, progress),
+      valueListenable: transfers.of(message.id),
+      builder: (context, progress, _) => _content(context, progress, transfers.elapsed(message.id)),
     );
   }
 
-  Widget _content(BuildContext context, double? progress) {
+  Widget _content(BuildContext context, double? progress, Duration? elapsed) {
     final path = message.attachmentPath;
     final isImage = message.contentType == ChatContentType.image.name;
-    final content = isImage && _canPreview(path) ? _image(context, path!, progress) : _fileRow(path, progress);
+    final content = isImage && _canPreview(path) ? _image(context, path!, progress) : _fileRow(path, progress, elapsed);
     if (path == null) {
       return content;
     }
@@ -398,22 +405,22 @@ class _AttachmentPreview extends StatelessWidget {
               // Decoded at display size: a 12 MP photo would otherwise take ~48 MB.
               cacheWidth: (width * pixelRatio).round(),
               fit: BoxFit.cover,
-              errorBuilder: (_, _, _) => _fileRow(path, progress),
+              errorBuilder: (_, _, _) => _fileRow(path, progress, null),
             ),
-            if (progress != null) _ImageProgress(progress: progress),
+            if (progress != null) _ImageProgress(progress: progress, onCancel: onCancel),
           ],
         ),
       ),
     );
   }
 
-  Widget _fileRow(String? path, double? progress) {
+  Widget _fileRow(String? path, double? progress, Duration? elapsed) {
     final size = message.attachmentSize;
     final sizeLabel = size == null
         ? null
         : progress == null
         ? size.asReadableFileSize
-        : '${(size * progress).round().asReadableFileSize} / ${size.asReadableFileSize} · ${(progress * 100).floor()} %';
+        : chatTransferLabel(size: size, progress: progress, elapsed: elapsed);
     return Container(
       width: 240,
       padding: const EdgeInsets.all(10),
@@ -428,15 +435,11 @@ class _AttachmentPreview extends StatelessWidget {
             height: 40,
             decoration: BoxDecoration(color: colors.accent.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
             child: progress != null || path == null
-                ? Padding(
-                    padding: const EdgeInsets.all(9),
-                    // Determinate while bytes flow, indeterminate while waiting.
-                    child: CircularProgressIndicator(
-                      value: progress,
-                      strokeWidth: 2.5,
-                      color: colors.accent,
-                      backgroundColor: progress == null ? null : colors.accent.withValues(alpha: 0.2),
-                    ),
+                ? _CancelableRing(
+                    progress: progress,
+                    color: colors.accent,
+                    // Only a running transfer can be stopped.
+                    onCancel: progress == null ? null : onCancel,
                   )
                 : Icon(_iconFor(message.contentType), color: colors.accent),
           ),
@@ -472,21 +475,61 @@ class _AttachmentPreview extends StatelessWidget {
 /// Ring over an image whose bytes are still being transferred.
 class _ImageProgress extends StatelessWidget {
   final double progress;
+  final VoidCallback? onCancel;
 
-  const _ImageProgress({required this.progress});
+  const _ImageProgress({required this.progress, this.onCancel});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: 52,
       height: 52,
-      padding: const EdgeInsets.all(10),
       decoration: const BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
+      child: _CancelableRing(progress: progress, color: Colors.white, onCancel: onCancel),
+    );
+  }
+}
+
+/// Progress ring of a transfer: determinate while bytes flow, indeterminate
+/// while waiting. With [onCancel], a cross in its center stops the
+/// transfer, the gesture users know from other messengers.
+class _CancelableRing extends StatelessWidget {
+  final double? progress;
+  final Color color;
+  final VoidCallback? onCancel;
+
+  const _CancelableRing({required this.progress, required this.color, this.onCancel});
+
+  @override
+  Widget build(BuildContext context) {
+    final ring = Padding(
+      padding: const EdgeInsets.all(8),
       child: CircularProgressIndicator(
         value: progress,
-        strokeWidth: 3,
-        color: Colors.white,
-        backgroundColor: Colors.white24,
+        strokeWidth: 2.5,
+        color: color,
+        backgroundColor: progress == null ? null : color.withValues(alpha: 0.25),
+      ),
+    );
+    if (onCancel == null) {
+      return ring;
+    }
+    return Tooltip(
+      message: t.general.cancel,
+      child: Material(
+        type: MaterialType.transparency,
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onCancel,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Positioned.fill(child: ring),
+              Icon(Icons.close_rounded, size: 18, color: color, semanticLabel: t.general.cancel),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -496,3 +539,30 @@ class _ImageProgress extends StatelessWidget {
 /// (an attachment picked with the system picker) is shown as a file card
 /// and opened with the system viewer instead.
 bool _canPreview(String? path) => path != null && !path.startsWith('content://');
+
+/// "12.0 MB / 40.0 MB · 2.4 MB/s · 12 s" while a transfer runs: what was
+/// sent, the speed and the time left. During the first second the speed is
+/// not meaningful yet, so the percentage is shown instead.
+@visibleForTesting
+String chatTransferLabel({required int size, required double progress, required Duration? elapsed}) {
+  final transferred = (size * progress).round();
+  final head = '${transferred.asReadableFileSize} / ${size.asReadableFileSize}';
+  final seconds = (elapsed?.inMilliseconds ?? 0) / 1000;
+  if (seconds < 1 || transferred <= 0) {
+    return '$head · ${(progress * 100).floor()} %';
+  }
+  final bytesPerSecond = transferred / seconds;
+  final remaining = Duration(seconds: ((size - transferred) / bytesPerSecond).ceil());
+  return '$head · ${bytesPerSecond.round().asReadableFileSize}/s · ${_shortDuration(remaining)}';
+}
+
+/// "45 s", "12 min", "1 h 05": compact, the same in every language.
+String _shortDuration(Duration d) {
+  if (d.inSeconds < 60) {
+    return '${d.inSeconds} s';
+  }
+  if (d.inMinutes < 60) {
+    return '${d.inMinutes} min';
+  }
+  return '${d.inHours} h ${(d.inMinutes % 60).toString().padLeft(2, '0')}';
+}

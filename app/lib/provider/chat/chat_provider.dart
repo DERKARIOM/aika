@@ -132,6 +132,14 @@ class ChatService extends Notifier<ChatUiState> {
   /// bytes are actually on disk) can stamp the local path.
   final Map<String, String> _pendingAttachmentFileIdToMessageId = {};
 
+  /// Upload task of each attachment being sent, by message id, so the user
+  /// can cancel it from its bubble.
+  final Map<String, int> _runningUploads = {};
+
+  /// Messages whose upload the user cancelled: their failure is final, not
+  /// a network error to retry.
+  final Set<String> _cancelledUploads = {};
+
   DateTime? _lastTypingSentAt;
   Timer? _retryTimer;
 
@@ -320,6 +328,21 @@ class ChatService extends Notifier<ChatUiState> {
     await retryDueOutbox();
   }
 
+  /// Whether the attachment of [messageId] is being sent right now.
+  bool isUploading(String messageId) => _runningUploads.containsKey(messageId);
+
+  /// Stops sending the attachment of [messageId]. The message is marked
+  /// "not sent" and leaves the outbox; "Retry" sends it again from scratch.
+  /// The receiver drops the partial file on its own (failed upload).
+  void cancelAttachment(String messageId) {
+    final taskId = _runningUploads[messageId];
+    if (taskId == null) {
+      return;
+    }
+    _cancelledUploads.add(messageId);
+    ref.redux(parentIsolateProvider).dispatch(IsolateHttpUploadCancelAction(taskId: taskId));
+  }
+
   Future<void> deleteConversation(Device target) {
     return ref.read(chatDatabaseProvider).deleteConversation(target.fingerprint);
   }
@@ -444,9 +467,42 @@ class ChatService extends Notifier<ChatUiState> {
       links: links,
       isAllowed: (fingerprint) => !ref.read(blockedDevicesProvider).any((d) => d.fingerprint.toUpperCase() == fingerprint),
     );
-    _nearbySubscription ??= ref.stream(nearbyDevicesProvider).listen((_) => _updateLinkCandidates());
+    _nearbySubscription ??= ref.stream(nearbyDevicesProvider).listen((_) {
+      _updateLinkCandidates();
+      _flushOutboxOfNewlyDiscovered();
+    });
     _conversationsSubscription ??= ref.stream(chatConversationsProvider).listen((_) => _updateLinkCandidates());
     _updateLinkCandidates();
+  }
+
+  /// Peers that discovery currently sees with a usable HTTP port.
+  final Set<String> _discoveredPeers = {};
+
+  /// Attachments wait for discovery (they need the peer's HTTP port, see
+  /// [_sendMediaLocked]): once it finds a peer, its queue goes out now
+  /// instead of after the outbox backoff (up to 10 min).
+  void _flushOutboxOfNewlyDiscovered() {
+    final discovered = {
+      for (final device in ref.read(nearbyDevicesProvider).devices.values)
+        if (device.port > 0) device.fingerprint,
+    };
+    final appeared = discovered.difference(_discoveredPeers);
+    _discoveredPeers
+      ..clear()
+      ..addAll(discovered);
+    if (appeared.isEmpty) {
+      return;
+    }
+    unawaited(
+      Future(() async {
+        final db = ref.read(chatDatabaseProvider);
+        final now = DateTime.now().toUtc();
+        for (final fingerprint in appeared) {
+          await db.makeOutboxDueNow(fingerprint, now);
+        }
+        await retryDueOutbox();
+      }),
+    );
   }
 
   /// Retries the links to every contact on the network right away, e.g.
@@ -736,8 +792,9 @@ class ChatService extends Notifier<ChatUiState> {
     if (outcome.success) {
       await db.updateMessageStatus(message.id, ChatMessageStatusColumn.sent);
       await db.removeFromOutbox(message.id);
-    } else if (outcome.failureReason == _ChatSendFailureReason.blocked) {
-      // Hard decline: retrying would just hammer the peer for nothing.
+    } else if (outcome.failureReason == _ChatSendFailureReason.blocked || outcome.failureReason == _ChatSendFailureReason.cancelled) {
+      // Hard decline, or cancelled by the user: retrying would just hammer
+      // the peer for nothing, or resend what the user stopped.
       await db.updateMessageStatus(message.id, ChatMessageStatusColumn.failed, errorMessage: outcome.errorMessage);
       await db.removeFromOutbox(message.id);
     } else {
@@ -781,6 +838,9 @@ class ChatService extends Notifier<ChatUiState> {
     if (outcome.success) {
       // No-op if the peer's "delivered" receipt was processed first.
       await db.updateMessageStatus(messageId, ChatMessageStatusColumn.sent);
+      await db.removeFromOutbox(messageId);
+    } else if (outcome.failureReason == _ChatSendFailureReason.cancelled) {
+      await db.updateMessageStatus(messageId, ChatMessageStatusColumn.failed, errorMessage: outcome.errorMessage);
       await db.removeFromOutbox(messageId);
     } else {
       await db.updateMessageStatus(messageId, ChatMessageStatusColumn.pending, errorMessage: outcome.errorMessage);
@@ -888,7 +948,9 @@ class ChatService extends Notifier<ChatUiState> {
     required CrossFile media,
   }) {
     final previous = _peerLocks[target.fingerprint] ?? Future<void>.value();
-    final result = previous.then((_) => _sendMediaLocked(target: target, envelope: envelope, media: media));
+    // Resolved once it is this message's turn: the peer may have been
+    // discovered (real port) while earlier attachments were being sent.
+    final result = previous.then((_) => _sendMediaLocked(target: _resolveDevice(target.fingerprint) ?? target, envelope: envelope, media: media));
     _peerLocks[target.fingerprint] = result.then((_) {}, onError: (_) {});
     return result;
   }
@@ -904,6 +966,13 @@ class ChatService extends Notifier<ChatUiState> {
     }
     if (target.ip == null) {
       return const _ChatSendOutcome.failure(_ChatSendFailureReason.network, 'Appareil injoignable (pas d\'adresse IP connue).');
+    }
+    if (target.port <= 0 || target.port > 65535) {
+      // Known only through its chat link (it connected to us before being
+      // discovered): texts flow over that link, but attachments need the
+      // peer's HTTP port. Kept queued until discovery finds it, instead of
+      // calling a bogus port that would hang every later attachment.
+      return const _ChatSendOutcome.failure(_ChatSendFailureReason.network, 'En attente de l\'appareil sur le réseau…');
     }
 
     // Never race a real (non-chat) transfer to/from this peer: a fresh
@@ -953,14 +1022,20 @@ class ChatService extends Notifier<ChatUiState> {
     final client = ref.read(httpProvider).v2;
     rust_http.PrepareUploadResult response;
     try {
-      response = await client.prepareUpload(
-        protocol: target.getProtocolType(),
-        ip: target.ip!,
-        port: target.port,
-        payload: requestDto,
-        publicKey: null,
-        pin: null,
-      );
+      response = await client
+          .prepareUpload(
+            protocol: target.getProtocolType(),
+            ip: target.ip!,
+            port: target.port,
+            payload: requestDto,
+            publicKey: null,
+            pin: null,
+          )
+          // Attachments to a peer are sent one at a time: an unanswered
+          // request must not hold back all the following ones.
+          .timeout(_prepareUploadTimeout);
+    } on TimeoutException {
+      return const _ChatSendOutcome.failure(_ChatSendFailureReason.network, 'Le destinataire ne répond pas.');
     } on rust_http.RsHttpClientError_StatusCode catch (e) {
       return switch (e.status) {
         // The receiver has a PIN configured. Chat, being headless, cannot
@@ -1004,14 +1079,18 @@ class ChatService extends Notifier<ChatUiState> {
           ),
         );
 
+    final messageId = envelope.messageId;
     final progress = ref.read(chatAttachmentProgressProvider);
+    _runningUploads[messageId] = taskResult.taskId;
     try {
       await for (final event in taskResult.events) {
         switch (event) {
           case HttpUploadFileProgressEvent():
-            progress.set(envelope.messageId, event.progress);
+            progress.set(messageId, event.progress);
           case HttpUploadFileFailedEvent():
-            return _ChatSendOutcome.failure(_ChatSendFailureReason.network, event.error);
+            return _cancelledUploads.contains(messageId)
+                ? const _ChatSendOutcome.failure(_ChatSendFailureReason.cancelled, _cancelledError)
+                : _ChatSendOutcome.failure(_ChatSendFailureReason.network, event.error);
           default:
             break;
         }
@@ -1019,7 +1098,10 @@ class ChatService extends Notifier<ChatUiState> {
     } catch (e) {
       return _ChatSendOutcome.failure(_ChatSendFailureReason.network, e.humanErrorMessage);
     } finally {
-      progress.done(envelope.messageId);
+      _runningUploads.remove(messageId);
+      progress.done(messageId);
+      // Read above, cleared here: also covers a cancel that came too late.
+      _cancelledUploads.remove(messageId);
     }
 
     return const _ChatSendOutcome.success();
@@ -1063,7 +1145,11 @@ FileType _contentTypeToFileType(ChatContentType contentType) {
   };
 }
 
-enum _ChatSendFailureReason { blocked, pinRequired, busy, tooManyAttempts, network, deferred }
+enum _ChatSendFailureReason { blocked, pinRequired, busy, tooManyAttempts, network, deferred, cancelled }
+
+const _cancelledError = 'Envoi annulé.';
+
+const _prepareUploadTimeout = Duration(seconds: 30);
 
 class _ChatSendOutcome {
   final bool success;

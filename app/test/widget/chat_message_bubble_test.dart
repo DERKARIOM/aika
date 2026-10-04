@@ -136,4 +136,44 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(find.byIcon(Icons.insert_drive_file_outlined), findsOneWidget);
   });
+
+  testWidgets('Should cancel a running upload from its ring, never an incoming one', (tester) async {
+    final container = RefenaContainer();
+    final progress = container.read(chatAttachmentProgressProvider);
+    var cancels = 0;
+    ChatMessage file(ChatMessageDirectionColumn direction) => ChatMessage(
+      id: 'f2',
+      conversationId: 'fp',
+      direction: direction,
+      contentType: 'file',
+      body: '',
+      status: ChatMessageStatusColumn.pending,
+      attachmentFileName: 'video.mp4',
+      attachmentSize: 1000,
+      attachmentPath: '/tmp/video.mp4',
+      createdAt: DateTime.utc(2026, 10, 4, 12),
+    );
+    Future<void> pump(ChatMessageDirectionColumn direction) => tester.pumpWidget(
+      RefenaScope.withContainer(
+        container: container,
+        child: MaterialApp(
+          home: Scaffold(
+            body: ChatMessageBubble(message: file(direction), onCancelTransfer: () => cancels++),
+          ),
+        ),
+      ),
+    );
+
+    await pump(ChatMessageDirectionColumn.outgoing);
+    expect(find.byIcon(Icons.close_rounded), findsNothing);
+
+    progress.set('f2', 0.3);
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.close_rounded));
+    expect(cancels, 1);
+
+    await pump(ChatMessageDirectionColumn.incoming);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byIcon(Icons.close_rounded), findsNothing);
+  });
 }

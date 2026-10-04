@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
@@ -394,6 +395,9 @@ class ReceiveController {
     final shouldSaveToGallery = receiveState.saveToGallery && (fileType == FileType.image || fileType == FileType.video);
 
     final isChatAttachment = server.ref.notifier(chatProvider).isChatSession(event.sessionId);
+    // Written by us in the app's chat folder: safe to remove if it ends up
+    // incomplete (never a file of the user's own folders).
+    String? chatPartialPath;
     String? filePath;
     bool savedToGallery = false;
     try {
@@ -407,6 +411,9 @@ class ReceiveController {
         createdDirectories: receiveState.createdDirectories,
         androidSdkInt: server.ref.read(deviceInfoProvider).androidSdkInt,
       );
+      if (isChatAttachment && target.fileDescriptor == null) {
+        chatPartialPath = target.path;
+      }
 
       // The Rust server writes the file and reports the progress.
       await server.ref
@@ -507,6 +514,11 @@ class ReceiveController {
       _logger.severe('Failed to save file', e, st);
       if (isChatAttachment) {
         server.ref.notifier(chatProvider).onAttachmentFailed(fileId: fileId);
+        // Cancelled or broken transfer: the sender sends it again from
+        // scratch, so the partial bytes would only waste disk space.
+        if (chatPartialPath != null) {
+          unawaited(_deletePartialFile(chatPartialPath));
+        }
       }
 
       // If the failure happened before the upload target was dispatched
@@ -858,5 +870,17 @@ extension on ReceiveSessionState {
           ),
         ),
     );
+  }
+}
+
+/// Best effort: an incomplete chat attachment left on disk is harmless.
+Future<void> _deletePartialFile(String path) async {
+  try {
+    final file = File(path);
+    if (await file.exists()) {
+      await file.delete();
+    }
+  } catch (e) {
+    _logger.warning('Could not delete partial chat attachment $path', e);
   }
 }

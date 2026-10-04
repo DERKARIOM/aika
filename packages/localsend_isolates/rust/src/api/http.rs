@@ -101,43 +101,55 @@ impl RsHttpClient {
         content_length: u64,
         cancel_token: &RsCancellationToken,
     ) -> Result<(), RsHttpClientError> {
-        let content = resolve_file_content(binary, path, file_descriptor)?;
-        let last_emit = std::cell::Cell::new(None::<std::time::Instant>);
-        let progress = move |sent| {
-            let now = std::time::Instant::now();
-            let is_final = sent >= content_length;
-            if !is_final {
-                if let Some(last) = last_emit.get() {
-                    if now.duration_since(last) < std::time::Duration::from_millis(20) {
-                        return;
+        // Errors go through the progress stream: it is the only thing the
+        // Dart side listens to. Returned instead, an error would surface as
+        // an unhandled exception and the stream would just close as if the
+        // upload had succeeded (e.g. a cancelled upload reported as sent).
+        let error_sink = sink.clone();
+        let result = async {
+            let content = resolve_file_content(binary, path, file_descriptor)?;
+            let last_emit = std::cell::Cell::new(None::<std::time::Instant>);
+            let progress = move |sent| {
+                let now = std::time::Instant::now();
+                let is_final = sent >= content_length;
+                if !is_final {
+                    if let Some(last) = last_emit.get() {
+                        if now.duration_since(last) < std::time::Duration::from_millis(20) {
+                            return;
+                        }
                     }
                 }
-            }
-            last_emit.set(Some(now));
-            let progress = if content_length == 0 {
-                1.0
-            } else {
-                (sent as f64 / content_length as f64).min(1.0)
+                last_emit.set(Some(now));
+                let progress = if content_length == 0 {
+                    1.0
+                } else {
+                    (sent as f64 / content_length as f64).min(1.0)
+                };
+                let _ = sink.add(progress);
             };
-            let _ = sink.add(progress);
-        };
 
-        self.inner
-            .upload(
-                protocol,
-                ip,
-                port,
-                public_key,
-                session_id,
-                file_id,
-                token,
-                content,
-                progress,
-                cancel_token.inner.clone(),
-            )
-            .await
-            .map_err(RsHttpClientError::from)?;
+            self.inner
+                .upload(
+                    protocol,
+                    ip,
+                    port,
+                    public_key,
+                    session_id,
+                    file_id,
+                    token,
+                    content,
+                    progress,
+                    cancel_token.inner.clone(),
+                )
+                .await
+                .map_err(RsHttpClientError::from)?;
 
+            Ok::<(), RsHttpClientError>(())
+        }
+        .await;
+        if let Err(err) = result {
+            let _ = error_sink.add_error(anyhow::anyhow!(describe_client_error(&err)));
+        }
         Ok(())
     }
 
@@ -228,4 +240,19 @@ pub struct _PrepareUploadResult {
 pub struct ResultWithPublicKeyRegisterResponseDto {
     pub public_key: Option<String>,
     pub body: RegisterResponseDto,
+}
+
+/// Human-readable message of [RsHttpClientError], sent to Dart as the error
+/// of a progress stream.
+fn describe_client_error(err: &RsHttpClientError) -> String {
+    match err {
+        RsHttpClientError::StatusCode { status, message } => match message {
+            Some(message) => format!("HTTP {status}: {message}"),
+            None => format!("HTTP {status}"),
+        },
+        RsHttpClientError::Reqwest(e)
+        | RsHttpClientError::Json(e)
+        | RsHttpClientError::Io(e)
+        | RsHttpClientError::Other(e) => e.clone(),
+    }
 }

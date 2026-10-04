@@ -328,6 +328,7 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
           groupedWithPrevious: previous != null && _sameGroup(previous, message),
           groupedWithNext: next != null && _sameGroup(message, next),
           onRetry: () => unawaited(ref.notifier(chatProvider).retryMessage(message.id)),
+          onCancelTransfer: () => ref.notifier(chatProvider).cancelAttachment(message.id),
         );
         // The list is reversed: the separator goes above the first message
         // of each day.
