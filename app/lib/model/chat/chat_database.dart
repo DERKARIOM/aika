@@ -224,12 +224,17 @@ class ChatDatabase extends _$ChatDatabase {
     );
   }
 
-  /// Created on first use rather than by a migration: no generated code
-  /// and no schema version bump for this small side table, and the drift
-  /// schema (checked by `chat_database_migration_test`) stays unchanged.
-  Future<void>? _pendingRetractionsTable;
+  /// Side tables (pending retractions, replies, reactions), created on
+  /// first use rather than by a migration: no generated code and no schema
+  /// version bump for these small tables, and the drift schema (checked by
+  /// `chat_database_migration_test`) stays unchanged.
+  Future<void>? _sideTables;
 
-  Future<void> _ensurePendingRetractionsTable() => _pendingRetractionsTable ??= customStatement(_createPendingRetractions);
+  Future<void> _ensureSideTables() => _sideTables ??= () async {
+    await customStatement(_createPendingRetractions);
+    await customStatement(_createReplies);
+    await customStatement(_createReactions);
+  }();
 
   static const _createPendingRetractions = """
     CREATE TABLE IF NOT EXISTS chat_pending_retractions (
@@ -237,6 +242,22 @@ class ChatDatabase extends _$ChatDatabase {
       message_id TEXT NOT NULL,
       created_at INTEGER NOT NULL,
       PRIMARY KEY (peer_fingerprint, message_id)
+    ) WITHOUT ROWID""";
+
+  /// Which message a message replies to.
+  static const _createReplies = """
+    CREATE TABLE IF NOT EXISTS chat_message_replies (
+      message_id TEXT NOT NULL PRIMARY KEY,
+      reply_to_id TEXT NOT NULL
+    ) WITHOUT ROWID""";
+
+  /// At most one reaction per side (ours, the peer's) and message.
+  static const _createReactions = """
+    CREATE TABLE IF NOT EXISTS chat_reactions (
+      message_id TEXT NOT NULL,
+      from_peer INTEGER NOT NULL,
+      emoji TEXT NOT NULL,
+      PRIMARY KEY (message_id, from_peer)
     ) WITHOUT ROWID""";
 
   /// How long an undelivered retraction is kept: a peer gone for longer
@@ -310,13 +331,20 @@ class ChatDatabase extends _$ChatDatabase {
 
   Future<void> deleteConversation(String peerFingerprint) async {
     // Outside the transaction: a rollback must not undo the creation.
-    await _ensurePendingRetractionsTable();
+    await _ensureSideTables();
     return transaction(() async {
       // Queued messages of this conversation must not be sent any more.
       final messageIds = selectOnly(chatMessages)
         ..addColumns([chatMessages.id])
         ..where(chatMessages.conversationId.equals(peerFingerprint));
       await (delete(chatOutboxEntries)..where((t) => t.messageId.isInQuery(messageIds))).go();
+      for (final table in const ['chat_message_replies', 'chat_reactions']) {
+        await customUpdate(
+          'DELETE FROM $table WHERE message_id IN (SELECT id FROM chat_messages WHERE conversation_id = ?)',
+          variables: [Variable.withString(peerFingerprint)],
+          updateKind: UpdateKind.delete,
+        );
+      }
       await (delete(chatMessages)..where((t) => t.conversationId.equals(peerFingerprint))).go();
       await (delete(chatConversations)..where((t) => t.peerFingerprint.equals(peerFingerprint))).go();
       await customUpdate(
@@ -390,9 +418,18 @@ class ChatDatabase extends _$ChatDatabase {
   /// Deletes a message and its outbox entry; an unread incoming message no
   /// longer counts as unread. Returns the conversation's latest remaining
   /// message (for its preview in the list), or `null` if none is left.
-  Future<ChatMessage?> deleteMessage(ChatMessage message) {
+  Future<ChatMessage?> deleteMessage(ChatMessage message) async {
+    // Outside the transaction: a rollback must not undo the creation.
+    await _ensureSideTables();
     return transaction(() async {
       await removeFromOutbox(message.id);
+      for (final table in const ['chat_message_replies', 'chat_reactions']) {
+        await customUpdate(
+          'DELETE FROM $table WHERE message_id = ?',
+          variables: [Variable.withString(message.id)],
+          updateKind: UpdateKind.delete,
+        );
+      }
       await (delete(chatMessages)..where((t) => t.id.equals(message.id))).go();
       if (message.direction == ChatMessageDirectionColumn.incoming && message.readAt == null) {
         final conversation = await getConversation(message.conversationId);
@@ -606,12 +643,84 @@ class ChatDatabase extends _$ChatDatabase {
   }
 
   // ---------------------------------------------------------------------
+  // Replies and reactions (side tables)
+  // ---------------------------------------------------------------------
+
+  Future<void> setReplyTo(String messageId, String replyToId) async {
+    await _ensureSideTables();
+    await customInsert(
+      'INSERT OR REPLACE INTO chat_message_replies (message_id, reply_to_id) VALUES (?, ?)',
+      variables: [Variable.withString(messageId), Variable.withString(replyToId)],
+    );
+    _notifyMessagesChanged();
+  }
+
+  Future<String?> replyToOf(String messageId) async {
+    await _ensureSideTables();
+    final row = await customSelect(
+      'SELECT reply_to_id FROM chat_message_replies WHERE message_id = ?',
+      variables: [Variable.withString(messageId)],
+    ).getSingleOrNull();
+    return row?.read<String>('reply_to_id');
+  }
+
+  /// Sets (or with a `null` [emoji], removes) our reaction or the peer's.
+  Future<void> setReaction(String messageId, {required bool fromPeer, required String? emoji}) async {
+    await _ensureSideTables();
+    if (emoji == null) {
+      await customUpdate(
+        'DELETE FROM chat_reactions WHERE message_id = ? AND from_peer = ?',
+        variables: [Variable.withString(messageId), Variable.withBool(fromPeer)],
+        updateKind: UpdateKind.delete,
+      );
+    } else {
+      await customInsert(
+        'INSERT OR REPLACE INTO chat_reactions (message_id, from_peer, emoji) VALUES (?, ?, ?)',
+        variables: [Variable.withString(messageId), Variable.withBool(fromPeer), Variable.withString(emoji)],
+      );
+    }
+    _notifyMessagesChanged();
+  }
+
+  /// Replies and reactions of [conversationId], kept up to date. Only
+  /// messages having one are listed, so this stays small.
+  Stream<ChatMessageExtras> watchExtras(String conversationId) async* {
+    await _ensureSideTables();
+    yield* customSelect(
+      '''
+      SELECT m.id AS id,
+             r.reply_to_id AS reply_to_id,
+             q.direction AS quoted_direction,
+             q.content_type AS quoted_content_type,
+             q.body AS quoted_body,
+             q.attachment_file_name AS quoted_file_name,
+             (SELECT emoji FROM chat_reactions WHERE message_id = m.id AND from_peer = 0) AS my_reaction,
+             (SELECT emoji FROM chat_reactions WHERE message_id = m.id AND from_peer = 1) AS peer_reaction
+      FROM chat_messages m
+      LEFT JOIN chat_message_replies r ON r.message_id = m.id
+      LEFT JOIN chat_messages q ON q.id = r.reply_to_id AND q.conversation_id = m.conversation_id
+      WHERE m.conversation_id = ?
+        AND (r.message_id IS NOT NULL OR EXISTS (SELECT 1 FROM chat_reactions x WHERE x.message_id = m.id))
+      ''',
+      variables: [Variable.withString(conversationId)],
+      // The side tables are unknown to drift: their writers notify through
+      // `chat_messages` (see [_notifyMessagesChanged]).
+      readsFrom: {chatMessages},
+    ).watch().map(ChatMessageExtras._fromRows);
+  }
+
+  /// Wakes the queries reading `chat_messages`, e.g. [watchExtras].
+  void _notifyMessagesChanged() {
+    notifyUpdates({TableUpdate.onTable(chatMessages, kind: UpdateKind.update)});
+  }
+
+  // ---------------------------------------------------------------------
   // Pending retractions: "forget this message" frames for a peer whose
   // chat link is down, sent when it comes back (survives app restarts).
   // ---------------------------------------------------------------------
 
   Future<void> addPendingRetraction(String peerFingerprint, String messageId) async {
-    await _ensurePendingRetractionsTable();
+    await _ensureSideTables();
     await customInsert(
       'INSERT OR IGNORE INTO chat_pending_retractions (peer_fingerprint, message_id, created_at) VALUES (?, ?, ?)',
       variables: [
@@ -625,7 +734,7 @@ class ChatDatabase extends _$ChatDatabase {
   /// The oldest [limit] retractions waiting for [peerFingerprint]. Expired
   /// ones (see [_pendingRetractionTtl]) are dropped first.
   Future<List<String>> pendingRetractions(String peerFingerprint, {required int limit}) async {
-    await _ensurePendingRetractionsTable();
+    await _ensureSideTables();
     await customUpdate(
       'DELETE FROM chat_pending_retractions WHERE created_at < ?',
       variables: [Variable.withInt(DateTime.now().subtract(_pendingRetractionTtl).millisecondsSinceEpoch)],
@@ -642,7 +751,7 @@ class ChatDatabase extends _$ChatDatabase {
     if (messageIds.isEmpty) {
       return;
     }
-    await _ensurePendingRetractionsTable();
+    await _ensureSideTables();
     await customUpdate(
       'DELETE FROM chat_pending_retractions WHERE peer_fingerprint = ? AND message_id IN (${List.filled(messageIds.length, '?').join(', ')})',
       variables: [Variable.withString(peerFingerprint), for (final id in messageIds) Variable.withString(id)],
@@ -706,5 +815,57 @@ class ChatDatabase extends _$ChatDatabase {
   Future<bool> isBlocked(String fingerprint) async {
     final row = await (select(chatBlockedDevices)..where((t) => t.fingerprint.equals(fingerprint))).getSingleOrNull();
     return row != null;
+  }
+}
+
+/// The message a reply quotes, as shown above the reply. `null` fields
+/// when the quoted message is not (or no longer) in this conversation.
+class ChatQuotedMessage {
+  final String id;
+  final ChatMessageDirectionColumn? direction;
+  final String? contentType;
+  final String? body;
+  final String? attachmentFileName;
+
+  const ChatQuotedMessage({required this.id, this.direction, this.contentType, this.body, this.attachmentFileName});
+
+  /// The quoted message still exists here.
+  bool get isAvailable => direction != null;
+}
+
+/// Replies and reactions of one conversation, by message id.
+class ChatMessageExtras {
+  final Map<String, ChatQuotedMessage> quotes;
+
+  /// Our reaction and the peer's.
+  final Map<String, ({String? mine, String? peer})> reactions;
+
+  const ChatMessageExtras({this.quotes = const {}, this.reactions = const {}});
+
+  static const empty = ChatMessageExtras();
+
+  static ChatMessageExtras _fromRows(List<QueryRow> rows) {
+    final quotes = <String, ChatQuotedMessage>{};
+    final reactions = <String, ({String? mine, String? peer})>{};
+    for (final row in rows) {
+      final id = row.read<String>('id');
+      final replyTo = row.readNullable<String>('reply_to_id');
+      if (replyTo != null) {
+        final direction = row.readNullable<String>('quoted_direction');
+        quotes[id] = ChatQuotedMessage(
+          id: replyTo,
+          direction: direction == null ? null : ChatMessageDirectionColumn.values.asNameMap()[direction],
+          contentType: row.readNullable<String>('quoted_content_type'),
+          body: row.readNullable<String>('quoted_body'),
+          attachmentFileName: row.readNullable<String>('quoted_file_name'),
+        );
+      }
+      final mine = row.readNullable<String>('my_reaction');
+      final peer = row.readNullable<String>('peer_reaction');
+      if (mine != null || peer != null) {
+        reactions[id] = (mine: mine, peer: peer);
+      }
+    }
+    return ChatMessageExtras(quotes: quotes, reactions: reactions);
   }
 }

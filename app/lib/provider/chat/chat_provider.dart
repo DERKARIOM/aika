@@ -187,7 +187,9 @@ class ChatService extends Notifier<ChatUiState> {
 
   /// Sends [text] (trimmed) as one message, or as several in a row when it
   /// is longer than a chat frame allows ([chatMaxTextLength]).
-  Future<void> sendText({required Device target, required String text}) async {
+  /// [replyToId]: the message this text answers (quoted above it); a long
+  /// text split in parts carries it on its first part only.
+  Future<void> sendText({required Device target, required String text, String? replyToId}) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty || await _isBlocked(target)) {
       return;
@@ -202,6 +204,10 @@ class ChatService extends Notifier<ChatUiState> {
       final messageId = _uuid.v4();
       // One millisecond apart, so the parts keep their order everywhere.
       final createdAt = start.add(Duration(milliseconds: i));
+      if (i == 0 && replyToId != null) {
+        // Before the message itself: its bubble shows the quote right away.
+        await db.setReplyTo(messageId, replyToId);
+      }
       await db.insertMessage(
         ChatMessagesCompanion.insert(
           id: messageId,
@@ -428,6 +434,67 @@ class ChatService extends Notifier<ChatUiState> {
     }
   }
 
+  /// Reactions made while the peer's link was down, per peer and message
+  /// (the latest one wins): sent when the link is back. Kept in memory: a
+  /// reaction is light, losing one to an app restart is acceptable.
+  final Map<String, Map<String, String?>> _pendingReactions = {};
+
+  /// Sets our reaction to [messageId] ([emoji] `null`: removes it), here and
+  /// at the peer. Only on messages both sides have: received ones, and sent
+  /// ones the peer acknowledged.
+  Future<void> react({required Device target, required String messageId, required String? emoji}) async {
+    if (emoji != null && !isValidChatReaction(emoji)) {
+      return;
+    }
+    final db = ref.read(chatDatabaseProvider);
+    final message = await db.getMessage(messageId);
+    if (message == null || message.conversationId.toUpperCase() != target.fingerprint.toUpperCase() || !canReactTo(message)) {
+      return;
+    }
+    await db.setReaction(messageId, fromPeer: false, emoji: emoji);
+    final fp = target.fingerprint.toUpperCase();
+    (_pendingReactions[fp] ??= {})[messageId] = emoji;
+    await _sendPendingReactions(fp);
+  }
+
+  /// Whether a reaction to [message] can reach the peer: it has the message.
+  static bool canReactTo(ChatMessage message) {
+    return message.direction == ChatMessageDirectionColumn.incoming ||
+        message.status == ChatMessageStatusColumn.delivered ||
+        message.status == ChatMessageStatusColumn.read;
+  }
+
+  Future<void> _sendPendingReactions(String fingerprint) async {
+    final fp = fingerprint.toUpperCase();
+    final pending = _pendingReactions[fp];
+    if (pending == null) {
+      return;
+    }
+    final links = ref.read(peerLinkManagerProvider);
+    for (final entry in pending.entries.toList()) {
+      if (!links.isReady(fp) || !await links.send(fp, ChatReactFrame(id: entry.key, emoji: entry.value))) {
+        return;
+      }
+      // Unless the user changed it again meanwhile.
+      if (pending[entry.key] == entry.value) {
+        pending.remove(entry.key);
+      }
+    }
+    if (pending.isEmpty) {
+      _pendingReactions.remove(fp);
+    }
+  }
+
+  /// The peer reacted: only to a message of our conversation with it.
+  Future<void> _onReact(String fingerprint, ChatReactFrame frame) async {
+    final db = ref.read(chatDatabaseProvider);
+    final message = await db.getMessage(frame.id);
+    if (message == null || message.conversationId.toUpperCase() != fingerprint.toUpperCase()) {
+      return;
+    }
+    await db.setReaction(frame.id, fromPeer: true, emoji: frame.emoji);
+  }
+
   Future<void> deleteConversation(Device target) {
     return ref.read(chatDatabaseProvider).deleteConversation(target.fingerprint);
   }
@@ -643,6 +710,7 @@ class ChatService extends Notifier<ChatUiState> {
         await db.touchLastSeen(fingerprint, now);
         // Whatever waited for this peer goes out now, not at the next tick.
         await _sendPendingRetractions(fingerprint);
+        await _sendPendingReactions(fingerprint);
         await db.makeOutboxDueNow(fingerprint, now);
         await retryDueOutbox();
         // Reads since the previous link went down (or since the app
@@ -691,6 +759,8 @@ class ChatService extends Notifier<ChatUiState> {
         _setTypingPeer(fingerprint, frame.isTyping);
       case ChatRetractFrame():
         unawaited(_onRetract(fingerprint, frame.ids));
+      case ChatReactFrame():
+        unawaited(_onReact(fingerprint, frame));
       case ChatHelloFrame():
         break;
     }
@@ -710,6 +780,12 @@ class ChatService extends Notifier<ChatUiState> {
       return;
     }
 
+    final replyTo = frame.replyTo;
+    if (replyTo != null && !await ref.read(chatDatabaseProvider).messageExists(frame.id)) {
+      // Only ever shown if the quoted message is in this conversation (see
+      // `ChatDatabase.watchExtras`): a peer cannot surface another one.
+      await ref.read(chatDatabaseProvider).setReplyTo(frame.id, replyTo);
+    }
     await _storeIncomingMessage(
       sender,
       ChatEnvelope.message(messageId: frame.id, contentType: frame.contentType, text: frame.text, timestamp: frame.timestamp),
@@ -984,6 +1060,8 @@ class ChatService extends Notifier<ChatUiState> {
           timestamp: envelope.timestamp,
           contentType: envelope.contentType ?? ChatContentType.text,
           text: envelope.text,
+          // Read here so retries from the outbox carry it too.
+          replyTo: await ref.read(chatDatabaseProvider).replyToOf(messageId),
         );
         if (await ref.read(peerLinkManagerProvider).send(target.fingerprint, frame)) {
           final db = ref.read(chatDatabaseProvider);

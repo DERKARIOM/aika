@@ -50,6 +50,25 @@ void main() {
       expect(ChatFrame.tryDecode('{"t":"retract","ids":[$tooMany]}'), isNull);
     });
 
+    test('Should carry the replied message id, optionally', () {
+      final reply = _roundTrip(ChatMessageFrame(id: 'm2', timestamp: DateTime.utc(2026), contentType: ChatContentType.text, text: 'oui', replyTo: 'm1'));
+      expect(reply.replyTo, 'm1');
+      final plain = _roundTrip(ChatMessageFrame(id: 'm3', timestamp: DateTime.utc(2026), contentType: ChatContentType.text, text: 'a'));
+      expect(plain.replyTo, isNull);
+      expect(ChatFrame.tryDecode('{"t":"msg","id":"m","ts":0,"ct":"text","re":""}'), isNull);
+    });
+
+    test('Should encode and decode a reaction and its removal', () {
+      expect(_roundTrip(const ChatReactFrame(id: 'm1', emoji: '👍🏽')).emoji, '👍🏽');
+      expect(_roundTrip(const ChatReactFrame(id: 'm1')).emoji, isNull);
+    });
+
+    test('Should reject a reaction that is not a short single-line string', () {
+      expect(ChatFrame.tryDecode('{"t":"react","id":"m1","e":""}'), isNull);
+      expect(ChatFrame.tryDecode('{"t":"react","id":"m1","e":"a\\nb"}'), isNull);
+      expect(ChatFrame.tryDecode('{"t":"react","id":"m1","e":"${'x' * (chatMaxReactionLength + 1)}"}'), isNull);
+    });
+
     test('Should encode and decode typing', () {
       expect(_roundTrip(const ChatTypingFrame(isTyping: true)).isTyping, true);
     });

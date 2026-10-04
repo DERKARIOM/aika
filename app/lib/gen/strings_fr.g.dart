@@ -745,6 +745,12 @@ class _Translations$chat$fr extends Translations$chat$en {
   @override
   String get noResults => 'Aucun message trouvé.';
   @override
+  String get reply => 'Répondre';
+  @override
+  String get you => 'Vous';
+  @override
+  String get quoteUnavailable => 'Message indisponible';
+  @override
   String get title => 'Messages';
   @override
   String get newConversation => 'Nouvelle discussion';

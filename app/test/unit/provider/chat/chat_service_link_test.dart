@@ -295,6 +295,81 @@ void main() {
     expect(await db.pendingRetractions(_peer, limit: 10), isEmpty);
   });
 
+  test('Should store the message an incoming reply quotes', () async {
+    transport.open();
+    await settle();
+    transport.receive(ChatMessageFrame(id: 'm1', timestamp: DateTime.utc(2026), contentType: ChatContentType.text, text: 'question'));
+    transport.receive(ChatMessageFrame(id: 'm2', timestamp: DateTime.utc(2026, 2), contentType: ChatContentType.text, text: 'oui', replyTo: 'm1'));
+    await settle();
+    await settle();
+
+    expect(await db.replyToOf('m2'), 'm1');
+    expect((await db.watchExtras(_peer).first).quotes['m2']!.body, 'question');
+  });
+
+  test('Should send a reply with the quoted message id', () async {
+    transport.open();
+    await settle();
+    transport.receive(ChatMessageFrame(id: 'm1', timestamp: DateTime.utc(2026), contentType: ChatContentType.text, text: 'question'));
+    await settle();
+
+    await chat.sendText(target: _bob, text: 'réponse', replyToId: 'm1');
+    await settle();
+
+    expect(transport.sentOf<ChatMessageFrame>().single.replyTo, 'm1');
+  });
+
+  test('Should apply a reaction of the peer to our conversation only', () async {
+    transport.open();
+    await settle();
+    transport.receive(ChatMessageFrame(id: 'm1', timestamp: DateTime.utc(2026), contentType: ChatContentType.text, text: 'a'));
+    await settle();
+    await db.upsertConversation(peerFingerprint: 'DDDD', peerAlias: 'Eve');
+    await db.insertMessage(
+      ChatMessagesCompanion.insert(
+        id: 'other',
+        conversationId: 'DDDD',
+        direction: ChatMessageDirectionColumn.incoming,
+        contentType: ChatContentType.text.name,
+        status: ChatMessageStatusColumn.delivered,
+        createdAt: DateTime.utc(2025),
+      ),
+    );
+
+    transport.receive(const ChatReactFrame(id: 'm1', emoji: '❤️'));
+    transport.receive(const ChatReactFrame(id: 'other', emoji: '❤️'));
+    await settle();
+    await settle();
+
+    expect((await db.watchExtras(_peer).first).reactions['m1']?.peer, '❤️');
+    expect((await db.watchExtras('DDDD').first).reactions, isEmpty);
+  });
+
+  test('Should send our reaction, but not on a message the peer does not have', () async {
+    transport.open();
+    await settle();
+    transport.receive(ChatMessageFrame(id: 'm1', timestamp: DateTime.utc(2026), contentType: ChatContentType.text, text: 'a'));
+    await settle();
+    await db.insertMessage(
+      ChatMessagesCompanion.insert(
+        id: 'queued',
+        conversationId: _peer,
+        direction: ChatMessageDirectionColumn.outgoing,
+        contentType: ChatContentType.text.name,
+        status: ChatMessageStatusColumn.pending,
+        createdAt: DateTime.utc(2026),
+      ),
+    );
+
+    await chat.react(target: _bob, messageId: 'm1', emoji: '👍');
+    await chat.react(target: _bob, messageId: 'queued', emoji: '👍');
+    await settle();
+
+    final sent = transport.sentOf<ChatReactFrame>().single;
+    expect((sent.id, sent.emoji), ('m1', '👍'));
+    expect((await db.watchExtras(_peer).first).reactions['m1']?.mine, '👍');
+  });
+
   test('Should file a message dated in the future at its reception time', () async {
     transport.open();
     await settle();

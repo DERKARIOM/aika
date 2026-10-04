@@ -937,6 +937,15 @@ class Translations$chat$en {
   /// en: 'No messages found.'
   String get noResults => 'No messages found.';
 
+  /// en: 'Reply'
+  String get reply => 'Reply';
+
+  /// en: 'You'
+  String get you => 'You';
+
+  /// en: 'Message unavailable'
+  String get quoteUnavailable => 'Message unavailable';
+
   /// en: 'Messages'
   String get title => 'Messages';
 

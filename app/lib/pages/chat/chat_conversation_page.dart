@@ -6,12 +6,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/chat/chat_database.dart';
+import 'package:localsend_app/model/chat/chat_envelope.dart';
 import 'package:localsend_app/model/cross_file.dart';
 import 'package:localsend_app/provider/chat/blocked_devices_provider.dart';
 import 'package:localsend_app/provider/chat/chat_conversations_provider.dart';
 import 'package:localsend_app/provider/chat/chat_database_provider.dart';
 import 'package:localsend_app/provider/chat/chat_provider.dart';
 import 'package:localsend_app/util/chat/chat_device_resolver.dart';
+import 'package:localsend_app/util/chat/chat_preview.dart';
 import 'package:localsend_app/util/chat/chat_time_format.dart';
 import 'package:localsend_app/util/device_type_ext.dart';
 import 'package:localsend_app/util/native/channel/android_channel.dart' as android_channel;
@@ -57,6 +59,13 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
   final _textController = TextEditingController();
   final _scrollController = ScrollController();
   StreamSubscription<List<ChatMessage>>? _messagesSub;
+  StreamSubscription<ChatMessageExtras>? _extrasSub;
+
+  /// Replies and reactions of this conversation.
+  ChatMessageExtras _extras = ChatMessageExtras.empty;
+
+  /// The message the next text answers, shown above the composer.
+  ChatMessage? _replyingTo;
   List<ChatMessage> _messages = [];
 
   /// How many of the latest messages are watched (grows by [_pageSize]).
@@ -81,6 +90,11 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
       // Once on open: resets the badge and (re)opens the chat link.
       _markRead(ref);
       _watchMessages(ref);
+      _extrasSub = ref.read(chatDatabaseProvider).watchExtras(widget.peerFingerprint).listen((extras) {
+        if (mounted) {
+          setState(() => _extras = extras);
+        }
+      });
       final highlight = widget.highlightMessageId;
       if (highlight != null) {
         unawaited(_prepareReveal(ref, highlight));
@@ -190,6 +204,7 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
   void dispose() {
     _flashTimer?.cancel();
     unawaited(_messagesSub?.cancel());
+    unawaited(_extrasSub?.cancel());
     _scrollController.dispose();
     final chatService = ref.notifier(chatProvider);
     if (chatService.currentlyOpenConversationFingerprint == widget.peerFingerprint) {
@@ -340,12 +355,22 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
                       ],
                     ),
             ),
+            if (_replyingTo != null && !blocked)
+              _ReplyBanner(
+                author: _authorOf(_replyingTo!.direction, device),
+                text: _previewOf(_replyingTo!.contentType, _replyingTo!.body, _replyingTo!.attachmentFileName),
+                onClose: () => setState(() => _replyingTo = null),
+              ),
             ChatComposer(
               controller: _textController,
               blocked: blocked,
               onChanged: (text) => unawaited(ref.notifier(chatProvider).setTyping(target: device, isTyping: text.isNotEmpty)),
               onSend: (text) {
-                unawaited(ref.notifier(chatProvider).sendText(target: device, text: text));
+                final replyTo = _replyingTo;
+                if (replyTo != null) {
+                  setState(() => _replyingTo = null);
+                }
+                unawaited(ref.notifier(chatProvider).sendText(target: device, text: text, replyToId: replyTo?.id));
                 // Back to the latest message, where the new one appears.
                 if (_scrollController.hasClients && _scrollController.offset > 0) {
                   _scrollToLatest();
@@ -400,6 +425,32 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
     }
   }
 
+  /// The quote shown above [message] if it replies to another one.
+  ChatBubbleQuote? _quoteFor(Ref ref, ChatMessage message) {
+    final quoted = _extras.quotes[message.id];
+    if (quoted == null) {
+      return null;
+    }
+    final direction = quoted.direction;
+    if (direction == null) {
+      return ChatBubbleQuote(author: '', text: t.chat.quoteUnavailable);
+    }
+    return ChatBubbleQuote(
+      author: _authorOf(direction, _resolveDevice(ref)),
+      text: _previewOf(quoted.contentType, quoted.body, quoted.attachmentFileName),
+      onTap: () => unawaited(_prepareReveal(ref, quoted.id)),
+    );
+  }
+
+  String _authorOf(ChatMessageDirectionColumn direction, Device device) {
+    return direction == ChatMessageDirectionColumn.outgoing ? t.chat.you : device.alias;
+  }
+
+  String _previewOf(String? contentType, String? body, String? fileName) {
+    final type = ChatContentType.values.asNameMap()[contentType] ?? ChatContentType.text;
+    return chatPreviewText(type, text: body, attachmentFileName: fileName);
+  }
+
   Widget _buildMessageList(Ref ref) {
     return ListView.builder(
       controller: _scrollController,
@@ -418,6 +469,13 @@ class _ChatConversationPageState extends State<ChatConversationPage> with Refena
           groupedWithNext: next != null && _sameGroup(message, next),
           onRetry: () => unawaited(ref.notifier(chatProvider).retryMessage(message.id)),
           onCancelTransfer: () => ref.notifier(chatProvider).cancelAttachment(message.id),
+          quote: _quoteFor(ref, message),
+          myReaction: _extras.reactions[message.id]?.mine,
+          peerReaction: _extras.reactions[message.id]?.peer,
+          onReact: ChatService.canReactTo(message)
+              ? (emoji) => unawaited(ref.notifier(chatProvider).react(target: _resolveDevice(ref), messageId: message.id, emoji: emoji))
+              : null,
+          onReply: () => setState(() => _replyingTo = message),
         );
         final bubble = message.id == _flashId ? _Highlight(key: _highlightKey, child: plainBubble) : plainBubble;
         // The list is reversed: the separator goes above the first message
@@ -492,6 +550,55 @@ class _Highlight extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       child: child,
+    );
+  }
+}
+
+/// "Replying to …" above the composer, with a button to cancel the reply.
+class _ReplyBanner extends StatelessWidget {
+  final String author;
+  final String text;
+  final VoidCallback onClose;
+
+  const _ReplyBanner({required this.author, required this.text, required this.onClose});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = ChatColors.of(context);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+      padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
+      decoration: BoxDecoration(
+        color: colors.input,
+        borderRadius: BorderRadius.circular(12),
+        border: Border(left: BorderSide(color: colors.accent, width: 3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.reply_rounded, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(author, style: TextStyle(color: colors.accent, fontWeight: FontWeight.w600, fontSize: 13)),
+                Text(
+                  text.replaceAll('\n', ' '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: colors.meta, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: MaterialLocalizations.of(context).cancelButtonLabel,
+            icon: const Icon(Icons.close_rounded, size: 20),
+            onPressed: onClose,
+          ),
+        ],
+      ),
     );
   }
 }

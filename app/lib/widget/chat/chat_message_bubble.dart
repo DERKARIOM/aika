@@ -14,6 +14,21 @@ import 'package:localsend_app/widget/chat/content_uri_image.dart';
 import 'package:localsend_isolates/model/file_type.dart';
 import 'package:refena_flutter/refena_flutter.dart';
 
+/// The message a bubble replies to, as shown above its content.
+class ChatBubbleQuote {
+  /// "You" or the peer's name.
+  final String author;
+  final String text;
+
+  /// Jumps to the quoted message; `null` if it is not available.
+  final VoidCallback? onTap;
+
+  const ChatBubbleQuote({required this.author, required this.text, this.onTap});
+}
+
+/// Reactions offered on a long press, the usual quick set.
+const chatQuickReactions = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+
 /// Width of the bubble "tail" drawn outside the bubble.
 const _tailWidth = 8.0;
 
@@ -38,10 +53,29 @@ class ChatMessageBubble extends StatelessWidget {
   final bool groupedWithPrevious;
   final bool groupedWithNext;
 
+  /// The message this one replies to.
+  final ChatBubbleQuote? quote;
+
+  /// Our reaction and the peer's, shown under the bubble.
+  final String? myReaction;
+  final String? peerReaction;
+
+  /// Reacts with an emoji (`null`: removes our reaction); offered on a
+  /// long press when set.
+  final ValueChanged<String?>? onReact;
+
+  /// Starts a reply to this message; offered on a long press when set.
+  final VoidCallback? onReply;
+
   const ChatMessageBubble({
     required this.message,
     this.onRetry,
     this.onCancelTransfer,
+    this.quote,
+    this.myReaction,
+    this.peerReaction,
+    this.onReact,
+    this.onReply,
     this.groupedWithPrevious = false,
     this.groupedWithNext = false,
     super.key,
@@ -78,12 +112,15 @@ class ChatMessageBubble extends StatelessWidget {
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 1, offset: const Offset(0, 1))],
       ),
       padding: _isImage ? const EdgeInsets.all(3) : const EdgeInsets.fromLTRB(10, 6, 8, 6),
-      child: _content(context, colors),
+      child: _withQuote(_content(context, colors), colors),
     );
+    final reactions = [?peerReaction, ?myReaction];
 
     return GestureDetector(
       onTap: _hasSendError && _canRetry ? onRetry : null,
       onLongPress: () => _showActions(context),
+      // Right click on desktop.
+      onSecondaryTap: () => _showActions(context),
       child: Padding(
         padding: EdgeInsets.only(
           top: groupedWithPrevious ? 2 : 8,
@@ -113,6 +150,15 @@ class ChatMessageBubble extends StatelessWidget {
                 ),
               ),
             ),
+            if (reactions.isNotEmpty)
+              Transform.translate(
+                // Overlaps the bubble's bottom edge, as in other messengers.
+                offset: const Offset(0, -6),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: _tailWidth + 6),
+                  child: _Reactions(emojis: reactions, colors: colors),
+                ),
+              ),
             if (_hasSendError)
               Padding(
                 padding: const EdgeInsets.only(top: 2, left: _tailWidth, right: _tailWidth),
@@ -123,6 +169,27 @@ class ChatMessageBubble extends StatelessWidget {
               ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// [content] under the quoted message, both as wide as the bubble.
+  Widget _withQuote(Widget content, ChatColors colors) {
+    final quote = this.quote;
+    if (quote == null) {
+      return content;
+    }
+    return IntrinsicWidth(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: EdgeInsets.only(bottom: 4, left: _isImage ? 3 : 0, right: _isImage ? 3 : 0, top: _isImage ? 3 : 0),
+            child: _Quote(quote: quote, colors: colors),
+          ),
+          content,
+        ],
       ),
     );
   }
@@ -191,7 +258,7 @@ class ChatMessageBubble extends StatelessWidget {
     final error = _isOutgoing && message.status != ChatMessageStatusColumn.delivered && message.status != ChatMessageStatusColumn.read
         ? message.errorMessage
         : null;
-    if ((text == null || text.isEmpty) && !_canRetry && error == null) {
+    if ((text == null || text.isEmpty) && !_canRetry && error == null && onReact == null && onReply == null) {
       return;
     }
     showModalBottomSheet<void>(
@@ -200,6 +267,34 @@ class ChatMessageBubble extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (onReact != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    for (final emoji in chatQuickReactions)
+                      _ReactionChoice(
+                        emoji: emoji,
+                        selected: emoji == myReaction,
+                        onTap: () {
+                          Navigator.of(sheetContext).pop();
+                          // The same emoji again removes it.
+                          onReact!(emoji == myReaction ? null : emoji);
+                        },
+                      ),
+                  ],
+                ),
+              ),
+            if (onReply != null)
+              ListTile(
+                leading: const Icon(Icons.reply_rounded),
+                title: Text(t.chat.reply),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  onReply!();
+                },
+              ),
             if (error != null)
               ListTile(
                 leading: Icon(Icons.error_outline, color: Theme.of(context).colorScheme.error),
@@ -580,4 +675,105 @@ String _shortDuration(Duration d) {
     return '${d.inMinutes} min';
   }
   return '${d.inHours} h ${(d.inMinutes % 60).toString().padLeft(2, '0')}';
+}
+
+/// The quoted message inside a reply: author and an excerpt, with the
+/// accent bar of other messengers.
+class _Quote extends StatelessWidget {
+  final ChatBubbleQuote quote;
+  final ChatColors colors;
+
+  const _Quote({required this.quote, required this.colors});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: quote.onTap,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(8, 5, 8, 5),
+          decoration: BoxDecoration(
+            color: colors.text.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(8),
+            border: Border(left: BorderSide(color: colors.accent, width: 3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (quote.author.isNotEmpty)
+                Text(
+                  quote.author,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: colors.accent, fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+              Text(
+                quote.text.replaceAll('\n', ' '),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: colors.meta, fontSize: 13),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The reactions under a bubble, in a small pill.
+class _Reactions extends StatelessWidget {
+  final List<String> emojis;
+  final ChatColors colors;
+
+  const _Reactions({required this.emojis, required this.colors});
+
+  @override
+  Widget build(BuildContext context) {
+    final count = emojis.length == 2 && emojis[0] == emojis[1] ? 2 : null;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: colors.incomingBubble,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: colors.background, width: 1.5),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.10), blurRadius: 2, offset: const Offset(0, 1))],
+      ),
+      child: Text(
+        count == null ? emojis.join(' ') : '${emojis.first} $count',
+        style: TextStyle(fontSize: 14, color: colors.meta),
+      ),
+    );
+  }
+}
+
+/// One emoji of the reaction row of the action sheet.
+class _ReactionChoice extends StatelessWidget {
+  final String emoji;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ReactionChoice({required this.emoji, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return InkWell(
+      customBorder: const CircleBorder(),
+      onTap: onTap,
+      child: Container(
+        width: 46,
+        height: 46,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: selected ? colorScheme.primaryContainer : null,
+        ),
+        child: Text(emoji, style: const TextStyle(fontSize: 26)),
+      ),
+    );
+  }
 }

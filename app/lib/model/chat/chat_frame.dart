@@ -61,6 +61,7 @@ sealed class ChatFrame {
         ChatAckFrame.frameType => ChatAckFrame._fromJson(decoded),
         ChatTypingFrame.frameType => ChatTypingFrame._fromJson(decoded),
         ChatRetractFrame.frameType => ChatRetractFrame._fromJson(decoded),
+        ChatReactFrame.frameType => ChatReactFrame._fromJson(decoded),
         _ => null,
       };
     } on _InvalidFrame {
@@ -149,11 +150,16 @@ class ChatMessageFrame extends ChatFrame {
   final ChatContentType contentType;
   final String? text;
 
+  /// Id of the message this one replies to, if any. Optional field: older
+  /// peers ignore it and just show the text.
+  final String? replyTo;
+
   const ChatMessageFrame({
     required this.id,
     required this.timestamp,
     required this.contentType,
     this.text,
+    this.replyTo,
   });
 
   factory ChatMessageFrame._fromJson(Map<String, dynamic> json) {
@@ -169,11 +175,16 @@ class ChatMessageFrame extends ChatFrame {
     if (text != null && text.length > chatMaxTextLength) {
       throw const _InvalidFrame();
     }
+    final replyTo = json['re'] as String?;
+    if (replyTo != null && !_isValidId(replyTo)) {
+      throw const _InvalidFrame();
+    }
     return ChatMessageFrame(
       id: id,
       timestamp: DateTime.fromMillisecondsSinceEpoch(json['ts'] as int, isUtc: true),
       contentType: contentType,
       text: text,
+      replyTo: replyTo,
     );
   }
 
@@ -187,6 +198,7 @@ class ChatMessageFrame extends ChatFrame {
     'ts': timestamp.millisecondsSinceEpoch,
     'ct': contentType.name,
     if (text != null) 'txt': text,
+    if (replyTo != null) 're': replyTo,
   };
 }
 
@@ -250,6 +262,43 @@ class ChatRetractFrame extends ChatFrame {
 
   @override
   Map<String, dynamic> toJson() => {'t': frameType, 'ids': ids};
+}
+
+/// Longest reaction accepted, in UTF-16 code units: room for one emoji
+/// with modifiers (skin tone, ZWJ sequences), never a text.
+const chatMaxReactionLength = 16;
+
+/// "I react to this message with [emoji]" (`null`: I remove my reaction).
+/// Each side has at most one reaction per message, the latest wins.
+///
+/// Added without a protocol version bump: older peers ignore it.
+class ChatReactFrame extends ChatFrame {
+  static const frameType = 'react';
+
+  final String id;
+  final String? emoji;
+
+  const ChatReactFrame({required this.id, this.emoji});
+
+  factory ChatReactFrame._fromJson(Map<String, dynamic> json) {
+    final id = json['id'] as String;
+    final emoji = json['e'] as String?;
+    if (!_isValidId(id) || (emoji != null && !isValidChatReaction(emoji))) {
+      throw const _InvalidFrame();
+    }
+    return ChatReactFrame(id: id, emoji: emoji);
+  }
+
+  @override
+  String get type => frameType;
+
+  @override
+  Map<String, dynamic> toJson() => {'t': frameType, 'id': id, if (emoji != null) 'e': emoji};
+}
+
+/// A short, single-line string: displayed as is, never trusted further.
+bool isValidChatReaction(String emoji) {
+  return emoji.isNotEmpty && emoji.length <= chatMaxReactionLength && !emoji.codeUnits.any((c) => c < 0x20 || c == 0x7F);
 }
 
 /// Best-effort typing indicator, never retransmitted.
