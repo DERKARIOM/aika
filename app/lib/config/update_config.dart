@@ -14,17 +14,20 @@ class UpdateConfig {
   /// the About page still works, since it is an explicit user action.
   static const bool autoCheckEnabled = true;
 
-  /// Minimum time between two automatic checks, so Aika doesn't hit the
-  /// Play In-App Update API on every single app start / foreground event.
+  /// Minimum time between two automatic checks when Aika comes back to the
+  /// foreground. Not applied at app start (one cheap call to the Play Store
+  /// app per launch) nor while a mandatory update is pending.
   static const Duration minCheckInterval = Duration(hours: 6);
 
-  /// Google Play Console lets a release be tagged with an "update priority"
-  /// from 0 (default, least urgent) to 5 (most urgent). At or above this
-  /// threshold -- and only when Play itself reports that an immediate
-  /// update is allowed for the device -- Aika asks for a blocking
-  /// ("immediate") update instead of the default background ("flexible")
-  /// one. Kept high on purpose: most releases should stay non-blocking, per
-  /// "ne rends pas toutes les mises à jour obligatoires par défaut".
+  /// Google Play "update priority" (0-5) at or above which an update is
+  /// mandatory: Aika then opens Google Play's immediate (full screen) update
+  /// and blocks normal use until it is installed. Below it, the update is
+  /// proposed in the background (flexible), as most releases should be.
+  ///
+  /// The priority is NOT set in the Play Console UI: it is attached to a
+  /// release through the Google Play Developer API (`inAppUpdatePriority`
+  /// of the track release, or fastlane `in_app_update_priority`) when the
+  /// release is created, and cannot be changed afterwards.
   static const int immediateUpdatePriorityThreshold = 4;
 
   /// Official Google Play Store URL for Aika, derived from the app's real

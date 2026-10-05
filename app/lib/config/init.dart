@@ -324,10 +324,9 @@ Future<void> postInit(BuildContext context, Ref ref, bool appStart) async {
 
   // [FOSS_REMOVE_START]
   if (appStart) {
-    // Discreet, non-blocking Google Play update check. maybeCheckForUpdate
-    // itself checks the platform, the feature flag and the last-checked
-    // throttle before doing any network call.
-    maybeCheckForUpdate(ref);
+    // Google Play update check, Android only and never blocking start-up.
+    // A mandatory update opens Google Play's immediate update screen.
+    maybeCheckForUpdate(ref, trigger: UpdateCheckTrigger.appStart);
   }
   // [FOSS_REMOVE_END]
 }

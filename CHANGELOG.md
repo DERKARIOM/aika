@@ -1,3 +1,9 @@
+## 1.1.5
+
+- Mises à jour Google Play (Android) : les mises à jour importantes s'installent désormais via l'écran officiel de Google Play, et Aika reste bloquée tant qu'une mise à jour obligatoire n'est pas installée (sauf si Google Play est injoignable, pour ne jamais empêcher le transfert local hors ligne).
+- Reprise automatique d'une mise à jour interrompue et proposition de redémarrage lorsqu'une mise à jour déjà téléchargée attend d'être installée.
+- Vérification des mises à jour à chaque démarrage, et plus fiable après une annulation ou une absence de connexion.
+
 ## 1.1.4
 
 - Messagerie instantanée entièrement revue : messages chiffrés directement entre les appareils (TLS avec vérification d'identité), accusés de réception et de lecture, indicateur « en train d'écrire », messages en attente renvoyés automatiquement dès que l'appareil revient sur le réseau.

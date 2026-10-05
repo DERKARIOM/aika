@@ -1,0 +1,7 @@
+// Base configuration of the ShareExtension target (Debug).
+// Same pattern as Debug.xcconfig / Release.xcconfig for Runner: keeps the
+// CocoaPods settings and adds Flutter's generated values, so the extension
+// takes its version (FLUTTER_BUILD_NAME / FLUTTER_BUILD_NUMBER) from
+// pubspec.yaml like the app. Apple requires both to match.
+#include? "Pods/Target Support Files/Pods-ShareExtension/Pods-ShareExtension.debug.xcconfig"
+#include "Generated.xcconfig"

@@ -8,7 +8,14 @@ name: iOS Release (non signé)
 # Déclenchement :
 #   - manuel (workflow_dispatch), version reprise de app/pubspec.yaml ;
 #   - automatique sur un tag "ios-v*" (ex: ios-v1.2.0) -> publie aussi une
-#     GitHub Release avec l'IPA en pièce jointe.
+#     GitHub Release iOS seule avec l'IPA en pièce jointe ;
+#   - appelé par .github/workflows/release.yml (workflow_call) sur un tag
+#     "vX.Y.Z" : l'IPA est alors joint à la release multi-plateforme créée
+#     par release.yml (le job "release" ci-dessous ne tourne pas).
+#
+# Version : app/pubspec.yaml est la source unique. "version: 1.1.4+18"
+# donne CFBundleShortVersionString=1.1.4 et CFBundleVersion=18, pour l'app
+# ET la Share Extension (voir ios/Flutter/ShareExtension-*.xcconfig).
 #
 # Le préfixe "ios-v" (plutôt que "v*", déjà utilisé par
 # .github/workflows/release.yml pour Linux/Windows/macOS) est volontaire :
@@ -32,6 +39,12 @@ name: iOS Release (non signé)
 
 on:
   workflow_dispatch: {}
+  workflow_call:
+    inputs:
+      run_checks:
+        description: "Lancer flutter analyze / flutter test (déjà faits par l'appelant sinon)"
+        type: boolean
+        default: true
   push:
     tags:
       - "ios-v*"
@@ -59,9 +72,29 @@ jobs:
         id: version
         run: |
           set -euo pipefail
-          PUBSPEC_VERSION=$(grep -E '^version:' ${{ env.FLUTTER_APP_DIR }}/pubspec.yaml | sed 's/version:[[:space:]]*//' | cut -d '+' -f1)
+          PUBSPEC_FULL=$(grep -E '^version:' ${{ env.FLUTTER_APP_DIR }}/pubspec.yaml | sed 's/version:[[:space:]]*//' | tr -d '[:space:]')
+          PUBSPEC_VERSION="${PUBSPEC_FULL%%+*}"
+          if [[ "$PUBSPEC_FULL" != *+* ]]; then
+            echo "::error::app/pubspec.yaml (version: ${PUBSPEC_FULL}) n'a pas de build number. Format attendu : X.Y.Z+N (ex. 1.1.4+18)."
+            exit 1
+          fi
+          BUILD_NUMBER="${PUBSPEC_FULL#*+}"
+          if [[ ! "$PUBSPEC_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || ! "$BUILD_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "::error::app/pubspec.yaml (version: ${PUBSPEC_FULL}) ne respecte pas le format X.Y.Z+N."
+            exit 1
+          fi
 
-          if [[ "${GITHUB_REF}" == refs/tags/ios-v* ]]; then
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            # Appel depuis release.yml : release.yml a déjà validé le tag,
+            # revérifié ici pour que ce workflow reste sûr seul.
+            TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+            if [[ "$TAG_VERSION" != "$PUBSPEC_VERSION" ]]; then
+              echo "::error::La version du tag (v${TAG_VERSION}) ne correspond pas à app/pubspec.yaml (${PUBSPEC_VERSION})."
+              exit 1
+            fi
+            MARKETING_VERSION="$TAG_VERSION"
+            echo "Déclenché par le tag v${TAG_VERSION} (release multi-plateforme) -> version validée."
+          elif [[ "${GITHUB_REF}" == refs/tags/ios-v* ]]; then
             TAG_VERSION="${GITHUB_REF#refs/tags/ios-v}"
             if [[ "$TAG_VERSION" != "$PUBSPEC_VERSION" ]]; then
               echo "::error::La version du tag (ios-v${TAG_VERSION}) ne correspond pas à app/pubspec.yaml (${PUBSPEC_VERSION}). Aligne pubspec.yaml avant de retagger."
@@ -75,26 +108,37 @@ jobs:
           fi
 
           echo "marketing_version=${MARKETING_VERSION}" >> "$GITHUB_OUTPUT"
-          echo "build_number=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          # Build number = celui de pubspec.yaml (et non plus le numéro de run
+          # GitHub) : l'IPA affiche ainsi la même version que les autres
+          # plateformes, ex. 1.1.4 (18).
+          echo "build_number=${BUILD_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "Version iOS : ${MARKETING_VERSION} (${BUILD_NUMBER})"
 
+      # inputs.run_checks vaut null hors workflow_call (manuel, tag ios-v*) :
+      # les vérifications tournent alors toujours.
       - uses: subosito/flutter-action@v2
+        if: ${{ inputs.run_checks != false }}
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: "stable"
 
       - name: Dependencies (app)
+        if: ${{ inputs.run_checks != false }}
         working-directory: ${{ env.FLUTTER_APP_DIR }}
         run: flutter pub get
 
       - name: Dependencies (cargokit - rust_builder)
+        if: ${{ inputs.run_checks != false }}
         working-directory: ${{ env.CARGOKIT_BUILD_TOOL_DIR }}
         run: flutter pub get
 
       - name: Analyze
+        if: ${{ inputs.run_checks != false }}
         working-directory: ${{ env.FLUTTER_APP_DIR }}
         run: flutter analyze
 
       - name: Test
+        if: ${{ inputs.run_checks != false }}
         working-directory: ${{ env.FLUTTER_APP_DIR }}
         run: flutter test
 
@@ -232,6 +276,26 @@ jobs:
           if [[ "$BUNDLE_ID" != "${{ env.BUNDLE_ID_EXPECTED }}" ]]; then
             echo "::warning::Bundle ID inattendu (${BUNDLE_ID} != ${{ env.BUNDLE_ID_EXPECTED }})"
           fi
+
+          EXPECTED_VERSION="${{ needs.validate.outputs.marketing_version }}"
+          EXPECTED_BUILD="${{ needs.validate.outputs.build_number }}"
+          if [[ "$VERSION" != "$EXPECTED_VERSION" || "$BUILD" != "$EXPECTED_BUILD" ]]; then
+            echo "::error::Runner.app affiche ${VERSION} (${BUILD}), attendu ${EXPECTED_VERSION} (${EXPECTED_BUILD})."
+            exit 1
+          fi
+
+          # La Share Extension doit porter exactement la même version que
+          # l'app (exigence Apple, sinon avertissement/rejet à l'envoi).
+          for EXT_PLIST in "$APP_DIR"/PlugIns/*.appex/Info.plist; do
+            [[ -f "$EXT_PLIST" ]] || continue
+            EXT_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$EXT_PLIST")
+            EXT_BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$EXT_PLIST")
+            echo "Extension $(basename "$(dirname "$EXT_PLIST")") : ${EXT_VERSION} (${EXT_BUILD})"
+            if [[ "$EXT_VERSION" != "$VERSION" || "$EXT_BUILD" != "$BUILD" ]]; then
+              echo "::error::La Share Extension (${EXT_VERSION} (${EXT_BUILD})) ne porte pas la version de l'app (${VERSION} (${BUILD}))."
+              exit 1
+            fi
+          done
 
           # Statut de signature : ne JAMAIS prétendre que l'IPA est signé
           # s'il ne l'est pas.

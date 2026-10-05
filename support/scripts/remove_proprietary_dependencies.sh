@@ -32,6 +32,7 @@ rm lib/provider/purchase_provider.dart
 # Play Core (Google Play In-App Updates) cannot ship in FOSS/F-Droid builds either.
 rm lib/provider/update_provider.dart
 rm lib/widget/dialogs/update_dialog.dart
+rm lib/pages/update_required_page.dart
 
 # Refer to donationPageNoopVmProvider instead of donationPageVmProvider
 sed -i 's/donationPageVmProvider/donationPageNoopVmProvider/g' lib/pages/donation/donation_page.dart

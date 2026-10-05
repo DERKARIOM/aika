@@ -1,7 +1,12 @@
 name: Publish to WinGet
+
+# Manual only. This workflow is inherited from LocalSend and still targets
+# the "LocalSend.LocalSend" WinGet package: run automatically on every Aika
+# release, it would try to publish Aika's installer as a LocalSend update.
+# Before re-enabling the "release" trigger, create an Aika package
+# identifier in winget-pkgs and put it below.
 on:
-  release:
-    types: [released]
+  workflow_dispatch: {}
 
 jobs:
   publish:

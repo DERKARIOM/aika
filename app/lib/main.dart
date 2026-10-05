@@ -61,7 +61,7 @@ class LocalSendApp extends StatelessWidget {
                 // Links may have died while in the background (mobile).
                 ref.notifier(chatProvider).retryLinksNow();
                 // [FOSS_REMOVE_START]
-                maybeCheckForUpdate(ref);
+                maybeCheckForUpdate(ref, trigger: UpdateCheckTrigger.resume);
                 // [FOSS_REMOVE_END]
                 break;
               case AppLifecycleState.detached:

@@ -135,9 +135,11 @@ class AboutPage extends StatelessWidget {
                       case UpdateStatus.checking:
                       case UpdateStatus.downloading:
                       case UpdateStatus.readyToInstall:
-                        // "available" already showed its own dialog from
-                        // CheckForUpdateAction; the others aren't reachable
-                        // as the immediate result of a fresh manual check.
+                      case UpdateStatus.immediateInProgress:
+                      case UpdateStatus.updateRequired:
+                        // Already handled by CheckForUpdateAction itself:
+                        // optional-update dialog, restart snackbar, Google
+                        // Play's immediate screen or the blocking page.
                         break;
                     }
                   },

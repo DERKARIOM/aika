@@ -3,6 +3,27 @@
 Date : septembre 2026
 Périmètre : Android uniquement (Google Play). Aucun impact sur macOS, Windows, Linux, iOS ou les builds FOSS/F-Droid.
 
+## 0. Révision 1.1.4 (18) — mises à jour obligatoires
+
+Cette section remplace les §5.1 et §5.4 ci-dessous quand ils divergent.
+
+**Décision (`lib/model/update/update_policy.dart`, testée)** — comparaison de `versionCode` uniquement, jamais du nom affiché :
+- `availableVersionCode <= versionCode installé` → aucune mise à jour ;
+- `versionCode installé < minimumVersionCode` **ou** priorité Play `>= UpdateConfig.immediateUpdatePriorityThreshold` (4) → **obligatoire** ;
+- sinon → facultative (flexible).
+
+`minimumVersionCode` vient d'un `MinimumVersionSource` (`minimumVersionSourceProvider`) : aucun pour l'instant (`NoMinimumVersionSource`). Une config distante (Firebase Remote Config, JSON signé…) pourra s'y brancher sans toucher au flux.
+
+**Priorité Play** : elle ne se règle pas dans l'interface de la Play Console, mais via la Google Play Developer API (`inAppUpdatePriority` de la release du track, ou fastlane `in_app_update_priority`) au moment de créer la release ; elle n'est plus modifiable ensuite.
+
+**Flux obligatoire** : écran officiel Google Play (`performImmediateUpdate`) ouvert directement, sans dialogue préalable. Si l'utilisateur le quitte, `UpdateRequiredPage` (non fermable) bloque Aika avec « Mettre à jour » (rouvre l'écran Google Play) et « Ouvrir Google Play ». Elle disparaît dès que la mise à jour n'est plus applicable ou que Google Play ne peut pas la faire (hors ligne, erreur Play, immédiat non autorisé) : jamais d'écran bloqué ni de boucle.
+
+**Reprise** : `developerTriggeredUpdateInProgress` relance le flux immédiat (après un redémarrage ; dans le même processus le plugin le fait seul). Une mise à jour flexible déjà téléchargée (`installStatus == downloaded`) propose « Redémarrer maintenant ».
+
+**Fréquence** : à chaque démarrage ; au retour au premier plan au plus toutes les `minCheckInterval` (6 h), sauf mise à jour obligatoire ou téléchargée en attente (vérifiée à chaque retour). L'horodatage n'est enregistré qu'après une vérification réussie. Une seule vérification à la fois.
+
+**Limites** : désactiver Internet contourne le blocage (choix assumé : le transfert local hors ligne ne doit pas être cassé) ; une réception de fichiers ouverte par un pair peut s'afficher par-dessus l'écran bloquant, qui revient au prochain démarrage ou retour au premier plan.
+
 ## 1. Résumé
 
 Aika vérifie désormais, de façon discrète et non bloquante, si une nouvelle version est disponible sur Google Play, et propose à l'utilisateur de la télécharger et de l'installer directement depuis l'application, sans jamais télécharger d'APK depuis un serveur externe. Le mécanisme utilise exclusivement l'API officielle **Google Play In-App Updates** (Play Core), via le paquet Flutter `in_app_update`.
