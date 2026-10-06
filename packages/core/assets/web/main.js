@@ -24,6 +24,8 @@ var TRANSLATIONS = {
   fr: {
     title: 'Échange de fichiers',
     description: 'Téléchargez les fichiers partagés et envoyez les vôtres',
+    titleReceiveOnly: 'Envoyer des fichiers',
+    descriptionReceiveOnly: 'Vos fichiers sont envoyés directement à « {host} », sur votre réseau local',
     waiting: 'En attente de réponse…',
     empty: 'Aucun fichier disponible pour le moment',
     availableTitle: 'Fichiers disponibles',
@@ -74,6 +76,8 @@ var TRANSLATIONS = {
   en: {
     title: 'File exchange',
     description: 'Download the shared files and send your own',
+    titleReceiveOnly: 'Send files',
+    descriptionReceiveOnly: 'Your files are sent directly to “{host}”, over your local network',
     waiting: 'Waiting for response…',
     empty: 'No files available right now',
     availableTitle: 'Available files',
@@ -256,6 +260,7 @@ function setLang(lang) {
     /* ignore — persistence is a convenience, not a requirement */
   }
   applyStaticTranslations();
+  applyHero();
   if (lastKnownFiles) {
     renderFiles(lastKnownFiles);
   }
@@ -384,8 +389,27 @@ function promptForPin(firstAttempt) {
   });
 }
 
+/* A link without shared files (created from the host's Receive tab):
+ * the page only lets the visitor send files to the host. */
+var receiveOnly = false;
+var hostAlias = '';
+
+function applyHero() {
+  if (!receiveOnly) {
+    return;
+  }
+  document.querySelector('.page-title').textContent = t('titleReceiveOnly');
+  document.querySelector('.page-desc').textContent = t('descriptionReceiveOnly', { host: hostAlias || 'Aika' });
+}
+
 function handleSuccess(data) {
   sessionId = data.sessionId;
+  receiveOnly = Object.keys(data.files || {}).length === 0;
+  hostAlias = data.info && data.info.alias ? String(data.info.alias) : '';
+  document.getElementById('files-section').hidden = receiveOnly;
+  // The page title already says "Send files": no duplicate section header.
+  document.querySelector('#upload-section .section-header').hidden = receiveOnly;
+  applyHero();
   try {
     sessionStorage.setItem('sessionId', sessionId);
   } catch (e) {

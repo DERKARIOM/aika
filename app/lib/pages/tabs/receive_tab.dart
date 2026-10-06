@@ -18,12 +18,6 @@ import 'package:localsend_app/widget/rotating_widget.dart';
 import 'package:refena_flutter/refena_flutter.dart';
 import 'package:routerino/routerino.dart';
 
-enum _QuickSaveMode {
-  off,
-  favorites,
-  on,
-}
-
 class ReceiveTab extends StatelessWidget {
   const ReceiveTab();
 
@@ -89,17 +83,12 @@ class ReceiveTab extends StatelessWidget {
                   ),
                   Padding(
                     padding: const EdgeInsets.only(top: 10),
-                    child: Center(
-                      child: Column(
-                        children: [
-                          Text(t.general.quickSave),
-                          const SizedBox(height: 18),
-                          _QuickSaveSpinner(vm: vm),
-                        ],
-                      ),
+                    child: _ShareLinkCard(
+                      // The quick-save mode moved to Settings > Receive.
+                      onTap: () async => vm.onCreateShareLink(context),
                     ),
                   ),
-                  const SizedBox(height: 15),
+                  const SizedBox(height: 5),
                 ],
               ),
             ),
@@ -116,116 +105,68 @@ class ReceiveTab extends StatelessWidget {
   }
 }
 
-class _QuickSaveSpinner extends StatelessWidget {
-  final ReceiveTabVm vm;
+/// "Créer un lien de partage": creates a link and a QR code at once, for
+/// devices without Aika, which open it in a browser to send files here.
+class _ShareLinkCard extends StatelessWidget {
+  final VoidCallback onTap;
 
-  const _QuickSaveSpinner({required this.vm});
-
-  _QuickSaveMode get _selectedMode {
-    if (vm.quickSaveFromFavoritesSettings) return _QuickSaveMode.favorites;
-    if (vm.quickSaveSettings) return _QuickSaveMode.on;
-    return _QuickSaveMode.off;
-  }
-
-  String _labelFor(_QuickSaveMode mode) {
-    switch (mode) {
-      case _QuickSaveMode.off:
-        return t.receiveTab.quickSave.off;
-      case _QuickSaveMode.favorites:
-        return t.receiveTab.quickSave.favorites;
-      case _QuickSaveMode.on:
-        return t.receiveTab.quickSave.on;
-    }
-  }
-
-  Future<void> _onSelect(BuildContext context, _QuickSaveMode mode) async {
-    switch (mode) {
-      case _QuickSaveMode.off:
-        await vm.onSetQuickSave(context, false);
-        if (context.mounted) {
-          await vm.onSetQuickSaveFromFavorites(context, false);
-        }
-        break;
-      case _QuickSaveMode.favorites:
-        await vm.onSetQuickSave(context, false);
-        if (context.mounted) {
-          await vm.onSetQuickSaveFromFavorites(context, true);
-        }
-        break;
-      case _QuickSaveMode.on:
-        await vm.onSetQuickSaveFromFavorites(context, false);
-        if (context.mounted) {
-          await vm.onSetQuickSave(context, true);
-        }
-        break;
-    }
-  }
+  const _ShareLinkCard({required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final selected = _selectedMode;
-    final modes = _QuickSaveMode.values;
-    final selectedIndex = modes.indexOf(selected);
-    const segmentWidth = 80.0;
-    final primaryColor = Theme.of(context).colorScheme.primary;
-
     final colorScheme = Theme.of(context).colorScheme;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
-      child: Container(
-        padding: const EdgeInsets.all(3),
-        decoration: BoxDecoration(
-          color: colorScheme.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: colorScheme.outlineVariant,
-            width: 1,
-          ),
-        ),
-        child: Stack(
-          children: [
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOut,
-              left: segmentWidth * selectedIndex,
-              width: segmentWidth,
-              top: 0,
-              bottom: 0,
-              child: Container(
+    final isFr = LocaleSettings.currentLocale == AppLocale.fr;
+    final title = isFr ? 'Créer un lien de partage' : 'Create a share link';
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
-                  color: primaryColor,
-                  borderRadius: BorderRadius.circular(15),
+                  color: colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(Icons.link_rounded, color: colorScheme.onPrimaryContainer),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 3),
+                    Text(
+                      isFr
+                          ? 'Si l’autre appareil n’a pas Aika : il scanne le code QR ou ouvre le lien dans son navigateur pour vous envoyer ses fichiers.'
+                          : 'If the other device doesn’t have Aika: it scans the QR code or opens the link in a browser to send you its files.',
+                      style: TextStyle(fontSize: 13, height: 1.4, color: colorScheme.onSurfaceVariant),
+                    ),
+                  ],
                 ),
               ),
-            ),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: modes.map((mode) {
-                final isSelected = mode == selected;
-                return SizedBox(
-                  width: segmentWidth,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(15),
-                    onTap: () => _onSelect(context, mode),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 7),
-                      child: Text(
-                        _labelFor(mode),
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 12,
-                          letterSpacing: 0.3,
-                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                          color: isSelected ? colorScheme.onPrimary : colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ],
-        ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          FilledButton.icon(
+            onPressed: onTap,
+            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+            icon: const Icon(Icons.add_link_rounded),
+            label: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
       ),
     );
   }

@@ -156,27 +156,41 @@ class SettingsTab extends StatelessWidget {
                   _SettingsSection(
                     title: t.settingsTab.receive.title,
                     children: [
-                      _BooleanEntry(
-                        label: t.settingsTab.receive.quickSave,
-                        value: vm.settings.quickSave,
-                        onChanged: (b) async {
-                          final old = vm.settings.quickSave;
-                          await ref.notifier(settingsProvider).setQuickSave(b);
-                          if (!old && b && context.mounted) {
-                            await QuickSaveNotice.open(context);
-                          }
-                        },
-                      ),
-                      _BooleanEntry(
-                        label: t.settingsTab.receive.quickSaveFromFavorites,
-                        value: vm.settings.quickSaveFromFavorites,
-                        onChanged: (b) async {
-                          final old = vm.settings.quickSaveFromFavorites;
-                          await ref.notifier(settingsProvider).setQuickSaveFromFavorites(b);
-                          if (!old && b && context.mounted) {
-                            await QuickSaveFromFavoritesNotice.open(context);
-                          }
-                        },
+                      // Moved here from the Receive tab: one choice instead of
+                      // two switches, since "all" and "favorites only" exclude
+                      // each other.
+                      _SettingsEntry(
+                        label: t.general.quickSave,
+                        child: CustomDropdownButton<_QuickSaveMode>(
+                          value: _QuickSaveMode.of(vm.settings.quickSave, vm.settings.quickSaveFromFavorites),
+                          items: _QuickSaveMode.values.map((mode) {
+                            return DropdownMenuItem(
+                              value: mode,
+                              alignment: Alignment.center,
+                              child: Text(mode.label),
+                            );
+                          }).toList(),
+                          onChanged: (mode) async {
+                            final old = _QuickSaveMode.of(vm.settings.quickSave, vm.settings.quickSaveFromFavorites);
+                            if (mode == old) {
+                              return;
+                            }
+                            final notifier = ref.notifier(settingsProvider);
+                            await notifier.setQuickSave(mode == _QuickSaveMode.on);
+                            await notifier.setQuickSaveFromFavorites(mode == _QuickSaveMode.favorites);
+                            if (!context.mounted) {
+                              return;
+                            }
+                            switch (mode) {
+                              case _QuickSaveMode.on:
+                                await QuickSaveNotice.open(context);
+                              case _QuickSaveMode.favorites:
+                                await QuickSaveFromFavoritesNotice.open(context);
+                              case _QuickSaveMode.off:
+                                break;
+                            }
+                          },
+                        ),
                       ),
                       if (checkPlatform([TargetPlatform.android]))
                         _BooleanEntry(
@@ -636,6 +650,28 @@ class SettingsTab extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+/// Quick save: accept incoming files without asking.
+enum _QuickSaveMode {
+  off,
+  favorites,
+  on;
+
+  static _QuickSaveMode of(bool quickSave, bool quickSaveFromFavorites) {
+    if (quickSave) {
+      return _QuickSaveMode.on;
+    }
+    return quickSaveFromFavorites ? _QuickSaveMode.favorites : _QuickSaveMode.off;
+  }
+
+  String get label {
+    return switch (this) {
+      _QuickSaveMode.off => t.receiveTab.quickSave.off,
+      _QuickSaveMode.favorites => t.receiveTab.quickSave.favorites,
+      _QuickSaveMode.on => t.receiveTab.quickSave.on,
+    };
   }
 }
 

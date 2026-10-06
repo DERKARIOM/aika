@@ -70,6 +70,10 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
   bool _requestDialogOpen = false;
   bool _allowUploadsForDialog = true;
 
+  /// A link created from the Receive tab: nothing is offered for download,
+  /// browsers only send files to this device.
+  bool get _receiveOnly => widget.files.isEmpty;
+
   /// Keeps the screen (and the transfer) alive while browsers upload files.
   bool _wakelockEnabled = false;
 
@@ -79,6 +83,10 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // A new share starts with an empty "received via the link" list.
       ref.notifier(webUploadProvider).reset();
+      if (_receiveOnly) {
+        // A link without files only makes sense if browsers can upload.
+        ref.notifier(webUploadProvider).setAllowUploads(true);
+      }
       _init(encrypted: false);
     });
   }
@@ -360,7 +368,12 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
                   children: [
                     Expanded(
                       child: Text(
-                        _t(fr: 'Vos fichiers sont prêts à être partagés', en: 'Your files are ready to be shared'),
+                        _receiveOnly
+                            ? _t(
+                                fr: "Votre lien est prêt : l'autre appareil scanne le code QR ou ouvre le lien pour vous envoyer ses fichiers.",
+                                en: 'Your link is ready: the other device scans the QR code or opens the link to send you its files.',
+                              )
+                            : _t(fr: 'Vos fichiers sont prêts à être partagés', en: 'Your files are ready to be shared'),
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant),
                       ),
                     ),
@@ -384,7 +397,8 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
                 else ...[
                   _QuickAccessCard(
                     url: _urlsFor(localIps.first, serverState.port, webSendState.pin).$2,
-                    onTapScan: () async => _onTapScanQr(context),
+                    // Pairing sends the shared files: nothing to send here.
+                    onTapScan: _receiveOnly ? null : () async => _onTapScanQr(context),
                   ),
                   const SizedBox(height: 20),
                   Text(
@@ -437,23 +451,25 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
                         'local network.',
                   ),
                 ),
-                const SizedBox(height: 20),
-                Text(
-                  t.sendTab.selection.title,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  '${t.sendTab.selection.files(files: widget.files.length)}'
-                  '   •   '
-                  '${t.sendTab.selection.size(size: widget.files.fold(0, (prev, curr) => prev + curr.size).asReadableFileSize)}',
-                  style: TextStyle(color: colorScheme.onSurfaceVariant),
-                ),
-                const SizedBox(height: 10),
-                ...widget.files.map((file) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _FileRow(file: file),
-                )),
+                if (!_receiveOnly) ...[
+                  const SizedBox(height: 20),
+                  Text(
+                    t.sendTab.selection.title,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    '${t.sendTab.selection.files(files: widget.files.length)}'
+                    '   •   '
+                    '${t.sendTab.selection.size(size: widget.files.fold(0, (prev, curr) => prev + curr.size).asReadableFileSize)}',
+                    style: TextStyle(color: colorScheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 10),
+                  ...widget.files.map((file) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _FileRow(file: file),
+                  )),
+                ],
                 const SizedBox(height: 20),
                 _WebUploadsSection(
                   state: webUploads,
@@ -549,20 +565,21 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
                   warning: _encrypted,
                   onChanged: (value) => _init(encrypted: value),
                 ),
-                _OptionSwitchRow(
-                  title: _t(fr: "Autoriser l'envoi de fichiers", en: 'Allow file uploads'),
-                  description: webUploads.allowUploads
-                      ? _t(
-                          fr: 'Les appareils acceptés peuvent vous envoyer des fichiers depuis leur navigateur.',
-                          en: 'Accepted devices can send you files from their browser.',
-                        )
-                      : _t(
-                          fr: 'Le lien permet uniquement de télécharger vos fichiers.',
-                          en: 'The link only allows downloading your files.',
-                        ),
-                  value: webUploads.allowUploads,
-                  onChanged: (value) => ref.notifier(webUploadProvider).setAllowUploads(value),
-                ),
+                if (!_receiveOnly)
+                  _OptionSwitchRow(
+                    title: _t(fr: "Autoriser l'envoi de fichiers", en: 'Allow file uploads'),
+                    description: webUploads.allowUploads
+                        ? _t(
+                            fr: 'Les appareils acceptés peuvent vous envoyer des fichiers depuis leur navigateur.',
+                            en: 'Accepted devices can send you files from their browser.',
+                          )
+                        : _t(
+                            fr: 'Le lien permet uniquement de télécharger vos fichiers.',
+                            en: 'The link only allows downloading your files.',
+                          ),
+                    value: webUploads.allowUploads,
+                    onChanged: (value) => ref.notifier(webUploadProvider).setAllowUploads(value),
+                  ),
                 _OptionSwitchRow(
                   title: t.webSharePage.autoAccept,
                   description: webUploads.allowUploads
@@ -671,7 +688,9 @@ class _IncomingRequestDialog extends StatelessWidget {
 /// device directly instead of using the browser link.
 class _QuickAccessCard extends StatelessWidget {
   final String url;
-  final VoidCallback onTapScan;
+
+  /// `null` hides the "scan a device" shortcut.
+  final VoidCallback? onTapScan;
 
   const _QuickAccessCard({required this.url, required this.onTapScan});
 
@@ -740,12 +759,14 @@ class _QuickAccessCard extends StatelessWidget {
               _t(fr: 'Scannez pour ouvrir le lien', en: 'Scan to open the link'),
               style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12),
             ),
-            const SizedBox(height: 20),
-            OutlinedButton.icon(
-              onPressed: onTapScan,
-              icon: const Icon(Icons.qr_code_scanner),
-              label: Text(t.qrPairing.scan.buttonTooltip),
-            ),
+            if (onTapScan != null) ...[
+              const SizedBox(height: 20),
+              OutlinedButton.icon(
+                onPressed: onTapScan,
+                icon: const Icon(Icons.qr_code_scanner),
+                label: Text(t.qrPairing.scan.buttonTooltip),
+              ),
+            ],
           ],
         ),
       ),
