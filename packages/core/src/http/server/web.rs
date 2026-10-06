@@ -1,17 +1,22 @@
-use crate::http::dto_v2::{InfoResponseDtoV2, PrepareDownloadResponseDtoV2, PROTOCOL_VERSION_V2};
+use crate::http::dto_v2::{
+    InfoResponseDtoV2, PrepareDownloadResponseDtoV2, ProtocolTypeV2, RegisterDtoV2,
+    PROTOCOL_VERSION_V2,
+};
 use crate::http::server::common::error::AppError;
 use crate::http::server::common::pin::check_pin;
 use crate::http::server::common::query::parse_query;
 use crate::http::server::common::response::{full_body, BoxedBody, JsonResponse};
+use crate::http::server::v2::{create_upload_session, WEB_UPLOAD_FINGERPRINT_PREFIX};
 use crate::http::server::{AppState, RequestClientInfo};
-use crate::model::transfer::{FileContent, FileDto};
+use crate::model::discovery::DeviceType;
+use crate::model::transfer::{FileContent, FileDto, FileMetadata};
 use bytes::Bytes;
-use http_body_util::{BodyExt, StreamBody};
+use http_body_util::{BodyExt, Limited, StreamBody};
 use hyper::body::{Frame, Incoming};
 use hyper::{http, Request, Response, StatusCode};
 use lru::LruCache;
 use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::num::NonZeroUsize;
@@ -64,6 +69,18 @@ pub enum WebSendEvent {
         content_tx: oneshot::Sender<FileContent>,
     },
 }
+
+/// Maximum size of the JSON body of a web prepare-upload request.
+const WEB_UPLOAD_MAX_BODY_BYTES: usize = 1024 * 1024;
+
+/// Maximum number of files a web client can announce in one upload batch.
+pub const WEB_UPLOAD_MAX_FILES: usize = 500;
+
+/// Maximum length of an uploaded file name, in UTF-8 bytes (common file system limit).
+const WEB_UPLOAD_MAX_FILE_NAME_BYTES: usize = 255;
+
+/// Maximum length of the client-chosen file IDs and MIME types.
+const WEB_UPLOAD_MAX_FIELD_LEN: usize = 128;
 
 const INDEX_HTML: &str = include_str!("../../../assets/web/index.html");
 const MAIN_JS: &str = include_str!("../../../assets/web/main.js");
@@ -358,6 +375,167 @@ pub(crate) async fn download(
     headers.insert(http::header::CONTENT_LENGTH, http::HeaderValue::from(size));
 
     Ok(response)
+}
+
+/// Body of `POST /api/localsend/v2/web/prepare-upload`.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WebPrepareUploadRequest {
+    /// The files the web client wants to upload, mapped by file ID.
+    files: HashMap<String, WebUploadFile>,
+}
+
+/// A file announced by a web client. Only the fields a browser can know are
+/// accepted; everything else of the resulting [`FileDto`] is set by the server.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WebUploadFile {
+    id: String,
+    file_name: String,
+    size: u64,
+    #[serde(default)]
+    file_type: Option<String>,
+    /// Last modification time (ISO 8601), from `File.lastModified`.
+    #[serde(default)]
+    modified: Option<String>,
+}
+
+/// A web client that opened the share link uploads files to this device
+/// (bidirectional web share).
+///
+/// Only clients whose web send session has been accepted (PIN checked and
+/// accepted by the user or by auto-accept) may upload, and only from the same
+/// IP address. The request is then handed to the regular v2 upload flow:
+/// same single session slot, same application decision, same per-file tokens;
+/// the content is uploaded via `POST /api/localsend/v2/upload` and streamed to
+/// disk without being buffered in memory.
+pub(crate) async fn prepare_upload(
+    req: Request<Incoming>,
+    state: AppState,
+    client_info: RequestClientInfo,
+) -> Result<Response<BoxedBody>, AppError> {
+    let web = require_web(&state)?;
+    let Some(v2) = state.v2.clone() else {
+        return Err(AppError::Message(
+            StatusCode::FORBIDDEN,
+            "Uploads are not available.".to_string(),
+        ));
+    };
+    let query = parse_query(req.uri().query());
+
+    let Some(session_id) = query.get("sessionId") else {
+        return Err(AppError::BadRequest("Missing sessionId.".to_string()));
+    };
+
+    {
+        let sessions = web.sessions.lock().await;
+        let valid = sessions
+            .get(session_id)
+            .is_some_and(|session| session.accepted && session.ip == client_info.ip);
+        if !valid {
+            return Err(AppError::Message(
+                StatusCode::FORBIDDEN,
+                "Invalid sessionId.".to_string(),
+            ));
+        }
+    }
+
+    let body = Limited::new(req.into_body(), WEB_UPLOAD_MAX_BODY_BYTES)
+        .collect()
+        .await
+        .map_err(|_| {
+            AppError::Message(StatusCode::PAYLOAD_TOO_LARGE, "Too many files.".to_string())
+        })?
+        .to_bytes();
+    let payload: WebPrepareUploadRequest = serde_json::from_slice(&body).map_err(|err| {
+        tracing::warn!("Failed to parse web prepare-upload body: {err:#}");
+        AppError::BadRequest("Invalid JSON body".to_string())
+    })?;
+
+    let files = validate_web_upload_files(payload.files)?;
+
+    let info = RegisterDtoV2 {
+        alias: "Web".to_string(),
+        version: PROTOCOL_VERSION_V2.to_string(),
+        device_model: None,
+        device_type: Some(DeviceType::Web),
+        fingerprint: format!("{WEB_UPLOAD_FINGERPRINT_PREFIX}{session_id}"),
+        port: 0,
+        protocol: ProtocolTypeV2::Http,
+        download: false,
+    };
+
+    // Browsers have no client certificate: the web session is the authentication.
+    create_upload_session(v2, client_info.ip, None, info, files).await
+}
+
+/// Validates the files announced by a web client and converts them to [`FileDto`]s.
+fn validate_web_upload_files(
+    files: HashMap<String, WebUploadFile>,
+) -> Result<HashMap<String, FileDto>, AppError> {
+    if files.is_empty() {
+        return Err(AppError::BadRequest("No files provided".to_string()));
+    }
+    if files.len() > WEB_UPLOAD_MAX_FILES {
+        return Err(AppError::Message(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "Too many files.".to_string(),
+        ));
+    }
+
+    files
+        .into_iter()
+        .map(|(key, file)| {
+            if key != file.id || !is_valid_field(&file.id) {
+                return Err(AppError::BadRequest("Invalid file id.".to_string()));
+            }
+            if !is_valid_upload_file_name(&file.file_name) {
+                return Err(AppError::Message(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "Invalid file name.".to_string(),
+                ));
+            }
+            let file_type = file
+                .file_type
+                .filter(|t| !t.is_empty() && is_valid_field(t))
+                .unwrap_or_else(|| "application/octet-stream".to_string());
+            let modified = file.modified.filter(|m| {
+                m.len() <= WEB_UPLOAD_MAX_FIELD_LEN && !m.chars().any(char::is_control)
+            });
+            let dto = FileDto {
+                id: file.id,
+                file_name: file.file_name,
+                size: file.size,
+                file_type,
+                sha256: None,
+                // Never forwarded: a preview turns a text file into a "message".
+                preview: None,
+                metadata: modified.map(|modified| FileMetadata {
+                    modified: Some(modified),
+                    accessed: None,
+                }),
+            };
+            Ok((key, dto))
+        })
+        .collect()
+}
+
+fn is_valid_field(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= WEB_UPLOAD_MAX_FIELD_LEN
+        && !value.chars().any(char::is_control)
+}
+
+/// A web upload is always a single file: no directories, no path traversal.
+/// Platform-specific characters (e.g. `:` on Windows) are legalized later by
+/// the application when choosing the destination path.
+pub fn is_valid_upload_file_name(name: &str) -> bool {
+    !name.trim().is_empty()
+        && name.len() <= WEB_UPLOAD_MAX_FILE_NAME_BYTES
+        && name != "."
+        && name != ".."
+        && !name.contains(['/', '\\'])
+        && !name.chars().any(char::is_control)
 }
 
 fn require_web(state: &AppState) -> Result<Arc<WebPageState>, AppError> {

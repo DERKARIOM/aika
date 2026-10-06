@@ -455,6 +455,9 @@ async fn handle_request_inner(mut req: Request<Incoming>) -> Result<Response<Box
         (&Method::GET, "/api/localsend/v2/download") => {
             web::download(req, state, client_info).await
         }
+        (&Method::POST, "/api/localsend/v2/web/prepare-upload") => {
+            web::prepare_upload(req, state, client_info).await
+        }
         (&Method::POST, "/api/localsend/v2/register") => {
             if !v2_enabled {
                 return Err(AppError::Status(StatusCode::NOT_FOUND));

@@ -268,7 +268,7 @@ async fn test_web_page() {
 
     let response = client.get(&base_url).send().await.unwrap();
     assert_eq!(response.status().as_u16(), 200);
-    assert!(response.text().await.unwrap().contains("LocalSend"));
+    assert!(response.text().await.unwrap().contains("Aika"));
 
     let response = client
         .get(format!("{base_url}/main.js"))

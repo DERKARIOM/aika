@@ -21,6 +21,7 @@ import 'package:localsend_app/provider/network/nearby_devices_provider.dart';
 import 'package:localsend_app/provider/network/send_provider.dart';
 import 'package:localsend_app/provider/network/server/server_provider.dart';
 import 'package:localsend_app/provider/network/server/server_utils.dart';
+import 'package:localsend_app/provider/network/server/web_upload_provider.dart';
 import 'package:localsend_app/provider/progress_provider.dart';
 import 'package:localsend_app/provider/receive_history_provider.dart';
 import 'package:localsend_app/provider/security_provider.dart';
@@ -80,6 +81,16 @@ class ReceiveController {
     // self-reported fingerprint in the JSON payload which is only used as fallback
     // when encryption is disabled.
     final senderFingerprint = event.certFingerprint ?? event.info.fingerprint;
+
+    // Files sent by a browser through the web share link: handled without
+    // any "accept files?" UI since the host already accepted that browser.
+    // The marker is set by the Rust server only and comes without a client
+    // certificate (browsers have none).
+    final webSessionId = event.certFingerprint == null ? webUploadSessionIdOf(event.info.fingerprint) : null;
+    if (webSessionId != null) {
+      await _handleWebPrepareUpload(event: event, files: files, webSessionId: webSessionId);
+      return;
+    }
 
     // Chat messages/media/typing/receipts are smuggled through this very
     // same `prepare-upload` request as a small reserved-name file (see
@@ -243,6 +254,98 @@ class ReceiveController {
     Routerino.context.push(() => ReceivePage(receiveProvider));
   }
 
+  /// Handles files a browser uploads through the web share link
+  /// (bidirectional web share, see `web::prepare_upload` in the Rust core).
+  ///
+  /// The Rust server already checked that the browser holds an accepted web
+  /// send session from the same IP address. This method additionally checks
+  /// that this session is still known and that uploads are allowed, then
+  /// accepts every file at once: they are written to the regular destination
+  /// directory by [onFileUpload], streamed to disk by the Rust server, with
+  /// conflicting names renamed (never overwritten).
+  Future<void> _handleWebPrepareUpload({
+    required HttpServerPrepareUploadEvent event,
+    required Map<String, FileDto> files,
+    required String webSessionId,
+  }) async {
+    final webSession = server.getStateOrNull()?.webSendState?.sessions[webSessionId];
+    if (webSession == null || webSession.pending || !server.ref.read(webUploadProvider).allowUploads) {
+      _logger.info('Refused a web upload from ${event.ip}: uploads disabled or unknown web session.');
+      _answerPrepareUpload(null);
+      return;
+    }
+
+    if (server.getStateOrNull()?.session != null) {
+      // The Rust server only accepts a new request when its slot is free:
+      // the previous session is over (e.g. finished but still displayed).
+      closeSession();
+    }
+
+    final settings = server.ref.read(settingsProvider);
+    final destinationDir = settings.destination ?? await getDefaultDestinationDirectory();
+    final cacheDir = await getCacheDirectory();
+    await _requestStoragePermissionIfNeeded(destinationDir);
+
+    final sender = event.info.toDevice(event.ip, null).copyWith(alias: webSession.deviceInfo);
+    server.setState(
+      (oldState) => oldState?.copyWith(
+        session: ReceiveSessionState(
+          sessionId: event.sessionId,
+          status: SessionStatus.sending,
+          sender: sender,
+          senderAlias: webSession.deviceInfo,
+          files: {
+            for (final file in files.values)
+              file.id: ReceivingFile(
+                file: file,
+                status: FileStatus.queue,
+                token: null,
+                desiredName: file.fileName,
+                path: null,
+                savedToGallery: false,
+                errorMessage: null,
+              ),
+          },
+          startTime: null,
+          endTime: null,
+          destinationDirectory: destinationDir,
+          cacheDirectory: cacheDir,
+          saveToGallery: checkPlatformWithGallery() && settings.saveToGallery,
+          createdDirectories: {},
+        ),
+      ),
+    );
+
+    server.ref
+        .notifier(webUploadProvider)
+        .addSession(
+          sessionId: event.sessionId,
+          files: files.values,
+          deviceInfo: webSession.deviceInfo,
+        );
+
+    _logger.info('Accepted ${files.length} file(s) uploaded from the web share page by ${event.ip}');
+    _answerPrepareUpload(files.keys.toList());
+  }
+
+  /// Whether [session] was created by [_handleWebPrepareUpload].
+  bool _isWebUploadSession(ReceiveSessionState session) {
+    return webUploadSessionIdOf(session.sender.fingerprint) != null;
+  }
+
+  /// Ends a web upload session without any UI (no receive page was shown).
+  void _endWebUploadSession(String sessionId) {
+    server.ref.notifier(webUploadProvider).endSession(sessionId);
+    // Close after the current event: the last response is sent first.
+    unawaited(
+      Future.delayed(Duration.zero, () {
+        if (server.getStateOrNull()?.session?.sessionId == sessionId) {
+          closeSession();
+        }
+      }),
+    );
+  }
+
   /// Handles a `prepare-upload` request that turned out to be a chat
   /// envelope (message/typing/receipt), detected in [onPrepareUpload].
   /// Since chat links exist, only older apps and media messages use this.
@@ -395,9 +498,16 @@ class ReceiveController {
     final shouldSaveToGallery = receiveState.saveToGallery && (fileType == FileType.image || fileType == FileType.video);
 
     final isChatAttachment = server.ref.notifier(chatProvider).isChatSession(event.sessionId);
+    final isWebUpload = _isWebUploadSession(receiveState);
+    if (isWebUpload) {
+      server.ref.notifier(webUploadProvider).markReceiving(sessionId: event.sessionId, fileId: fileId);
+    }
     // Written by us in the app's chat folder: safe to remove if it ends up
     // incomplete (never a file of the user's own folders).
     String? chatPartialPath;
+    // A web upload is always a brand-new file (conflicting names are renamed),
+    // so a partial one can be removed safely too.
+    String? webPartialPath;
     String? filePath;
     bool savedToGallery = false;
     try {
@@ -413,6 +523,9 @@ class ReceiveController {
       );
       if (isChatAttachment && target.fileDescriptor == null) {
         chatPartialPath = target.path;
+      }
+      if (isWebUpload && target.fileDescriptor == null) {
+        webPartialPath = target.path;
       }
 
       // The Rust server writes the file and reports the progress.
@@ -475,6 +588,17 @@ class ReceiveController {
         ),
       );
 
+      if (isWebUpload) {
+        server.ref
+            .notifier(webUploadProvider)
+            .markFinished(
+              sessionId: event.sessionId,
+              fileId: fileId,
+              path: filePath,
+              savedToGallery: savedToGallery,
+            );
+      }
+
       if (isChatAttachment) {
         // Chat attachment: it lives in the conversation, not in the
         // general receive history / gallery-open flow.
@@ -514,6 +638,13 @@ class ReceiveController {
         ),
       );
       _logger.severe('Failed to save file', e, st);
+      if (isWebUpload) {
+        server.ref.notifier(webUploadProvider).markFailed(sessionId: event.sessionId, fileId: fileId, errorMessage: e.toString());
+        // Interrupted or rejected upload: never leave a truncated file behind.
+        if (webPartialPath != null) {
+          unawaited(_deletePartialFile(webPartialPath));
+        }
+      }
       if (isChatAttachment) {
         server.ref.notifier(chatProvider).onAttachmentFailed(fileId: fileId);
         // Cancelled or broken transfer: the sender sends it again from
@@ -564,6 +695,14 @@ class ReceiveController {
         return;
       }
 
+      if (isWebUpload) {
+        // No receive/progress page was shown: the web share page displays
+        // the result. Never navigate away from it (quick save would).
+        _endWebUploadSession(event.sessionId);
+        _logger.info('Received all files from the web share page.');
+        return;
+      }
+
       final settings = server.ref.read(settingsProvider);
       bool quickSave = settings.quickSave && server.getState().session?.message == null;
       final quickSaveFromFavorites = settings.quickSaveFromFavorites && server.getState().session?.message == null;
@@ -605,6 +744,14 @@ class ReceiveController {
       return;
     }
 
+    if (_isWebUploadSession(receiveSession)) {
+      // The browser cancelled the rest of its batch, or all files are done.
+      if (event.reason == SessionEndReasonV2.cancelled) {
+        _endWebUploadSession(event.sessionId);
+      }
+      return;
+    }
+
     switch (event.reason) {
       case SessionEndReasonV2.finished:
         // Already handled when the last file finished.
@@ -617,6 +764,11 @@ class ReceiveController {
   /// The sender aborted the request while the user was still deciding.
   void onPrepareUploadAborted(HttpServerPrepareUploadAbortedEvent event) {
     final receiveSession = server.getStateOrNull()?.session;
+    if (receiveSession != null && receiveSession.sessionId == event.sessionId && _isWebUploadSession(receiveSession)) {
+      // The browser left before the session was created.
+      _endWebUploadSession(event.sessionId);
+      return;
+    }
     if (receiveSession == null || receiveSession.sessionId != event.sessionId || receiveSession.status != SessionStatus.waiting) {
       return;
     }
@@ -717,33 +869,40 @@ class ReceiveController {
       },
     );
 
-    if (checkPlatform([TargetPlatform.android, TargetPlatform.iOS])) {
-      // Legacy (pre-Scoped-Storage) permission request, historically gated on "is this
-      // path the Download folder". Left as-is for a manually-picked SAF/content:// folder
-      // (out of scope here; already harmless there, wrapped in try/catch). Extended only to
-      // also skip the request for the new MediaStore-backed default
-      // (kAndroidDefaultDownloadsMarker, see directories.dart), which needs no storage
-      // permission and previously never matched the old '/storage/emulated/0/Download'
-      // hardcoded check now that getDefaultDestinationDirectory() no longer returns it.
-      final isLegacyNonDownloadsDestination =
-          session.destinationDirectory != kAndroidDefaultDownloadsMarker && !session.destinationDirectory.startsWith('/storage/emulated/0/Download');
-      if (checkPlatform([TargetPlatform.android]) && isLegacyNonDownloadsDestination) {
-        // Android requires more permission to save files outside of the Download directory
-        try {
-          final result = await Permission.storage.request();
-          _logger.info('storage permission: $result');
-        } catch (e) {
-          _logger.warning('Could not request storage permission', e);
-        }
-      }
+    await _requestStoragePermissionIfNeeded(session.destinationDirectory);
+
+    server.ref.redux(parentIsolateProvider).dispatch(IsolateHttpServerPrepareUploadDecisionAction(acceptedFileIds: fileNameMap.keys.toList()));
+  }
+
+  /// Requests the legacy storage permission on mobile before files are written
+  /// to [destinationDirectory]. Harmless when it is not needed.
+  Future<void> _requestStoragePermissionIfNeeded(String destinationDirectory) async {
+    if (!checkPlatform([TargetPlatform.android, TargetPlatform.iOS])) {
+      return;
+    }
+    // Legacy (pre-Scoped-Storage) permission request, historically gated on "is this
+    // path the Download folder". Left as-is for a manually-picked SAF/content:// folder
+    // (out of scope here; already harmless there, wrapped in try/catch). Extended only to
+    // also skip the request for the new MediaStore-backed default
+    // (kAndroidDefaultDownloadsMarker, see directories.dart), which needs no storage
+    // permission and previously never matched the old '/storage/emulated/0/Download'
+    // hardcoded check now that getDefaultDestinationDirectory() no longer returns it.
+    final isLegacyNonDownloadsDestination =
+        destinationDirectory != kAndroidDefaultDownloadsMarker && !destinationDirectory.startsWith('/storage/emulated/0/Download');
+    if (checkPlatform([TargetPlatform.android]) && isLegacyNonDownloadsDestination) {
+      // Android requires more permission to save files outside of the Download directory
       try {
-        await Permission.storage.request();
+        final result = await Permission.storage.request();
+        _logger.info('storage permission: $result');
       } catch (e) {
         _logger.warning('Could not request storage permission', e);
       }
     }
-
-    server.ref.redux(parentIsolateProvider).dispatch(IsolateHttpServerPrepareUploadDecisionAction(acceptedFileIds: fileNameMap.keys.toList()));
+    try {
+      await Permission.storage.request();
+    } catch (e) {
+      _logger.warning('Could not request storage permission', e);
+    }
   }
 
   void declineFileRequest() {
@@ -823,6 +982,9 @@ class ReceiveController {
       ),
     );
     server.ref.notifier(progressProvider).removeSession(sessionId);
+    // Harmless no-op unless this was a web upload session: files never
+    // received are shown as cancelled instead of pending forever.
+    server.ref.notifier(webUploadProvider).endSession(sessionId);
     // Harmless no-op unless this was a chat-media session: makes sure the
     // "belongs to chat" flag never gets stuck on an aborted/cancelled
     // transfer (see `_handleChatPrepareUpload`/`onFileUpload`).
@@ -893,7 +1055,7 @@ Future<void> _verifyWrittenSize(FileSaveTarget target, {required int expected}) 
   }
 }
 
-/// Best effort: an incomplete chat attachment left on disk is harmless.
+/// Best effort: removes an incomplete chat attachment or web upload.
 Future<void> _deletePartialFile(String path) async {
   try {
     final file = File(path);
@@ -901,6 +1063,6 @@ Future<void> _deletePartialFile(String path) async {
       await file.delete();
     }
   } catch (e) {
-    _logger.warning('Could not delete partial chat attachment $path', e);
+    _logger.warning('Could not delete partial file $path', e);
   }
 }

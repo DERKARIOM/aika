@@ -1,3 +1,4 @@
+use crate::http::dto_v2::RegisterDtoV2 as SenderInfoV2;
 use crate::http::dto_v2::{
     InfoResponseDtoV2, PrepareUploadRequestDtoV2, PrepareUploadResponseDtoV2, RegisterDtoV2,
     RegisterResponseDtoV2, PROTOCOL_VERSION_V2,
@@ -7,7 +8,7 @@ use crate::http::server::common::error::AppError;
 use crate::http::server::common::pin::check_pin;
 use crate::http::server::common::query::parse_query;
 use crate::http::server::common::response::{empty_body, BoxedBody, JsonResponse};
-use crate::http::server::common::save::FileUploadTarget;
+use crate::http::server::common::save::{FileUploadTarget, SaveFailure};
 use crate::http::server::common::session::{
     FileStatusV2, SessionFileV2, SessionStateV2, UploadSessionV2,
 };
@@ -20,6 +21,14 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use tokio::sync::oneshot;
 use uuid::Uuid;
+
+/// Prefix of the `info.fingerprint` of upload sessions created by a web
+/// browser through the web share link (`POST /api/localsend/v2/web/prepare-upload`),
+/// followed by the ID of the (already accepted) web send session.
+///
+/// It is set by the server itself and refused on the public prepare-upload
+/// endpoint, so the application can trust it to recognize web uploads.
+pub const WEB_UPLOAD_FINGERPRINT_PREFIX: &str = "aika-web-upload:";
 
 /// Events emitted by the v2 HTTP server that must be handled by the application.
 #[derive(Debug)]
@@ -219,7 +228,40 @@ pub(crate) async fn prepare_upload(
         .collect_to_json::<PrepareUploadRequestDtoV2>()
         .await?;
 
-    if payload.files.is_empty() {
+    // Reserved for uploads from the web share page: only the server sets it.
+    if payload
+        .info
+        .fingerprint
+        .starts_with(WEB_UPLOAD_FINGERPRINT_PREFIX)
+    {
+        return Err(AppError::BadRequest("Invalid fingerprint".to_string()));
+    }
+
+    let cert_fingerprint = client_info.cert_fingerprint();
+    create_upload_session(
+        v2,
+        client_info.ip,
+        cert_fingerprint,
+        payload.info,
+        payload.files,
+    )
+    .await
+}
+
+/// Claims the single session slot, asks the application which files to
+/// accept and creates the upload session.
+///
+/// Shared by the v2 `prepare-upload` endpoint and the web share page upload
+/// endpoint, so both go through the exact same session, token and
+/// decision handling.
+pub(crate) async fn create_upload_session(
+    v2: Arc<V2State>,
+    sender_ip: IpAddr,
+    cert_fingerprint: Option<String>,
+    info: SenderInfoV2,
+    offered_files: HashMap<String, FileDto>,
+) -> Result<Response<BoxedBody>, AppError> {
+    if offered_files.is_empty() {
         return Err(AppError::BadRequest("No files provided".to_string()));
     }
 
@@ -243,10 +285,10 @@ pub(crate) async fn prepare_upload(
     let (decision_tx, decision_rx) = oneshot::channel();
     let event = ServerEventV2::PrepareUpload {
         session_id: session_id.clone(),
-        ip: client_info.ip,
-        info: payload.info,
-        cert_fingerprint: client_info.cert_fingerprint(),
-        files: payload.files.clone(),
+        ip: sender_ip,
+        info,
+        cert_fingerprint,
+        files: offered_files.clone(),
         decision_tx,
     };
     if v2.event_tx.send(event).await.is_err() {
@@ -268,8 +310,7 @@ pub(crate) async fn prepare_upload(
         PrepareUploadDecisionV2::Accept(ids) => ids,
     };
 
-    let files: HashMap<String, SessionFileV2> = payload
-        .files
+    let files: HashMap<String, SessionFileV2> = offered_files
         .into_iter()
         .filter(|(id, _)| accepted_ids.contains(id))
         .map(|(id, dto)| {
@@ -299,7 +340,7 @@ pub(crate) async fn prepare_upload(
         let mut slot = v2.session.lock().await;
         *slot = Some(SessionStateV2::Active(UploadSessionV2 {
             session_id: session_id.clone(),
-            sender_ip: client_info.ip,
+            sender_ip,
             files,
         }));
     }
@@ -377,13 +418,21 @@ pub(crate) async fn upload(
         return Err(AppError::Status(StatusCode::INTERNAL_SERVER_ERROR));
     };
 
-    let success = common::save::save_req_to_target(req, target, file_size).await;
+    let result = common::save::save_req_to_target(req, target, file_size).await;
 
-    upload_guard.finish(success).await;
+    upload_guard.finish(result.is_ok()).await;
 
-    match success {
-        true => Ok(Response::new(empty_body())),
-        false => Err(AppError::Status(StatusCode::INTERNAL_SERVER_ERROR)),
+    match result {
+        Ok(()) => Ok(Response::new(empty_body())),
+        Err(SaveFailure::StorageFull) => Err(AppError::Message(
+            StatusCode::INSUFFICIENT_STORAGE,
+            "Insufficient storage".to_string(),
+        )),
+        Err(SaveFailure::FileTooLarge) => Err(AppError::Message(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "File too large for the destination".to_string(),
+        )),
+        Err(SaveFailure::Other) => Err(AppError::Status(StatusCode::INTERNAL_SERVER_ERROR)),
     }
 }
 

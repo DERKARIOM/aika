@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:localsend_app/config/theme.dart';
@@ -8,8 +11,13 @@ import 'package:localsend_app/pages/qr_pairing_scanner_page.dart';
 import 'package:localsend_app/provider/local_ip_provider.dart';
 import 'package:localsend_app/provider/network/send_provider.dart';
 import 'package:localsend_app/provider/network/server/server_provider.dart';
+import 'package:localsend_app/provider/network/server/web_upload_provider.dart';
+import 'package:localsend_app/provider/progress_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/util/file_size_helper.dart';
+import 'package:localsend_app/util/file_type_ext.dart';
+import 'package:localsend_app/util/native/open_file.dart';
+import 'package:localsend_app/util/native/open_folder.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/ui/snackbar.dart';
 import 'package:localsend_app/widget/custom_basic_appbar.dart';
@@ -20,11 +28,13 @@ import 'package:localsend_app/widget/file_thumbnail.dart';
 import 'package:localsend_app/widget/responsive_list_view.dart';
 import 'package:localsend_isolates/model/device.dart';
 import 'package:localsend_isolates/util/sleep.dart';
+import 'package:path/path.dart' as path;
 import 'package:pretty_qr_code/pretty_qr_code.dart';
 import 'package:refena_flutter/refena_flutter.dart';
 import 'package:routerino/routerino.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 enum _ServerState { initializing, running, error, stopping }
 
@@ -58,13 +68,67 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
   final Set<String> _notifiedSessionIds = {};
   final List<WebSendSession> _pendingRequestDialogQueue = [];
   bool _requestDialogOpen = false;
+  bool _allowUploadsForDialog = true;
+
+  /// Keeps the screen (and the transfer) alive while browsers upload files.
+  bool _wakelockEnabled = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // A new share starts with an empty "received via the link" list.
+      ref.notifier(webUploadProvider).reset();
       _init(encrypted: false);
     });
+  }
+
+  @override
+  void dispose() {
+    if (_wakelockEnabled) {
+      unawaited(WakelockPlus.disable().catchError((_) {}));
+    }
+    super.dispose();
+  }
+
+  /// Enables the wakelock only while uploads are running (battery friendly).
+  void _syncWakelock(bool uploading) {
+    if (uploading == _wakelockEnabled) {
+      return;
+    }
+    _wakelockEnabled = uploading;
+    unawaited((uploading ? WakelockPlus.enable() : WakelockPlus.disable()).catchError((_) {}));
+  }
+
+  /// Asks before stopping the share while browsers are still uploading.
+  Future<bool> _confirmStopWhileReceiving() async {
+    if (!ref.read(webUploadProvider).hasActiveUploads) {
+      return true;
+    }
+    final stop = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.upload_file_rounded),
+        title: Text(_t(fr: 'Réception en cours', en: 'Receiving files')),
+        content: Text(
+          _t(
+            fr: 'Des fichiers sont en cours de réception via le lien. Arrêter le partage interrompra ces transferts.',
+            en: 'Files are being received through the link. Stopping the share will interrupt these transfers.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => context.pop(false),
+            child: Text(t.general.cancel),
+          ),
+          FilledButton(
+            onPressed: () => context.pop(true),
+            child: Text(_t(fr: 'Arrêter le partage', en: 'Stop sharing')),
+          ),
+        ],
+      ),
+    );
+    return stop == true;
   }
 
   void _init({required bool encrypted}) async {
@@ -108,7 +172,8 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
   /// yet), so accepting/rejecting it happens through a dialog the moment it
   /// arrives, instead of the user having to notice and scroll to the
   /// "Requetes" list at the bottom of the page.
-  void _handleIncomingRequests(Iterable<WebSendSession> sessions) {
+  void _handleIncomingRequests(Iterable<WebSendSession> sessions, {required bool allowUploads}) {
+    _allowUploadsForDialog = allowUploads;
     for (final session in sessions) {
       if (session.pending && _notifiedSessionIds.add(session.sessionId)) {
         _pendingRequestDialogQueue.add(session);
@@ -131,7 +196,7 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
       final accepted = await showDialog<bool>(
         context: context,
         barrierDismissible: false,
-        builder: (_) => _IncomingRequestDialog(session: session),
+        builder: (_) => _IncomingRequestDialog(session: session, allowUploads: _allowUploadsForDialog),
       );
       if (accepted == true) {
         ref.notifier(serverProvider).acceptWebSendRequest(session.sessionId);
@@ -197,12 +262,14 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
         content: Text(
           _t(
             fr:
-                "Ce lien permet à n'importe qui sur votre réseau local d'ouvrir cette page dans un navigateur "
-                'et de télécharger les fichiers sélectionnés, sans avoir besoin d\'installer Aika. '
-                'Il reste actif tant que cet écran est ouvert.',
+                "Ce lien permet à n'importe qui sur votre réseau local d'ouvrir cette page dans un navigateur, "
+                'de télécharger les fichiers sélectionnés et, si vous l\'autorisez, de vous envoyer ses propres '
+                'fichiers, sans avoir besoin d\'installer Aika. Les fichiers reçus sont enregistrés dans votre '
+                'dossier de réception. Le lien reste actif tant que cet écran est ouvert.',
             en:
-                'This link lets anyone on your local network open this page in a browser and download the '
-                'selected files, without needing to install Aika. It stays active as long as this screen is open.',
+                'This link lets anyone on your local network open this page in a browser, download the selected '
+                'files and, if you allow it, send you their own files, without needing to install Aika. Received '
+                'files are saved to your receive folder. It stays active as long as this screen is open.',
           ),
         ),
         actions: [
@@ -220,6 +287,9 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
     return PopScope(
       onPopInvokedWithResult: (_, _) async {
         if (_stateEnum != _ServerState.running) {
+          return;
+        }
+        if (!await _confirmStopWhileReceiving()) {
           return;
         }
 
@@ -276,9 +346,11 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
               return const Center(child: CircularProgressIndicator());
             }
             final networkState = context.watch(localIpProvider);
+            final webUploads = context.watch(webUploadProvider);
             final colorScheme = Theme.of(context).colorScheme;
             final localIps = networkState.localIps;
-            _handleIncomingRequests(webSendState.sessions.values);
+            _handleIncomingRequests(webSendState.sessions.values, allowUploads: webUploads.allowUploads);
+            _syncWakelock(webUploads.hasActiveUploads);
 
             return ResponsiveListView(
               padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 20),
@@ -383,6 +455,11 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
                   child: _FileRow(file: file),
                 )),
                 const SizedBox(height: 20),
+                _WebUploadsSection(
+                  state: webUploads,
+                  onClear: () => ref.notifier(webUploadProvider).clearCompleted(),
+                ),
+                const SizedBox(height: 20),
                 Text(t.webSharePage.requests, style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 10),
                 if (webSendState.sessions.isEmpty)
@@ -473,11 +550,30 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
                   onChanged: (value) => _init(encrypted: value),
                 ),
                 _OptionSwitchRow(
+                  title: _t(fr: "Autoriser l'envoi de fichiers", en: 'Allow file uploads'),
+                  description: webUploads.allowUploads
+                      ? _t(
+                          fr: 'Les appareils acceptés peuvent vous envoyer des fichiers depuis leur navigateur.',
+                          en: 'Accepted devices can send you files from their browser.',
+                        )
+                      : _t(
+                          fr: 'Le lien permet uniquement de télécharger vos fichiers.',
+                          en: 'The link only allows downloading your files.',
+                        ),
+                  value: webUploads.allowUploads,
+                  onChanged: (value) => ref.notifier(webUploadProvider).setAllowUploads(value),
+                ),
+                _OptionSwitchRow(
                   title: t.webSharePage.autoAccept,
-                  description: _t(
-                    fr: 'Les demandes de téléchargement sont acceptées sans confirmation.',
-                    en: 'Download requests are accepted without confirmation.',
-                  ),
+                  description: webUploads.allowUploads
+                      ? _t(
+                          fr: 'Les appareils qui ouvrent le lien sont acceptés sans confirmation (téléchargement et envoi).',
+                          en: 'Devices opening the link are accepted without confirmation (download and upload).',
+                        )
+                      : _t(
+                          fr: 'Les demandes de téléchargement sont acceptées sans confirmation.',
+                          en: 'Download requests are accepted without confirmation.',
+                        ),
                   value: webSendState.autoAccept,
                   onChanged: (value) => ref.notifier(serverProvider).setWebSendAutoAccept(value),
                 ),
@@ -525,8 +621,9 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
 /// status view (and a fallback if a dialog is ever missed).
 class _IncomingRequestDialog extends StatelessWidget {
   final WebSendSession session;
+  final bool allowUploads;
 
-  const _IncomingRequestDialog({required this.session});
+  const _IncomingRequestDialog({required this.session, required this.allowUploads});
 
   @override
   Widget build(BuildContext context) {
@@ -534,11 +631,25 @@ class _IncomingRequestDialog extends StatelessWidget {
     return AlertDialog(
       icon: Icon(Icons.download_for_offline_outlined, color: colorScheme.primary, size: 36),
       title: Text(_t(fr: 'Nouvelle demande de téléchargement', en: 'New download request')),
-      content: ListTile(
-        contentPadding: EdgeInsets.zero,
-        leading: const CircleAvatar(child: Icon(Icons.devices_other)),
-        title: Text(session.deviceInfo, style: Theme.of(context).textTheme.titleMedium),
-        subtitle: Text(session.ip),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const CircleAvatar(child: Icon(Icons.devices_other)),
+            title: Text(session.deviceInfo, style: Theme.of(context).textTheme.titleMedium),
+            subtitle: Text(session.ip),
+          ),
+          if (allowUploads)
+            Text(
+              _t(
+                fr: 'Cet appareil pourra télécharger vos fichiers et vous envoyer les siens.',
+                en: 'This device will be able to download your files and send you its own.',
+              ),
+              style: TextStyle(color: colorScheme.onSurfaceVariant),
+            ),
+        ],
       ),
       actions: [
         TextButton(
@@ -847,4 +958,231 @@ class _OptionSwitchRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// "Received via the link": files browsers uploaded to this device, with
+/// their live progress, status and quick actions (open file / folder).
+class _WebUploadsSection extends StatelessWidget {
+  final WebUploadState state;
+  final VoidCallback onClear;
+
+  const _WebUploadsSection({required this.state, required this.onClear});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final entries = state.entries;
+    final finished = entries.where((e) => e.status == WebUploadStatus.finished).length;
+    final hasCompleted = entries.any((e) => !e.isActive);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                _t(fr: 'Reçus via le lien', en: 'Received via the link'),
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            if (hasCompleted)
+              TextButton(
+                onPressed: onClear,
+                child: Text(_t(fr: 'Effacer', en: 'Clear')),
+              ),
+          ],
+        ),
+        const SizedBox(height: 5),
+        if (!state.allowUploads)
+          Text(
+            _t(fr: "L'envoi depuis le navigateur est désactivé.", en: 'Uploads from the browser are disabled.'),
+            style: TextStyle(color: colorScheme.onSurfaceVariant),
+          )
+        else if (entries.isEmpty)
+          Text(
+            _t(
+              fr: 'Les fichiers envoyés depuis un navigateur apparaîtront ici.',
+              en: 'Files sent from a browser will appear here.',
+            ),
+            style: TextStyle(color: colorScheme.onSurfaceVariant),
+          )
+        else
+          Text(
+            _t(fr: '$finished fichier(s) reçu(s)', en: '$finished file(s) received'),
+            style: TextStyle(color: colorScheme.onSurfaceVariant),
+          ),
+        const SizedBox(height: 10),
+        ...entries.map(
+          (entry) => Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _WebUploadRow(entry: entry),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _WebUploadRow extends StatelessWidget {
+  final WebUploadEntry entry;
+
+  const _WebUploadRow({required this.entry});
+
+  Future<void> _open(BuildContext context) async {
+    final filePath = entry.path;
+    if (filePath == null) {
+      return;
+    }
+    await openFile(context, entry.fileType, filePath);
+  }
+
+  /// Plain paths only: Android content URIs are opened directly instead.
+  bool get _canShowInFolder {
+    final filePath = entry.path;
+    return entry.status == WebUploadStatus.finished && filePath != null && !filePath.startsWith('content://');
+  }
+
+  Future<void> _showInFolder() async {
+    final filePath = entry.path;
+    if (filePath == null) {
+      return;
+    }
+    await openFolder(folderPath: File(filePath).parent.path, fileName: path.basename(filePath));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final (statusText, statusColor) = switch (entry.status) {
+      WebUploadStatus.pending => (_t(fr: 'En attente', en: 'Pending'), colorScheme.onSurfaceVariant),
+      WebUploadStatus.receiving => (_t(fr: 'Réception…', en: 'Receiving…'), colorScheme.primary),
+      WebUploadStatus.finished =>
+        entry.savedToGallery ? (_t(fr: 'Enregistré dans la galerie', en: 'Saved to gallery'), colorScheme.primary) : (_t(fr: 'Reçu', en: 'Received'), colorScheme.primary),
+      WebUploadStatus.failed => (_t(fr: 'Échec', en: 'Failed'), colorScheme.error),
+      WebUploadStatus.cancelled => (_t(fr: 'Annulé', en: 'Cancelled'), colorScheme.onSurfaceVariant),
+    };
+    final canOpen = entry.status == WebUploadStatus.finished && entry.path != null;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: Material(
+        color: colorScheme.surfaceContainerHigh,
+        child: InkWell(
+          onTap: canOpen ? () async => _open(context) : null,
+          child: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: colorScheme.outlineVariant, width: 1),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: colorScheme.secondaryContainer,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(entry.fileType.icon, color: colorScheme.onSecondaryContainer, size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(entry.fileName, maxLines: 1, overflow: TextOverflow.ellipsis),
+                          Text(
+                            '${entry.size.asReadableFileSize} · ${entry.deviceInfo}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12),
+                          ),
+                          Text(statusText, style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                    if (_canShowInFolder)
+                      IconButton(
+                        tooltip: _t(fr: 'Afficher dans le dossier', en: 'Show in folder'),
+                        onPressed: () async => _showInFolder(),
+                        icon: const Icon(Icons.folder_open_rounded),
+                      ),
+                  ],
+                ),
+                if (entry.status == WebUploadStatus.receiving) ...[
+                  const SizedBox(height: 8),
+                  _WebUploadProgressBar(sessionId: entry.sessionId, fileId: entry.fileId, size: entry.size),
+                ],
+                if (entry.status == WebUploadStatus.failed && entry.errorMessage != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    _humanError(entry.errorMessage!),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: colorScheme.error, fontSize: 12),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Only this widget rebuilds on progress events, not the whole page.
+class _WebUploadProgressBar extends StatelessWidget {
+  final String sessionId;
+  final String fileId;
+  final int size;
+
+  const _WebUploadProgressBar({required this.sessionId, required this.fileId, required this.size});
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = context.watch(progressProvider).getProgress(sessionId: sessionId, fileId: fileId);
+    final colorScheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 6,
+              color: colorScheme.primary,
+              backgroundColor: colorScheme.outlineVariant,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          '${(progress * 100).floor()} % · ${(progress * size).round().asReadableFileSize}',
+          style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12),
+        ),
+      ],
+    );
+  }
+}
+
+/// Turns a low-level save error into a short, actionable message.
+String _humanError(String error) {
+  final lower = error.toLowerCase();
+  if (lower.contains('no space') || lower.contains('storage') || lower.contains('os error 28') || lower.contains('os error 112')) {
+    return _t(fr: 'Espace de stockage insuffisant.', en: 'Not enough storage space.');
+  }
+  if (lower.contains('too large') || lower.contains('os error 27')) {
+    return _t(fr: 'Fichier trop volumineux pour la destination.', en: 'File too large for the destination.');
+  }
+  if (lower.contains('expected') || lower.contains('incomplete') || lower.contains('cancel')) {
+    return _t(fr: 'Transfert interrompu par le navigateur.', en: 'Transfer interrupted by the browser.');
+  }
+  return _t(fr: "Impossible d'enregistrer le fichier.", en: 'Could not save the file.');
 }

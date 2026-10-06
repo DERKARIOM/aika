@@ -464,6 +464,277 @@
     color: var(--aika-text-disabled);
   }
 
+  /* Sections */
+  .exchange {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+
+  .section {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .section-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+  }
+
+  .section-title svg {
+    width: 22px;
+    height: 22px;
+    color: var(--aika-primary-dark);
+    flex-shrink: 0;
+  }
+
+  .count-badge {
+    min-width: 24px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: var(--aika-secondary-container);
+    color: var(--aika-primary-dark);
+    font-size: 0.75rem;
+    font-weight: 800;
+    text-align: center;
+  }
+
+  .section-empty {
+    margin: 0;
+    padding: 18px;
+    text-align: center;
+    color: var(--aika-text-variant);
+    font-size: 0.88rem;
+    background: var(--aika-card);
+    border: 1px dashed var(--aika-outline-variant);
+    border-radius: var(--aika-radius-md);
+  }
+
+  .btn-text {
+    border: none;
+    background: transparent;
+    color: var(--aika-primary-dark);
+    font-size: 0.82rem;
+    font-weight: 700;
+    padding: 6px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+  }
+
+  .btn-text:hover {
+    background: var(--aika-secondary-container);
+  }
+
+  .btn-text.danger {
+    color: var(--aika-error);
+  }
+
+  /* Drop zone */
+  .drop-zone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 26px 20px;
+    text-align: center;
+    background: var(--aika-card);
+    border: 2px dashed var(--aika-outline);
+    border-radius: var(--aika-radius-lg);
+    color: var(--aika-text-variant);
+    transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
+  }
+
+  .drop-zone.is-dragover {
+    border-color: var(--aika-primary);
+    background: var(--aika-secondary-container);
+    transform: scale(1.01);
+  }
+
+  .drop-zone > svg {
+    width: 40px;
+    height: 40px;
+    color: var(--aika-primary);
+  }
+
+  .drop-zone p {
+    margin: 0;
+    font-size: 0.9rem;
+  }
+
+  .drop-zone .btn-primary {
+    margin-left: 0;
+  }
+
+  .drop-hint {
+    font-size: 0.78rem !important;
+    color: var(--aika-text-disabled);
+  }
+
+  /* Global upload progress */
+  .upload-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px 16px;
+    background: var(--aika-card);
+    border: 1px solid var(--aika-outline-variant);
+    border-radius: var(--aika-radius-md);
+    box-shadow: var(--aika-shadow);
+  }
+
+  .upload-summary-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 0.85rem;
+  }
+
+  .upload-summary-text {
+    font-weight: 700;
+  }
+
+  .upload-summary-detail {
+    color: var(--aika-text-variant);
+    font-size: 0.78rem;
+  }
+
+  .progress {
+    width: 100%;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--aika-outline-variant);
+    overflow: hidden;
+  }
+
+  .progress-bar {
+    height: 100%;
+    width: 0;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--aika-primary) 0%, var(--aika-turquoise) 100%);
+    transition: width 0.2s linear;
+  }
+
+  .progress.is-error .progress-bar {
+    background: var(--aika-error);
+  }
+
+  .progress.is-indeterminate .progress-bar {
+    width: 35% !important;
+    animation: indeterminate 1.2s ease-in-out infinite;
+  }
+
+  @keyframes indeterminate {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(300%); }
+  }
+
+  /* Upload rows */
+  .upload-list,
+  .sent-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .upload-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 14px;
+    background: var(--aika-card);
+    border: 1px solid var(--aika-outline-variant);
+    border-radius: var(--aika-radius-sm);
+    box-shadow: var(--aika-shadow);
+    min-width: 0;
+  }
+
+  .upload-row-main {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    background: var(--aika-secondary-container);
+    color: var(--aika-text-variant);
+    white-space: nowrap;
+  }
+
+  .status-chip[data-status="uploading"] {
+    color: var(--aika-primary-dark);
+  }
+
+  .status-chip[data-status="done"] {
+    background: var(--aika-primary);
+    color: var(--aika-card);
+  }
+
+  .status-chip[data-status="error"] {
+    background: var(--aika-error-container);
+    color: var(--aika-error);
+  }
+
+  .row-error {
+    margin: 0;
+    font-size: 0.78rem;
+    color: var(--aika-error);
+  }
+
+  .icon-btn {
+    flex-shrink: 0;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 1px solid var(--aika-outline-variant);
+    background: transparent;
+    color: var(--aika-text-variant);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+
+  .icon-btn:hover {
+    background: var(--aika-secondary-container);
+    color: var(--aika-text);
+  }
+
+  .icon-btn svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .sent-row .file-icon {
+    background: var(--aika-primary);
+    color: var(--aika-card);
+  }
+
   /* Responsive tweaks */
   @media (max-width: 480px) {
     .page-title {
@@ -500,8 +771,8 @@
 
   <main class="content">
     <div class="hero">
-      <h1 class="page-title" data-i18n="title">Réception de fichiers</h1>
-      <p class="page-desc" data-i18n="description">Téléchargez les fichiers partagés avec vous</p>
+      <h1 class="page-title" data-i18n="title">Échange de fichiers</h1>
+      <p class="page-desc" data-i18n="description">Téléchargez les fichiers partagés et envoyez les vôtres</p>
     </div>
 
     <div id="status-banner" class="status-banner" hidden></div>
@@ -509,16 +780,6 @@
     <div id="loading-state" class="state-block">
       <div class="spinner" aria-hidden="true"></div>
       <p id="loading-text" data-i18n="waiting">En attente de réponse…</p>
-    </div>
-
-    <div id="empty-state" class="state-block" hidden>
-      <svg class="state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M3 7l1.5-3h15L21 7"/>
-        <path d="M3 7v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7"/>
-        <path d="M3 7h18"/>
-        <path d="M9.5 12h5" stroke-dasharray="0.1 4" stroke-linecap="round"/>
-      </svg>
-      <p data-i18n="empty">Aucun fichier disponible pour le moment</p>
     </div>
 
     <div id="error-state" class="state-block" hidden>
@@ -530,27 +791,96 @@
       <p id="error-text"></p>
     </div>
 
-    <div id="files-section" class="files-section" hidden>
-      <div class="files-summary">
-        <div class="summary-item">
-          <span class="summary-value" id="files-count">0</span>
-          <span class="summary-label" data-i18n="filesLabel">Fichiers</span>
+    <div id="exchange" class="exchange" hidden>
+      <!-- 1. Files offered by the host (download) -->
+      <section id="files-section" class="section" aria-labelledby="available-title">
+        <div class="section-header">
+          <h2 class="section-title" id="available-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 4v11"/><path d="M8 11l4 4 4-4"/><path d="M5 19h14"/>
+            </svg>
+            <span data-i18n="availableTitle">Fichiers disponibles</span>
+          </h2>
         </div>
-        <div class="summary-item">
-          <span class="summary-value" id="total-size">0 B</span>
-          <span class="summary-label" data-i18n="totalSizeLabel">Taille totale</span>
-        </div>
-        <button type="button" id="download-all-btn" class="btn-primary" hidden>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M12 3v12"/>
-            <path d="M7 10l5 5 5-5"/>
-            <path d="M4 19h16"/>
-          </svg>
-          <span data-i18n="downloadAll">Tout télécharger</span>
-        </button>
-      </div>
 
-      <div id="file-grid" class="file-grid"></div>
+        <div id="files-summary" class="files-summary">
+          <div class="summary-item">
+            <span class="summary-value" id="files-count">0</span>
+            <span class="summary-label" data-i18n="filesLabel">Fichiers</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-value" id="total-size">0 B</span>
+            <span class="summary-label" data-i18n="totalSizeLabel">Taille totale</span>
+          </div>
+          <button type="button" id="download-all-btn" class="btn-primary" hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3v12"/>
+              <path d="M7 10l5 5 5-5"/>
+              <path d="M4 19h16"/>
+            </svg>
+            <span data-i18n="downloadAll">Tout télécharger</span>
+          </button>
+        </div>
+
+        <p id="files-empty" class="section-empty" data-i18n="empty" hidden>Aucun fichier disponible pour le moment</p>
+        <div id="file-grid" class="file-grid"></div>
+      </section>
+
+      <!-- 2. Upload files to the host -->
+      <section id="upload-section" class="section" aria-labelledby="upload-title">
+        <div class="section-header">
+          <h2 class="section-title" id="upload-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 20V9"/><path d="M8 13l4-4 4 4"/><path d="M5 5h14"/>
+            </svg>
+            <span data-i18n="uploadTitle">Envoyer des fichiers</span>
+          </h2>
+        </div>
+
+        <div id="drop-zone" class="drop-zone">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 8.5a4 4 0 0 1-.5 9.5"/>
+            <path d="M12 12v8"/>
+            <path d="M9 15l3-3 3 3"/>
+          </svg>
+          <p data-i18n="dropHint">Glissez-déposez vos fichiers ici</p>
+          <button type="button" id="pick-files-btn" class="btn-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 5v14"/><path d="M5 12h14"/>
+            </svg>
+            <span data-i18n="pickFiles">Choisir des fichiers</span>
+          </button>
+          <p class="drop-hint" data-i18n="uploadNote">Les fichiers sont envoyés directement à l’appareil hôte, sur votre réseau local.</p>
+          <input type="file" id="file-input" multiple hidden>
+        </div>
+
+        <div id="upload-summary" class="upload-summary" hidden>
+          <div class="upload-summary-row">
+            <span class="upload-summary-text" id="upload-summary-text"></span>
+            <button type="button" id="cancel-all-btn" class="btn-text danger" data-i18n="cancelAll">Tout annuler</button>
+          </div>
+          <div class="progress" id="global-progress"><div class="progress-bar"></div></div>
+          <span class="upload-summary-detail" id="upload-summary-detail"></span>
+        </div>
+
+        <div id="upload-list" class="upload-list"></div>
+      </section>
+
+      <!-- 3. Files this browser sent to the host -->
+      <section id="sent-section" class="section" aria-labelledby="sent-title">
+        <div class="section-header">
+          <h2 class="section-title" id="sent-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 12.5l5 5L20 7"/>
+            </svg>
+            <span data-i18n="sentTitle">Fichiers envoyés</span>
+            <span class="count-badge" id="sent-count">0</span>
+          </h2>
+          <button type="button" id="clear-sent-btn" class="btn-text" data-i18n="clearSent" hidden>Effacer la liste</button>
+        </div>
+        <p id="sent-empty" class="section-empty" data-i18n="sentEmpty">Les fichiers que vous envoyez apparaîtront ici.</p>
+        <div id="sent-list" class="sent-list"></div>
+      </section>
 
       <div class="network-note">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
