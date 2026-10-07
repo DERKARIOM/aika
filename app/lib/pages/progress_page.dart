@@ -382,8 +382,19 @@ class _ProgressPageState extends State<ProgressPage> with Refena {
                               if (fileStatus == FileStatus.sending)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 5),
-                                  child: CustomProgressBar(
-                                    progress: progressNotifier.getProgress(sessionId: widget.sessionId, fileId: file.id),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: CustomProgressBar(
+                                          progress: progressNotifier.getProgress(sessionId: widget.sessionId, fileId: file.id),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      _PercentLabel(
+                                        fraction: progressNotifier.getProgress(sessionId: widget.sessionId, fileId: file.id),
+                                        fontSize: 13,
+                                      ),
+                                    ],
                                   ),
                                 )
                               else
@@ -446,11 +457,23 @@ class _ProgressPageState extends State<ProgressPage> with Refena {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            status.getLabel(
-                              remainingTime: _remainingTime ?? '-',
-                            ),
-                            style: const TextStyle(fontSize: 20),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  status.getLabel(
+                                    remainingTime: _remainingTime ?? '-',
+                                  ),
+                                  style: const TextStyle(fontSize: 20),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              _PercentLabel(
+                                // _totalBytes is "infinite" until the files are known.
+                                fraction: _totalBytes <= 0 || _totalBytes == double.maxFinite.toInt() ? 0 : currBytes / _totalBytes,
+                                fontSize: 20,
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 5),
                           TweenAnimationBuilder(
@@ -574,6 +597,29 @@ extension on FileStatus {
       case FileStatus.finished:
         return Theme.of(context).colorScheme.primary;
     }
+  }
+}
+
+/// Progress as a whole percentage ("37 %"), with tabular figures so the
+/// label does not jitter while the value changes.
+class _PercentLabel extends StatelessWidget {
+  final double fraction;
+  final double fontSize;
+
+  const _PercentLabel({required this.fraction, required this.fontSize});
+
+  @override
+  Widget build(BuildContext context) {
+    final percent = (fraction.clamp(0.0, 1.0) * 100).floor();
+    return Text(
+      '$percent\u00A0%',
+      style: TextStyle(
+        fontSize: fontSize,
+        fontWeight: FontWeight.w700,
+        color: Theme.of(context).colorScheme.primary,
+        fontFeatures: const [FontFeature.tabularFigures()],
+      ),
+    );
   }
 }
 
