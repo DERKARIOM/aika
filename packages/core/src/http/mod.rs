@@ -1,5 +1,6 @@
 use thiserror::Error;
 
+pub mod app_build;
 pub mod client;
 pub mod dto;
 pub mod dto_v2;

@@ -23,6 +23,9 @@ part 'server.freezed.dart';
 /// application instance request this one to show itself (emitted as
 /// [RsServerEvent::Show]). The token guards the endpoint against other clients.
 ///
+/// [app_build] is this application's build number (versionCode), returned
+/// to senders as an informational update hint. `None` omits it.
+///
 /// Events are received by listening to [RsHttpServer::listen].
 Future<RsHttpServer> startServer({
   required int port,
@@ -35,6 +38,7 @@ Future<RsHttpServer> startServer({
   String? pin,
   WebSendParams? webSend,
   String? showToken,
+  int? appBuild,
 }) => RustLib.instance.api.crateApiServerStartServer(
   port: port,
   tls: tls,
@@ -46,6 +50,7 @@ Future<RsHttpServer> startServer({
   pin: pin,
   webSend: webSend,
   showToken: showToken,
+  appBuild: appBuild,
 );
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<RsHttpServer>>
@@ -136,6 +141,7 @@ class RegisterDtoV2 {
   final int port;
   final ProtocolTypeV2 protocol;
   final bool download;
+  final int? appBuild;
 
   const RegisterDtoV2({
     required this.alias,
@@ -146,6 +152,7 @@ class RegisterDtoV2 {
     required this.port,
     required this.protocol,
     required this.download,
+    this.appBuild,
   });
 
   @override
@@ -157,7 +164,8 @@ class RegisterDtoV2 {
       fingerprint.hashCode ^
       port.hashCode ^
       protocol.hashCode ^
-      download.hashCode;
+      download.hashCode ^
+      appBuild.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -171,7 +179,8 @@ class RegisterDtoV2 {
           fingerprint == other.fingerprint &&
           port == other.port &&
           protocol == other.protocol &&
-          download == other.download;
+          download == other.download &&
+          appBuild == other.appBuild;
 }
 
 @freezed

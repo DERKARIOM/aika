@@ -136,6 +136,7 @@ async fn start_with_options(
             device_model: None,
             device_type: None,
             token: "host-fingerprint".to_string(),
+            app_build: None,
         },
         None,
         Some(ServerConfigV2 {

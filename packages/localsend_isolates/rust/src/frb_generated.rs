@@ -2984,6 +2984,7 @@ fn wire__crate__api__server__start_server_impl(
             let api_web_send =
                 <Option<crate::api::server::WebSendParams>>::sse_decode(&mut deserializer);
             let api_show_token = <Option<String>>::sse_decode(&mut deserializer);
+            let api_app_build = <Option<u32>>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
                 transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
@@ -2999,6 +3000,7 @@ fn wire__crate__api__server__start_server_impl(
                             api_pin,
                             api_web_send,
                             api_show_token,
+                            api_app_build,
                         )
                         .await?;
                         Ok(output_ok)
@@ -3097,6 +3099,7 @@ const _: fn() = || {
         let PrepareUploadResponseDto = None::<crate::api::model::PrepareUploadResponseDto>.unwrap();
         let _: String = PrepareUploadResponseDto.session_id;
         let _: std::collections::HashMap<String, String> = PrepareUploadResponseDto.files;
+        let _: Option<u32> = PrepareUploadResponseDto.app_build;
     }
     {
         let PrepareUploadResult = None::<crate::api::http::PrepareUploadResult>.unwrap();
@@ -3113,6 +3116,7 @@ const _: fn() = || {
         let _: u16 = RegisterDto.port;
         let _: crate::api::model::ProtocolType = RegisterDto.protocol;
         let _: bool = RegisterDto.has_web_interface;
+        let _: Option<u32> = RegisterDto.app_build;
     }
     {
         let RegisterDtoV2 = None::<crate::api::server::RegisterDtoV2>.unwrap();
@@ -3124,6 +3128,7 @@ const _: fn() = || {
         let _: u16 = RegisterDtoV2.port;
         let _: crate::api::server::ProtocolTypeV2 = RegisterDtoV2.protocol;
         let _: bool = RegisterDtoV2.download;
+        let _: Option<u32> = RegisterDtoV2.app_build;
     }
     {
         let RegisterResponseDto = None::<crate::api::model::RegisterResponseDto>.unwrap();
@@ -4027,9 +4032,11 @@ impl SseDecode for crate::api::model::PrepareUploadResponseDto {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_sessionId = <String>::sse_decode(deserializer);
         let mut var_files = <std::collections::HashMap<String, String>>::sse_decode(deserializer);
+        let mut var_appBuild = <Option<u32>>::sse_decode(deserializer);
         return crate::api::model::PrepareUploadResponseDto {
             session_id: var_sessionId,
             files: var_files,
+            app_build: var_appBuild,
         };
     }
 }
@@ -4125,6 +4132,7 @@ impl SseDecode for crate::api::model::RegisterDto {
         let mut var_port = <u16>::sse_decode(deserializer);
         let mut var_protocol = <crate::api::model::ProtocolType>::sse_decode(deserializer);
         let mut var_hasWebInterface = <bool>::sse_decode(deserializer);
+        let mut var_appBuild = <Option<u32>>::sse_decode(deserializer);
         return crate::api::model::RegisterDto {
             alias: var_alias,
             version: var_version,
@@ -4134,6 +4142,7 @@ impl SseDecode for crate::api::model::RegisterDto {
             port: var_port,
             protocol: var_protocol,
             has_web_interface: var_hasWebInterface,
+            app_build: var_appBuild,
         };
     }
 }
@@ -4149,6 +4158,7 @@ impl SseDecode for crate::api::server::RegisterDtoV2 {
         let mut var_port = <u16>::sse_decode(deserializer);
         let mut var_protocol = <crate::api::server::ProtocolTypeV2>::sse_decode(deserializer);
         let mut var_download = <bool>::sse_decode(deserializer);
+        let mut var_appBuild = <Option<u32>>::sse_decode(deserializer);
         return crate::api::server::RegisterDtoV2 {
             alias: var_alias,
             version: var_version,
@@ -4158,6 +4168,7 @@ impl SseDecode for crate::api::server::RegisterDtoV2 {
             port: var_port,
             protocol: var_protocol,
             download: var_download,
+            app_build: var_appBuild,
         };
     }
 }
@@ -5268,6 +5279,7 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::model::PrepareUplo
         [
             self.0.session_id.into_into_dart().into_dart(),
             self.0.files.into_into_dart().into_dart(),
+            self.0.app_build.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -5381,6 +5393,7 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::model::RegisterDto
             self.0.port.into_into_dart().into_dart(),
             self.0.protocol.into_into_dart().into_dart(),
             self.0.has_web_interface.into_into_dart().into_dart(),
+            self.0.app_build.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -5408,6 +5421,7 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::server::RegisterDt
             self.0.port.into_into_dart().into_dart(),
             self.0.protocol.into_into_dart().into_dart(),
             self.0.download.into_into_dart().into_dart(),
+            self.0.app_build.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -6579,6 +6593,7 @@ impl SseEncode for crate::api::model::PrepareUploadResponseDto {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <String>::sse_encode(self.session_id, serializer);
         <std::collections::HashMap<String, String>>::sse_encode(self.files, serializer);
+        <Option<u32>>::sse_encode(self.app_build, serializer);
     }
 }
 
@@ -6670,6 +6685,7 @@ impl SseEncode for crate::api::model::RegisterDto {
         <u16>::sse_encode(self.port, serializer);
         <crate::api::model::ProtocolType>::sse_encode(self.protocol, serializer);
         <bool>::sse_encode(self.has_web_interface, serializer);
+        <Option<u32>>::sse_encode(self.app_build, serializer);
     }
 }
 
@@ -6684,6 +6700,7 @@ impl SseEncode for crate::api::server::RegisterDtoV2 {
         <u16>::sse_encode(self.port, serializer);
         <crate::api::server::ProtocolTypeV2>::sse_encode(self.protocol, serializer);
         <bool>::sse_encode(self.download, serializer);
+        <Option<u32>>::sse_encode(self.app_build, serializer);
     }
 }
 

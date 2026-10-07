@@ -131,6 +131,9 @@ pub struct WebSendParams {
 /// application instance request this one to show itself (emitted as
 /// [RsServerEvent::Show]). The token guards the endpoint against other clients.
 ///
+/// [app_build] is this application's build number (versionCode), returned
+/// to senders as an informational update hint. `None` omits it.
+///
 /// Events are received by listening to [RsHttpServer::listen].
 pub async fn start_server(
     port: u16,
@@ -143,6 +146,7 @@ pub async fn start_server(
     pin: Option<String>,
     web_send: Option<WebSendParams>,
     show_token: Option<String>,
+    app_build: Option<u32>,
 ) -> anyhow::Result<RsHttpServer> {
     let (event_tx, event_rx) = mpsc::channel::<ServerEventV2>(16);
     let (stop_tx, stop_rx) = oneshot::channel::<()>();
@@ -182,6 +186,7 @@ pub async fn start_server(
             device_model,
             device_type,
             token: fingerprint,
+            app_build,
         },
         internal_config,
         Some(ServerConfigV2 { pin, event_tx }),
@@ -683,6 +688,7 @@ pub struct _RegisterDtoV2 {
     pub port: u16,
     pub protocol: ProtocolTypeV2,
     pub download: bool,
+    pub app_build: Option<u32>,
 }
 
 #[frb(mirror(SessionEndReasonV2))]

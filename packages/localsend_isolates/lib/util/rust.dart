@@ -93,6 +93,7 @@ extension SyncStateToRegisterDtoExt on SyncState {
       port: port,
       protocol: protocol.toRust(),
       hasWebInterface: download,
+      appBuild: deviceInfo.appBuild,
     );
   }
 }

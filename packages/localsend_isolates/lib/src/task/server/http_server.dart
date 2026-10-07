@@ -25,6 +25,8 @@ class HttpServerService {
     required String? pin,
     required WebSendParams? webSend,
     required String? showToken,
+    // Informational update hint for senders (see `DeviceInfoResult.appBuild`).
+    int? appBuild,
   }) async {
     if (_server != null) {
       throw StateError('Server already running');
@@ -41,6 +43,7 @@ class HttpServerService {
       pin: pin,
       webSend: webSend,
       showToken: showToken,
+      appBuild: appBuild,
     );
     _server = server;
     return server.listen();

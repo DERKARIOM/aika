@@ -500,6 +500,7 @@ Future<void> setupHttpServerIsolate(
                   pin: startTask.pin,
                   webSend: startTask.webSend,
                   showToken: startTask.showToken,
+                  appBuild: syncState.deviceInfo.appBuild,
                 );
           } catch (e) {
             // Starting failed (e.g. the port is already in use).

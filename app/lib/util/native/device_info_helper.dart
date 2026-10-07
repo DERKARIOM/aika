@@ -1,7 +1,9 @@
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:localsend_app/model/update/update_policy.dart';
 import 'package:localsend_isolates/model/device.dart';
 import 'package:localsend_isolates/model/device_info_result.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 // ignore: implementation_imports
 import 'package:slang/src/builder/model/enums.dart';
 // ignore: implementation_imports
@@ -60,7 +62,18 @@ Future<DeviceInfoResult> getDeviceInfo() async {
     deviceType: deviceType,
     deviceModel: deviceModel,
     androidSdkInt: androidSdkInt,
+    appBuild: await _getAppBuild(),
   );
+}
+
+/// This build's number ("18" for 1.1.4+18), read once at startup.
+/// Never fails: the build is only used as an informational update hint.
+Future<int?> _getAppBuild() async {
+  try {
+    return parseVersionCode((await PackageInfo.fromPlatform()).buildNumber);
+  } catch (_) {
+    return null;
+  }
 }
 
 extension on BrowserName {

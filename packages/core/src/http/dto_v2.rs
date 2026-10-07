@@ -145,6 +145,14 @@ pub struct RegisterDtoV2 {
     /// Whether the download API (sections 5.2, 5.3) is active.
     #[serde(default)]
     pub download: bool,
+    /// Application build number (versionCode) of the device, e.g. 18.
+    /// Aika extension, optional and informational (update hint), ignored by older versions.
+    #[serde(
+        default,
+        deserialize_with = "crate::http::app_build::deserialize",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub app_build: Option<u32>,
 }
 
 /// Register response DTO for v2.1 protocol.
@@ -206,6 +214,14 @@ pub struct PrepareUploadResponseDtoV2 {
     /// Map of file ID to file token.
     /// Only contains files that were accepted by the receiver.
     pub files: HashMap<String, String>,
+    /// Application build number (versionCode) of the receiving device, e.g. 18.
+    /// Aika extension, optional and informational (update hint), ignored by older versions.
+    #[serde(
+        default,
+        deserialize_with = "crate::http::app_build::deserialize",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub app_build: Option<u32>,
 }
 
 pub struct PrepareUploadResultV2 {
@@ -357,6 +373,7 @@ mod tests {
                 port: 53317,
                 protocol: ProtocolTypeV2::Https,
                 download: false,
+                app_build: None,
             },
             files: HashMap::from([(
                 "file1".to_string(),

@@ -122,6 +122,7 @@ async fn start_test_server(
             device_model: Some("Rust".to_string()),
             device_type: None,
             token: "server-fingerprint".to_string(),
+            app_build: None,
         },
         None,
         Some(ServerConfigV2 { pin, event_tx }),
@@ -179,6 +180,7 @@ fn sender_info() -> RegisterDtoV2 {
         port: 53317,
         protocol: ProtocolTypeV2::Http,
         download: false,
+        app_build: None,
     }
 }
 

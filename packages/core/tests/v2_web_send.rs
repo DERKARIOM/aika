@@ -132,6 +132,7 @@ async fn start_test_server(
             device_model: Some("Rust".to_string()),
             device_type: None,
             token: "server-fingerprint".to_string(),
+            app_build: None,
         },
         None,
         Some(ServerConfigV2 {

@@ -489,10 +489,12 @@ pub(crate) async fn prepare_upload(
         port: 0,
         protocol: ProtocolTypeV2::Http,
         download: false,
+        app_build: None,
     };
 
     // Browsers have no client certificate: the web session is the authentication.
-    create_upload_session(v2, client_info.ip, None, info, files).await
+    // Browsers have no use for the build number, so it is not disclosed.
+    create_upload_session(v2, client_info.ip, None, info, files, None).await
 }
 
 /// Validates the files announced by a web client and converts them to [`FileDto`]s.

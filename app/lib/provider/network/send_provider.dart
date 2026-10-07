@@ -11,6 +11,7 @@ import 'package:localsend_app/pages/progress_page.dart';
 import 'package:localsend_app/pages/send_page.dart';
 import 'package:localsend_app/provider/device_info_provider.dart';
 import 'package:localsend_app/provider/http_provider.dart';
+import 'package:localsend_app/provider/peer_update_provider.dart';
 import 'package:localsend_app/provider/progress_provider.dart';
 import 'package:localsend_app/provider/selection/selected_sending_files_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
@@ -119,6 +120,8 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
         port: originDevice.port,
         protocol: originDevice.https ? rust_model.ProtocolType.https : rust_model.ProtocolType.http,
         hasWebInterface: originDevice.download,
+        // Lets the receiver know a newer Aika exists (ignored by older versions).
+        appBuild: ref.read(deviceRawInfoProvider).appBuild,
       ),
       files: {
         for (final entry in requestState.files.entries) entry.key: entry.value.file.toRust(),
@@ -306,6 +309,17 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
       ),
     );
 
+    // The receiver's build (absent on older versions), compared once the
+    // transfer has ended successfully.
+    ref
+        .notifier(peerUpdateProvider)
+        .rememberPeer(
+          sessionId,
+          peerId: target.fingerprint,
+          peerAlias: target.alias,
+          peerBuild: response.response?.appBuild,
+        );
+
     await _sendLoop(sessionId, sendingFiles);
   }
 
@@ -330,9 +344,12 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
     }
 
     if (state[sessionId]!.status != SessionStatus.sending) {
+      ref.notifier(peerUpdateProvider).onTransferCancelled(sessionId);
       _logger.info('Transfer was canceled.');
     } else {
       final hasError = sessionState.files.values.any((file) => file.status == FileStatus.failed);
+      // Only a fully successful transfer may show the "update available" hint.
+      ref.notifier(peerUpdateProvider).onTransferEnded(sessionId, success: !hasError);
       if (!hasError && sessionState.background == true) {
         // close session because everything is fine and it is in background
         closeSession(sessionId);

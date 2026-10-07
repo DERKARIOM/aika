@@ -238,12 +238,15 @@ pub(crate) async fn prepare_upload(
     }
 
     let cert_fingerprint = client_info.cert_fingerprint();
+    // Lets the sender know this device's build (update hint, see `app_build`).
+    let app_build = state.info.lock().await.app_build;
     create_upload_session(
         v2,
         client_info.ip,
         cert_fingerprint,
         payload.info,
         payload.files,
+        app_build,
     )
     .await
 }
@@ -254,12 +257,16 @@ pub(crate) async fn prepare_upload(
 /// Shared by the v2 `prepare-upload` endpoint and the web share page upload
 /// endpoint, so both go through the exact same session, token and
 /// decision handling.
+///
+/// [app_build] is this device's build number returned to the sender, `None`
+/// to omit it (as older versions do).
 pub(crate) async fn create_upload_session(
     v2: Arc<V2State>,
     sender_ip: IpAddr,
     cert_fingerprint: Option<String>,
     info: SenderInfoV2,
     offered_files: HashMap<String, FileDto>,
+    app_build: Option<u32>,
 ) -> Result<Response<BoxedBody>, AppError> {
     if offered_files.is_empty() {
         return Err(AppError::BadRequest("No files provided".to_string()));
@@ -353,6 +360,7 @@ pub(crate) async fn create_upload_session(
         body: PrepareUploadResponseDtoV2 {
             session_id,
             files: tokens,
+            app_build,
         },
     }
     .into_response())

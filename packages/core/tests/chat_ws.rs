@@ -88,6 +88,7 @@ async fn start_server(device: &Device, tls: bool, attach: bool) -> Server {
             device_model: None,
             device_type: None,
             token: device.identity.fingerprint.clone(),
+            app_build: None,
         },
         None,
         None,

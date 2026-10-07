@@ -68,6 +68,7 @@ async fn test_set_web_send_files_while_running() {
             device_model: None,
             device_type: None,
             token: "fp".to_string(),
+            app_build: None,
         },
         None,
         Some(ServerConfigV2 {

@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 /// Centralized configuration for Android's Google Play In-App Updates
 /// feature (see app/docs/in-app-updates-2026-09.md for the full write-up).
 ///
@@ -36,4 +38,20 @@ class UpdateConfig {
   /// or when In-App Updates are unavailable for another reason (missing
   /// Play Services, unsupported device, ...).
   static const String playStoreUrl = 'https://play.google.com/store/apps/details?id=com.naniger.aika';
+
+  /// Official Aika website ("Aika — Partagez vos fichiers entre appareils,
+  /// sans Internet"): the download page for every platform without a
+  /// dedicated store entry, and the fallback when a store cannot be opened.
+  static const String websiteUrl = 'https://naniger.com/';
+
+  /// Store page per platform. Add an entry here to send a platform to its
+  /// own store (App Store, Microsoft Store, Flathub...): everything else
+  /// falls back to [websiteUrl].
+  static const Map<TargetPlatform, String> storeUrls = {
+    TargetPlatform.android: playStoreUrl,
+  };
+
+  /// Where "update Aika" leads on [platform]: its store page if it has one,
+  /// otherwise the website.
+  static String updatePageUrlFor(TargetPlatform platform) => storeUrls[platform] ?? websiteUrl;
 }

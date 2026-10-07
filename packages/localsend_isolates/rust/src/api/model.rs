@@ -17,6 +17,7 @@ pub struct _RegisterDto {
     pub port: u16,
     pub protocol: ProtocolType,
     pub has_web_interface: bool,
+    pub app_build: Option<u32>,
 }
 
 #[frb(mirror(RegisterResponseDto))]
@@ -71,4 +72,5 @@ pub struct _PrepareUploadRequestDto {
 pub struct _PrepareUploadResponseDto {
     pub session_id: String,
     pub files: HashMap<String, String>,
+    pub app_build: Option<u32>,
 }

@@ -46,6 +46,14 @@ pub struct RegisterDto {
 
     #[serde(default, skip_serializing_if = "is_default")]
     pub has_web_interface: bool,
+    /// Application build number (versionCode) of the device, e.g. 18.
+    /// Optional and informational (update hint), ignored by older versions.
+    #[serde(
+        default,
+        deserialize_with = "crate::http::app_build::deserialize",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub app_build: Option<u32>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, Serialize, PartialEq)]
@@ -84,6 +92,7 @@ impl From<RegisterDto> for RegisterDtoV2 {
             port: v3.port,
             protocol: v3.protocol.into(),
             download: v3.has_web_interface,
+            app_build: v3.app_build,
         }
     }
 }
@@ -120,6 +129,14 @@ pub struct PrepareUploadRequestDto {
 pub struct PrepareUploadResponseDto {
     pub session_id: String,
     pub files: HashMap<String, String>,
+    /// Application build number (versionCode) of the receiving device, e.g. 18.
+    /// Optional and informational (update hint), ignored by older versions.
+    #[serde(
+        default,
+        deserialize_with = "crate::http::app_build::deserialize",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub app_build: Option<u32>,
 }
 
 impl From<PrepareUploadRequestDto> for PrepareUploadRequestDtoV2 {
@@ -141,6 +158,7 @@ impl From<PrepareUploadResponseDtoV2> for PrepareUploadResponseDto {
         PrepareUploadResponseDto {
             session_id: v2.session_id,
             files: v2.files,
+            app_build: v2.app_build,
         }
     }
 }

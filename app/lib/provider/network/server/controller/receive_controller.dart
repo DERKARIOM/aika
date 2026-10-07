@@ -22,6 +22,7 @@ import 'package:localsend_app/provider/network/send_provider.dart';
 import 'package:localsend_app/provider/network/server/server_provider.dart';
 import 'package:localsend_app/provider/network/server/server_utils.dart';
 import 'package:localsend_app/provider/network/server/web_upload_provider.dart';
+import 'package:localsend_app/provider/peer_update_provider.dart';
 import 'package:localsend_app/provider/progress_provider.dart';
 import 'package:localsend_app/provider/receive_history_provider.dart';
 import 'package:localsend_app/provider/security_provider.dart';
@@ -157,6 +158,17 @@ class ReceiveController {
         ),
       ),
     );
+
+    // The sender's build (absent on older versions), compared once the
+    // transfer has ended successfully.
+    server.ref
+        .notifier(peerUpdateProvider)
+        .rememberPeer(
+          sessionId,
+          peerId: senderFingerprint,
+          peerAlias: event.info.alias,
+          peerBuild: event.info.appBuild,
+        );
 
     bool quickSave = settings.quickSave && server.getState().session?.message == null;
     final quickSaveFromFavorites = settings.quickSaveFromFavorites && server.getState().session?.message == null;
@@ -703,6 +715,9 @@ class ReceiveController {
         return;
       }
 
+      // Only a fully successful transfer may show the "update available" hint.
+      server.ref.notifier(peerUpdateProvider).onTransferEnded(event.sessionId, success: !hasError);
+
       final settings = server.ref.read(settingsProvider);
       bool quickSave = settings.quickSave && server.getState().session?.message == null;
       final quickSaveFromFavorites = settings.quickSaveFromFavorites && server.getState().session?.message == null;
@@ -989,6 +1004,9 @@ class ReceiveController {
     // "belongs to chat" flag never gets stuck on an aborted/cancelled
     // transfer (see `_handleChatPrepareUpload`/`onFileUpload`).
     server.ref.notifier(chatProvider).endIncomingChatSession(sessionId);
+    // A transfer closed before its successful end (declined, cancelled...)
+    // never shows the update hint. No-op once it has ended.
+    server.ref.notifier(peerUpdateProvider).onTransferCancelled(sessionId);
   }
 }
 

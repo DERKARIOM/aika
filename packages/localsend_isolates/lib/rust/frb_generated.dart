@@ -262,6 +262,7 @@ abstract class RustLibApi extends BaseApi {
     String? pin,
     WebSendParams? webSend,
     String? showToken,
+    int? appBuild,
   });
 
   Future<void> crateApiCryptoVerifyCert({required String cert, required String publicKey});
@@ -1820,6 +1821,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     String? pin,
     WebSendParams? webSend,
     String? showToken,
+    int? appBuild,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -1835,6 +1837,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           sse_encode_opt_String(pin, serializer);
           sse_encode_opt_box_autoadd_web_send_params(webSend, serializer);
           sse_encode_opt_String(showToken, serializer);
+          sse_encode_opt_box_autoadd_u_32(appBuild, serializer);
           pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 51, port: port_);
         },
         codec: SseCodec(
@@ -1842,7 +1845,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_AnyhowException,
         ),
         constMeta: kCrateApiServerStartServerConstMeta,
-        argValues: [port, tls, alias, version, deviceModel, deviceType, fingerprint, pin, webSend, showToken],
+        argValues: [port, tls, alias, version, deviceModel, deviceType, fingerprint, pin, webSend, showToken, appBuild],
         apiImpl: this,
       ),
     );
@@ -1850,7 +1853,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiServerStartServerConstMeta => const TaskConstMeta(
     debugName: 'start_server',
-    argNames: ['port', 'tls', 'alias', 'version', 'deviceModel', 'deviceType', 'fingerprint', 'pin', 'webSend', 'showToken'],
+    argNames: ['port', 'tls', 'alias', 'version', 'deviceModel', 'deviceType', 'fingerprint', 'pin', 'webSend', 'showToken', 'appBuild'],
   );
 
   @override
@@ -2647,10 +2650,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   PrepareUploadResponseDto dco_decode_prepare_upload_response_dto(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 2) throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    if (arr.length != 3) throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
     return PrepareUploadResponseDto(
       sessionId: dco_decode_String(arr[0]),
       files: dco_decode_Map_String_String_None(arr[1]),
+      appBuild: dco_decode_opt_box_autoadd_u_32(arr[2]),
     );
   }
 
@@ -2736,7 +2740,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   RegisterDto dco_decode_register_dto(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 8) throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
+    if (arr.length != 9) throw Exception('unexpected arr length: expect 9 but see ${arr.length}');
     return RegisterDto(
       alias: dco_decode_String(arr[0]),
       version: dco_decode_String(arr[1]),
@@ -2746,6 +2750,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       port: dco_decode_u_16(arr[5]),
       protocol: dco_decode_protocol_type(arr[6]),
       hasWebInterface: dco_decode_bool(arr[7]),
+      appBuild: dco_decode_opt_box_autoadd_u_32(arr[8]),
     );
   }
 
@@ -2753,7 +2758,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   RegisterDtoV2 dco_decode_register_dto_v_2(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 8) throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
+    if (arr.length != 9) throw Exception('unexpected arr length: expect 9 but see ${arr.length}');
     return RegisterDtoV2(
       alias: dco_decode_String(arr[0]),
       version: dco_decode_String(arr[1]),
@@ -2763,6 +2768,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       port: dco_decode_u_16(arr[5]),
       protocol: dco_decode_protocol_type_v_2(arr[6]),
       download: dco_decode_bool(arr[7]),
+      appBuild: dco_decode_opt_box_autoadd_u_32(arr[8]),
     );
   }
 
@@ -3890,7 +3896,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_sessionId = sse_decode_String(deserializer);
     var var_files = sse_decode_Map_String_String_None(deserializer);
-    return PrepareUploadResponseDto(sessionId: var_sessionId, files: var_files);
+    var var_appBuild = sse_decode_opt_box_autoadd_u_32(deserializer);
+    return PrepareUploadResponseDto(sessionId: var_sessionId, files: var_files, appBuild: var_appBuild);
   }
 
   @protected
@@ -3963,6 +3970,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_port = sse_decode_u_16(deserializer);
     var var_protocol = sse_decode_protocol_type(deserializer);
     var var_hasWebInterface = sse_decode_bool(deserializer);
+    var var_appBuild = sse_decode_opt_box_autoadd_u_32(deserializer);
     return RegisterDto(
       alias: var_alias,
       version: var_version,
@@ -3972,6 +3980,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       port: var_port,
       protocol: var_protocol,
       hasWebInterface: var_hasWebInterface,
+      appBuild: var_appBuild,
     );
   }
 
@@ -3986,6 +3995,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_port = sse_decode_u_16(deserializer);
     var var_protocol = sse_decode_protocol_type_v_2(deserializer);
     var var_download = sse_decode_bool(deserializer);
+    var var_appBuild = sse_decode_opt_box_autoadd_u_32(deserializer);
     return RegisterDtoV2(
       alias: var_alias,
       version: var_version,
@@ -3995,6 +4005,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       port: var_port,
       protocol: var_protocol,
       download: var_download,
+      appBuild: var_appBuild,
     );
   }
 
@@ -5171,6 +5182,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.sessionId, serializer);
     sse_encode_Map_String_String_None(self.files, serializer);
+    sse_encode_opt_box_autoadd_u_32(self.appBuild, serializer);
   }
 
   @protected
@@ -5237,6 +5249,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_u_16(self.port, serializer);
     sse_encode_protocol_type(self.protocol, serializer);
     sse_encode_bool(self.hasWebInterface, serializer);
+    sse_encode_opt_box_autoadd_u_32(self.appBuild, serializer);
   }
 
   @protected
@@ -5250,6 +5263,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_u_16(self.port, serializer);
     sse_encode_protocol_type_v_2(self.protocol, serializer);
     sse_encode_bool(self.download, serializer);
+    sse_encode_opt_box_autoadd_u_32(self.appBuild, serializer);
   }
 
   @protected

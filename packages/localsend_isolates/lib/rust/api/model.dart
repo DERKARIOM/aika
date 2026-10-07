@@ -87,19 +87,25 @@ class PrepareUploadRequestDto {
 class PrepareUploadResponseDto {
   final String sessionId;
   final Map<String, String> files;
+  final int? appBuild;
 
   const PrepareUploadResponseDto({
     required this.sessionId,
     required this.files,
+    this.appBuild,
   });
 
   @override
-  int get hashCode => sessionId.hashCode ^ files.hashCode;
+  int get hashCode => sessionId.hashCode ^ files.hashCode ^ appBuild.hashCode;
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is PrepareUploadResponseDto && runtimeType == other.runtimeType && sessionId == other.sessionId && files == other.files;
+      other is PrepareUploadResponseDto &&
+          runtimeType == other.runtimeType &&
+          sessionId == other.sessionId &&
+          files == other.files &&
+          appBuild == other.appBuild;
 }
 
 enum ProtocolType {
@@ -116,6 +122,7 @@ class RegisterDto {
   final int port;
   final ProtocolType protocol;
   final bool hasWebInterface;
+  final int? appBuild;
 
   const RegisterDto({
     required this.alias,
@@ -126,6 +133,7 @@ class RegisterDto {
     required this.port,
     required this.protocol,
     required this.hasWebInterface,
+    this.appBuild,
   });
 
   @override
@@ -137,7 +145,8 @@ class RegisterDto {
       token.hashCode ^
       port.hashCode ^
       protocol.hashCode ^
-      hasWebInterface.hashCode;
+      hasWebInterface.hashCode ^
+      appBuild.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -151,7 +160,8 @@ class RegisterDto {
           token == other.token &&
           port == other.port &&
           protocol == other.protocol &&
-          hasWebInterface == other.hasWebInterface;
+          hasWebInterface == other.hasWebInterface &&
+          appBuild == other.appBuild;
 }
 
 class RegisterResponseDto {
