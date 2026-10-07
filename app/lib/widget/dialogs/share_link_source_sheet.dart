@@ -89,16 +89,25 @@ class ShareLinkSourceSheet extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          GridView.count(
-            crossAxisCount: 2,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: 10,
-            crossAxisSpacing: 10,
-            childAspectRatio: 1.9,
-            children: [
-              for (final source in sources) _SourceTile(source: source),
-            ],
+          // Fixed-height tiles, two per row: the height never depends on
+          // the width, so the sheet fits on wide desktop windows too.
+          LayoutBuilder(
+            builder: (context, constraints) {
+              const spacing = 10.0;
+              final tileWidth = (constraints.maxWidth - spacing) / 2;
+              return Wrap(
+                spacing: spacing,
+                runSpacing: spacing,
+                children: [
+                  for (final source in sources)
+                    SizedBox(
+                      width: tileWidth,
+                      height: 64,
+                      child: _SourceTile(source: source),
+                    ),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 14),
           Row(
@@ -139,17 +148,18 @@ class _SourceTile extends StatelessWidget {
       child: InkWell(
         onTap: () => context.pop(source),
         child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Row(
             children: [
               Icon(source.icon, color: colorScheme.primary),
-              Text(
-                source.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w700),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  source.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
               ),
             ],
           ),
