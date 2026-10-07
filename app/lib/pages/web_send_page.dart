@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:localsend_app/config/theme.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/cross_file.dart';
+import 'package:localsend_app/model/state/send/web/web_send_file.dart';
 import 'package:localsend_app/model/state/send/web/web_send_session.dart';
 import 'package:localsend_app/pages/qr_pairing_scanner_page.dart';
 import 'package:localsend_app/provider/local_ip_provider.dart';
@@ -23,6 +24,7 @@ import 'package:localsend_app/util/ui/snackbar.dart';
 import 'package:localsend_app/widget/custom_basic_appbar.dart';
 import 'package:localsend_app/widget/dialogs/pin_dialog.dart';
 import 'package:localsend_app/widget/dialogs/qr_dialog.dart';
+import 'package:localsend_app/widget/dialogs/share_link_source_sheet.dart';
 import 'package:localsend_app/widget/dialogs/zoom_dialog.dart';
 import 'package:localsend_app/widget/file_thumbnail.dart';
 import 'package:localsend_app/widget/responsive_list_view.dart';
@@ -70,9 +72,36 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
   bool _requestDialogOpen = false;
   bool _allowUploadsForDialog = true;
 
-  /// A link created from the Receive tab: nothing is offered for download,
-  /// browsers only send files to this device.
+  /// A link created from the Receive tab: it starts without files, so
+  /// browsers can at least send files to this device.
   bool get _receiveOnly => widget.files.isEmpty;
+
+  /// Whether a file picker is open, to avoid opening two at once.
+  bool _picking = false;
+
+  /// The files currently offered on the link (they can change while sharing).
+  List<CrossFile> _sharedFiles() {
+    final files = ref.read(serverProvider)?.webSendState?.files;
+    if (files == null) {
+      return widget.files;
+    }
+    return files.values.map(_toCrossFile).toList();
+  }
+
+  Future<void> _addFiles(BuildContext context) async {
+    if (_picking) {
+      return;
+    }
+    _picking = true;
+    try {
+      final picked = await pickFilesForShareLink(context, ref);
+      if (picked.isNotEmpty) {
+        await ref.notifier(serverProvider).addWebSendFiles(picked);
+      }
+    } finally {
+      _picking = false;
+    }
+  }
 
   /// Keeps the screen (and the transfer) alive while browsers upload files.
   bool _wakelockEnabled = false;
@@ -155,7 +184,8 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
             alias: settings.alias,
             port: settings.port,
             https: _encrypted,
-            files: widget.files,
+            // Keeps the files added or removed since the page opened.
+            files: ref.read(serverProvider)?.webSendState == null ? widget.files : _sharedFiles(),
           );
       setState(() {
         _stateEnum = _ServerState.running;
@@ -255,7 +285,7 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
     }
     // The web-send link stays active: this just additionally starts a
     // direct peer-to-peer transfer of the same files to the scanned device.
-    await ref.notifier(sendProvider).startSession(target: device, files: widget.files, background: false);
+    await ref.notifier(sendProvider).startSession(target: device, files: _sharedFiles(), background: false);
     if (context.mounted) {
       context.showSnackBar(t.qrPairing.scan.pairedSnackbar(alias: device.alias));
     }
@@ -293,7 +323,17 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      onPopInvokedWithResult: (_, _) async {
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) {
+          // Already removed by someone else (e.g. a route reset): never pop
+          // a second time, which would pop the home page and empty the
+          // navigator. Just give the regular server back.
+          if (_stateEnum == _ServerState.running) {
+            _stateEnum = _ServerState.stopping;
+            unawaited(_revertServerState());
+          }
+          return;
+        }
         if (_stateEnum != _ServerState.running) {
           return;
         }
@@ -368,7 +408,7 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
                   children: [
                     Expanded(
                       child: Text(
-                        _receiveOnly
+                        webSendState.files.isEmpty
                             ? _t(
                                 fr: "Votre lien est prêt : l'autre appareil scanne le code QR ou ouvre le lien pour vous envoyer ses fichiers.",
                                 en: 'Your link is ready: the other device scans the QR code or opens the link to send you its files.',
@@ -398,7 +438,7 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
                   _QuickAccessCard(
                     url: _urlsFor(localIps.first, serverState.port, webSendState.pin).$2,
                     // Pairing sends the shared files: nothing to send here.
-                    onTapScan: _receiveOnly ? null : () async => _onTapScanQr(context),
+                    onTapScan: webSendState.files.isEmpty ? null : () async => _onTapScanQr(context),
                   ),
                   const SizedBox(height: 20),
                   Text(
@@ -451,25 +491,12 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
                         'local network.',
                   ),
                 ),
-                if (!_receiveOnly) ...[
-                  const SizedBox(height: 20),
-                  Text(
-                    t.sendTab.selection.title,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    '${t.sendTab.selection.files(files: widget.files.length)}'
-                    '   •   '
-                    '${t.sendTab.selection.size(size: widget.files.fold(0, (prev, curr) => prev + curr.size).asReadableFileSize)}',
-                    style: TextStyle(color: colorScheme.onSurfaceVariant),
-                  ),
-                  const SizedBox(height: 10),
-                  ...widget.files.map((file) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: _FileRow(file: file),
-                  )),
-                ],
+                const SizedBox(height: 20),
+                _SharedFilesSection(
+                  files: webSendState.files,
+                  onAdd: () async => _addFiles(context),
+                  onRemove: (fileId) => ref.notifier(serverProvider).removeWebSendFile(fileId),
+                ),
                 const SizedBox(height: 20),
                 _WebUploadsSection(
                   state: webUploads,
@@ -565,7 +592,7 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
                   warning: _encrypted,
                   onChanged: (value) => _init(encrypted: value),
                 ),
-                if (!_receiveOnly)
+                if (webSendState.files.isNotEmpty)
                   _OptionSwitchRow(
                     title: _t(fr: "Autoriser l'envoi de fichiers", en: 'Allow file uploads'),
                     description: webUploads.allowUploads
@@ -879,24 +906,80 @@ class _InfoBanner extends StatelessWidget {
   }
 }
 
-/// One shared file: thumbnail/type icon, name, extension and size — reuses
-/// the same [SmartFileThumbnail] and [IntFileSize.asReadableFileSize]
-/// already used for the file preview strip on the Send screen.
-class _FileRow extends StatelessWidget {
-  final CrossFile file;
+/// "Fichiers partagés": what browsers can download from the link, editable
+/// while sharing (add from the pickers, remove with the cross).
+class _SharedFilesSection extends StatelessWidget {
+  final Map<String, WebSendFile> files;
+  final VoidCallback onAdd;
+  final ValueChanged<String> onRemove;
 
-  const _FileRow({required this.file});
+  const _SharedFilesSection({required this.files, required this.onAdd, required this.onRemove});
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final dotIndex = file.name.lastIndexOf('.');
-    final extension = dotIndex == -1 || dotIndex == file.name.length - 1 ? null : file.name.substring(dotIndex + 1).toUpperCase();
+    final totalSize = files.values.fold<int>(0, (sum, f) => sum + f.file.size);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                _t(fr: 'Fichiers partagés', en: 'Shared files'),
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            TextButton.icon(
+              onPressed: onAdd,
+              icon: const Icon(Icons.add_rounded),
+              label: Text(_t(fr: 'Ajouter', en: 'Add')),
+            ),
+          ],
+        ),
+        const SizedBox(height: 5),
+        Text(
+          files.isEmpty
+              ? _t(
+                  fr: 'Aucun fichier à télécharger : ajoutez-en pour qu’ils soient disponibles sur le lien.',
+                  en: 'Nothing to download: add files to make them available on the link.',
+                )
+              : '${t.sendTab.selection.files(files: files.length)}   •   ${t.sendTab.selection.size(size: totalSize.asReadableFileSize)}',
+          style: TextStyle(color: colorScheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: 10),
+        ...files.entries.map(
+          (entry) => Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _SharedFileRow(file: entry.value, onRemove: () => onRemove(entry.key)),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// One shared file: thumbnail/type icon, name, extension, size and a remove
+/// button — reuses the same [SmartFileThumbnail] and
+/// [IntFileSize.asReadableFileSize] as the file preview strip of the Send screen.
+class _SharedFileRow extends StatelessWidget {
+  final WebSendFile file;
+  final VoidCallback onRemove;
+
+  const _SharedFileRow({required this.file, required this.onRemove});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final name = file.file.fileName;
+    final dotIndex = name.lastIndexOf('.');
+    final extension = dotIndex == -1 || dotIndex == name.length - 1 ? null : name.substring(dotIndex + 1).toUpperCase();
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(14),
       child: Container(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.fromLTRB(10, 10, 4, 10),
         decoration: BoxDecoration(
           color: colorScheme.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(14),
@@ -909,7 +992,12 @@ class _FileRow extends StatelessWidget {
               child: SizedBox(
                 width: 40,
                 height: 40,
-                child: SmartFileThumbnail.fromCrossFile(file),
+                child: SmartFileThumbnail(
+                  bytes: null,
+                  asset: file.asset,
+                  path: file.path,
+                  fileType: file.file.fileType,
+                ),
               ),
             ),
             const SizedBox(width: 12),
@@ -918,22 +1006,43 @@ class _FileRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(file.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
                   Text(
                     [
                       ?extension,
-                      file.size.asReadableFileSize,
+                      file.file.size.asReadableFileSize,
                     ].join(' · '),
                     style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12),
                   ),
                 ],
               ),
             ),
+            IconButton(
+              tooltip: _t(fr: 'Retirer du lien', en: 'Remove from the link'),
+              onPressed: onRemove,
+              icon: const Icon(Icons.close_rounded),
+            ),
           ],
         ),
       ),
     );
   }
+}
+
+/// Rebuilds the selection model of a shared file (e.g. to send the shared
+/// files to a scanned device, or to restart the share with them).
+CrossFile _toCrossFile(WebSendFile file) {
+  return CrossFile(
+    name: file.file.fileName,
+    fileType: file.file.fileType,
+    size: file.file.size,
+    thumbnail: null,
+    asset: file.asset,
+    path: file.path,
+    bytes: file.bytes,
+    lastModified: file.file.metadata?.lastModified,
+    lastAccessed: file.file.metadata?.lastAccessed,
+  );
 }
 
 /// A titled [Switch] row with a short explanation underneath, used for the

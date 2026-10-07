@@ -112,6 +112,11 @@ abstract class RsHttpServer implements RustOpaqueInterface {
   /// Passing `None` declines the request.
   Future<void> respondPrepareUpload({List<String>? acceptedFileIds});
 
+  /// Replaces the files offered for download by web send while the server
+  /// runs: browsers keep their accepted session and see the new list on
+  /// their page's next refresh. Does nothing when web send is not enabled.
+  Future<void> setWebSendFiles({required Map<String, FileDto> files});
+
   /// Stops the server.
   /// Returns after the listeners are closed, so the port can be bound again.
   Future<void> stop();

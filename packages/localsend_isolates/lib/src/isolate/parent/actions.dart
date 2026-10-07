@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:localsend_isolates/model/device.dart';
+import 'package:localsend_isolates/rust/api/model.dart' show FileDto;
 import 'package:localsend_isolates/rust/api/server.dart' show WebSendParams;
 import 'package:localsend_isolates/src/isolate/child/http_scan_discovery_isolate.dart';
 import 'package:localsend_isolates/src/isolate/child/multicast_discovery_isolate.dart';
@@ -401,6 +402,37 @@ class IsolateHttpServerCancelSessionAction extends ReduxAction<IsolateController
         data: IsolateTask(
           data: HttpServerCancelSessionTask(
             sessionId: sessionId,
+          ),
+        ),
+      ),
+    );
+
+    return state;
+  }
+}
+
+/// Replaces the files offered for download by web send while the server
+/// runs, so the share link stays valid for browsers already connected.
+class IsolateHttpServerSetWebSendFilesAction extends ReduxAction<IsolateController, ParentIsolateState> {
+  final Map<String, FileDto> files;
+
+  IsolateHttpServerSetWebSendFilesAction({
+    required this.files,
+  });
+
+  @override
+  ParentIsolateState reduce() {
+    final connection = state.httpServer;
+    if (connection == null) {
+      throw StateError('httpServer is not initialized');
+    }
+
+    connection.sendToIsolate(
+      SendToIsolateData(
+        syncState: null,
+        data: IsolateTask(
+          data: HttpServerSetWebSendFilesTask(
+            files: files,
           ),
         ),
       ),

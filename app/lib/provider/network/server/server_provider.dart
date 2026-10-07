@@ -249,6 +249,16 @@ class ServerService extends Notifier<ServerState?> {
     await restartServer(alias: alias, port: port, https: https, webSendState: webSendState);
   }
 
+  /// Adds files to the running web share (no restart, the link stays valid).
+  Future<void> addWebSendFiles(List<CrossFile> files) async {
+    await _sendController.addFiles(files);
+  }
+
+  /// Removes a file from the running web share.
+  void removeWebSendFile(String fileId) {
+    _sendController.removeFile(fileId);
+  }
+
   /// Updates the web send pin.
   /// The pin is enforced by the Rust server, so the server is restarted.
   Future<void> setWebSendPin(String? pin) async {

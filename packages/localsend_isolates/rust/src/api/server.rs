@@ -550,6 +550,13 @@ impl RsHttpServer {
             .retain(|(sid, _), _| sid != &session_id);
     }
 
+    /// Replaces the files offered for download by web send while the server
+    /// runs: browsers keep their accepted session and see the new list on
+    /// their page's next refresh. Does nothing when web send is not enabled.
+    pub async fn set_web_send_files(&self, files: HashMap<String, FileDto>) {
+        self.handle.set_web_send_files(files);
+    }
+
     /// Accepts chat WebSocket connections (`GET /api/aika/v1/chat/ws`)
     /// into [hub]. Until attached, the route answers 404.
     #[frb(sync)]

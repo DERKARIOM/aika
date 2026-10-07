@@ -142,15 +142,30 @@ class PickFileAction extends AsyncGlobalAction {
   }
 }
 
+/// Shows the loading dialog and returns a callback closing exactly that
+/// dialog. Unlike popping until the root, it never closes the page the
+/// picker was opened from (e.g. the web share page).
+VoidCallback _showLoadingDialog(BuildContext context) {
+  final navigator = Navigator.of(context, rootNavigator: true);
+  final route = DialogRoute<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => const LoadingDialog(),
+  );
+  // ignore: discarded_futures
+  navigator.push(route);
+  return () {
+    if (route.isActive) {
+      navigator.removeRoute(route);
+    }
+  };
+}
+
 Future<void> _pickFiles(BuildContext context, Ref ref) async {
+  VoidCallback? closeLoadingDialog;
   if (checkPlatform([TargetPlatform.android])) {
     // On android, the files are copied to the cache which takes some time.
-    // ignore: unawaited_futures
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const LoadingDialog(),
-    );
+    closeLoadingDialog = _showLoadingDialog(context);
   }
   try {
     if (defaultTargetPlatform == TargetPlatform.android) {
@@ -187,8 +202,7 @@ Future<void> _pickFiles(BuildContext context, Ref ref) async {
     await showDialog(context: context, builder: (_) => const NoPermissionDialog());
     _logger.warning('Failed to pick files', e);
   } finally {
-    // ignore: use_build_context_synchronously
-    Routerino.context.popUntilRoot(); // remove loading dialog
+    closeLoadingDialog?.call();
   }
 }
 
@@ -205,12 +219,7 @@ Future<void> _pickFolder(BuildContext context, Ref ref) async {
     return;
   }
 
-  // ignore: unawaited_futures
-  showDialog(
-    context: context,
-    barrierDismissible: false,
-    builder: (_) => const LoadingDialog(),
-  );
+  final closeLoadingDialog = _showLoadingDialog(context);
   await sleepAsync(200); // Wait for the dialog to be shown
   try {
     if (defaultTargetPlatform == TargetPlatform.android && (ref.read(deviceInfoProvider).androidSdkInt ?? 0) >= android_channel.contentUriMinSdk) {
@@ -236,8 +245,7 @@ Future<void> _pickFolder(BuildContext context, Ref ref) async {
     // ignore: use_build_context_synchronously
     await showDialog(context: context, builder: (_) => const NoPermissionDialog());
   } finally {
-    // ignore: use_build_context_synchronously
-    Routerino.context.popUntilRoot(); // remove loading dialog
+    closeLoadingDialog();
   }
 }
 

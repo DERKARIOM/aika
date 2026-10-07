@@ -105,6 +105,16 @@ class HttpServerCancelSessionTask implements BaseHttpServerTask {
   });
 }
 
+/// Replaces the files offered for download by web send while the server
+/// runs. Accepted web clients keep their session.
+class HttpServerSetWebSendFilesTask implements BaseHttpServerTask {
+  final Map<String, FileDto> files;
+
+  HttpServerSetWebSendFilesTask({
+    required this.files,
+  });
+}
+
 /// Answers a pending [HttpServerWebPrepareDownloadEvent].
 class HttpServerPrepareDownloadDecisionTask implements BaseHttpServerTask {
   final String sessionId;
@@ -631,6 +641,9 @@ Future<void> setupHttpServerIsolate(
           return;
         case HttpServerCancelSessionTask cancelTask:
           await ref.read(httpServerProvider).cancelSession(sessionId: cancelTask.sessionId);
+          return;
+        case HttpServerSetWebSendFilesTask filesTask:
+          await ref.read(httpServerProvider).setWebSendFiles(files: filesTask.files);
           return;
         case HttpServerPrepareDownloadDecisionTask decisionTask:
           await ref

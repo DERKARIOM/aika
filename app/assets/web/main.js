@@ -395,30 +395,74 @@ var receiveOnly = false;
 var hostAlias = '';
 
 function applyHero() {
-  if (!receiveOnly) {
-    return;
-  }
-  document.querySelector('.page-title').textContent = t('titleReceiveOnly');
-  document.querySelector('.page-desc').textContent = t('descriptionReceiveOnly', { host: hostAlias || 'Aika' });
+  document.querySelector('.page-title').textContent = receiveOnly ? t('titleReceiveOnly') : t('title');
+  document.querySelector('.page-desc').textContent = receiveOnly
+    ? t('descriptionReceiveOnly', { host: hostAlias || 'Aika' })
+    : t('description');
 }
 
-function handleSuccess(data) {
-  sessionId = data.sessionId;
-  receiveOnly = Object.keys(data.files || {}).length === 0;
-  hostAlias = data.info && data.info.alias ? String(data.info.alias) : '';
+/** Shows the download part only when the host shares files. */
+function applyFiles(files) {
+  receiveOnly = Object.keys(files).length === 0;
   document.getElementById('files-section').hidden = receiveOnly;
   // The page title already says "Send files": no duplicate section header.
   document.querySelector('#upload-section .section-header').hidden = receiveOnly;
   applyHero();
+  renderFiles(files);
+}
+
+/* The host can add or remove shared files while the link is open: the list
+ * is refreshed in the background (cheap, never a new request to the host). */
+var FILES_REFRESH_MS = 4000;
+var filesRefreshTimer = null;
+
+function fileListSignature(files) {
+  return Object.keys(files).sort().join('|');
+}
+
+function refreshFiles() {
+  if (!sessionId || document.hidden) {
+    return;
+  }
+  fetch(BASE_URL + '/web/files?sessionId=' + encodeURIComponent(sessionId)).then(function (response) {
+    if (response.status === 403) {
+      // The share was restarted or stopped: stop polling, uploads will say so.
+      clearInterval(filesRefreshTimer);
+      filesRefreshTimer = null;
+      return null;
+    }
+    return response.ok ? response.json() : null;
+  }).then(function (data) {
+    if (!data || !data.files) {
+      return;
+    }
+    if (fileListSignature(data.files) !== fileListSignature(lastKnownFiles || {})) {
+      applyFiles(data.files);
+    }
+  }).catch(function () {
+    /* temporary network issue: try again on the next tick */
+  });
+}
+
+function startFilesRefresh() {
+  if (filesRefreshTimer === null) {
+    filesRefreshTimer = setInterval(refreshFiles, FILES_REFRESH_MS);
+  }
+}
+
+function handleSuccess(data) {
+  sessionId = data.sessionId;
+  hostAlias = data.info && data.info.alias ? String(data.info.alias) : '';
   try {
     sessionStorage.setItem('sessionId', sessionId);
   } catch (e) {
     /* ignore */
   }
   showBanner(null);
-  renderFiles(data.files || {});
+  applyFiles(data.files || {});
   renderSent();
   showState('exchange');
+  startFilesRefresh();
 }
 
 /* ---------------------------------------------------------------------

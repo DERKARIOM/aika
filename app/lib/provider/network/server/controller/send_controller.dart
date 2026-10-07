@@ -13,6 +13,7 @@ import 'package:localsend_isolates/isolate.dart';
 import 'package:localsend_isolates/model/dto/file_dto.dart';
 import 'package:localsend_isolates/model/file_type.dart';
 import 'package:localsend_isolates/util/android_channel.dart' as isolate_android_channel;
+import 'package:localsend_isolates/util/rust.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
@@ -30,56 +31,101 @@ class SendController {
   SendController(this.server);
 
   /// Builds the [WebSendState] for the given [files].
-  /// Files that only exist in memory (e.g. text messages) are materialized
-  /// to the cache directory so the Rust server can stream them.
+  /// The auto accept setting and the pin of a previous web send state are kept.
   Future<WebSendState> buildWebSendState({required List<CrossFile> files}) async {
     final currentWebSendState = server.getStateOrNull()?.webSendState;
 
     return WebSendState(
       sessions: {},
-      files: Map.fromEntries(
-        await Future.wait(
-          files.map((file) async {
-            final id = _uuid.v4();
-
-            String? path = file.path;
-            if (path == null && file.bytes != null) {
-              // The Rust server streams file content from disk, so in-memory
-              // bytes (text messages, clipboard content) are written to a temp file.
-              final tempPath = p.join(await getCacheDirectory(), 'web-send-$id');
-              await File(tempPath).writeAsBytes(file.bytes!);
-              path = tempPath;
-            }
-
-            return MapEntry(
-              id,
-              WebSendFile(
-                file: FileDto(
-                  id: id,
-                  fileName: file.name,
-                  size: file.size,
-                  fileType: file.fileType,
-                  hash: null,
-                  preview: files.first.fileType == FileType.text && files.first.bytes != null
-                      ? utf8.decode(files.first.bytes!) // send simple message by embedding it into the preview
-                      : null,
-                  metadata: file.lastModified != null || file.lastAccessed != null
-                      ? FileMetadata(
-                          lastModified: file.lastModified,
-                          lastAccessed: file.lastAccessed,
-                        )
-                      : null,
-                ),
-                asset: file.asset,
-                path: path,
-                bytes: file.bytes,
-              ),
-            );
-          }),
-        ),
-      ),
+      files: Map.fromEntries(await Future.wait(files.map(_toWebSendFile))),
       autoAccept: currentWebSendState?.autoAccept ?? server.ref.read(settingsProvider).shareViaLinkAutoAccept,
       pin: currentWebSendState?.pin,
+    );
+  }
+
+  /// Adds [files] to the running web share, without restarting the server:
+  /// browsers that already opened the link keep their session and see the
+  /// new files on their page's next refresh. Files already shared are skipped.
+  Future<void> addFiles(List<CrossFile> files) async {
+    final webSendState = server.getStateOrNull()?.webSendState;
+    if (webSendState == null || files.isEmpty) {
+      return;
+    }
+    final alreadyShared = webSendState.files.values.map((f) => f.path).whereType<String>().toSet();
+    final added = await Future.wait(
+      files.where((f) => f.path == null || !alreadyShared.contains(f.path)).map(_toWebSendFile),
+    );
+    if (added.isEmpty) {
+      return;
+    }
+    _publishFiles({...?server.getStateOrNull()?.webSendState?.files, ...Map.fromEntries(added)});
+  }
+
+  /// Stops sharing the file [fileId] through the running web share.
+  /// A download already in progress finishes; new requests are refused.
+  void removeFile(String fileId) {
+    final files = server.getStateOrNull()?.webSendState?.files;
+    if (files == null || !files.containsKey(fileId)) {
+      return;
+    }
+    _publishFiles({...files}..remove(fileId));
+  }
+
+  /// Stores [files] in the state and hands the list to the Rust server.
+  void _publishFiles(Map<String, WebSendFile> files) {
+    server.setState(
+      (oldState) => oldState?.copyWith(
+        webSendState: oldState.webSendState?.copyWith(files: files),
+      ),
+    );
+    server.ref
+        .redux(parentIsolateProvider)
+        .dispatch(
+          IsolateHttpServerSetWebSendFilesAction(
+            files: {
+              for (final entry in files.entries) entry.key: entry.value.file.toRust(),
+            },
+          ),
+        );
+  }
+
+  /// Converts a selected file into an offered file.
+  /// Files that only exist in memory (e.g. text messages) are materialized
+  /// to the cache directory so the Rust server can stream them.
+  Future<MapEntry<String, WebSendFile>> _toWebSendFile(CrossFile file) async {
+    final id = _uuid.v4();
+
+    String? path = file.path;
+    if (path == null && file.bytes != null) {
+      // The Rust server streams file content from disk, so in-memory
+      // bytes (text messages, clipboard content) are written to a temp file.
+      final tempPath = p.join(await getCacheDirectory(), 'web-send-$id');
+      await File(tempPath).writeAsBytes(file.bytes!);
+      path = tempPath;
+    }
+
+    return MapEntry(
+      id,
+      WebSendFile(
+        file: FileDto(
+          id: id,
+          fileName: file.name,
+          size: file.size,
+          fileType: file.fileType,
+          hash: null,
+          // A simple message is shown by embedding it into the preview.
+          preview: file.fileType == FileType.text && file.bytes != null ? utf8.decode(file.bytes!) : null,
+          metadata: file.lastModified != null || file.lastAccessed != null
+              ? FileMetadata(
+                  lastModified: file.lastModified,
+                  lastAccessed: file.lastAccessed,
+                )
+              : null,
+        ),
+        asset: file.asset,
+        path: path,
+        bytes: file.bytes,
+      ),
     );
   }
 

@@ -151,7 +151,9 @@ impl Default for WebSendI18n {
 /// Runtime state of the web send (download API) endpoints.
 pub(crate) struct WebPageState {
     /// The metadata of the files offered for download, mapped by file ID.
-    pub(crate) files: HashMap<String, FileDto>,
+    /// The application can change it while the server runs
+    /// ([`crate::http::server::ServerHandle::set_web_send_files`]).
+    files: std::sync::RwLock<HashMap<String, FileDto>>,
 
     /// Optional PIN required for prepare-download requests.
     pub(crate) pin: Option<String>,
@@ -172,12 +174,36 @@ pub(crate) struct WebPageState {
 impl WebPageState {
     pub(crate) fn new(config: WebSendConfig) -> Self {
         Self {
-            files: config.files,
+            files: std::sync::RwLock::new(config.files),
             pin: config.pin,
             i18n: config.i18n,
             event_tx: config.event_tx,
             sessions: Mutex::new(HashMap::new()),
             pin_attempts: Mutex::new(LruCache::new(NonZeroUsize::new(200).unwrap())),
+        }
+    }
+
+    /// The files currently offered for download.
+    fn files(&self) -> HashMap<String, FileDto> {
+        self.files
+            .read()
+            .map(|files| files.clone())
+            .unwrap_or_default()
+    }
+
+    fn file(&self, file_id: &str) -> Option<FileDto> {
+        self.files
+            .read()
+            .ok()
+            .and_then(|files| files.get(file_id).cloned())
+    }
+
+    /// Replaces the offered files. Accepted sessions stay valid: their web
+    /// page picks up the new list on its next refresh. Downloads already in
+    /// progress continue; removed files can no longer be requested.
+    pub(crate) fn set_files(&self, files: HashMap<String, FileDto>) {
+        if let Ok(mut current) = self.files.write() {
+            *current = files;
         }
     }
 }
@@ -331,7 +357,7 @@ pub(crate) async fn download(
         return Err(AppError::BadRequest("Missing fileId.".to_string()));
     };
 
-    let Some(file) = web.files.get(file_id) else {
+    let Some(file) = web.file(file_id) else {
         return Err(AppError::Message(
             StatusCode::FORBIDDEN,
             "Invalid fileId.".to_string(),
@@ -538,6 +564,38 @@ pub fn is_valid_upload_file_name(name: &str) -> bool {
         && !name.chars().any(char::is_control)
 }
 
+/// `GET /api/localsend/v2/web/files?sessionId=…`: the current file list
+/// for an accepted web client, so its page can follow files the host adds
+/// or removes while sharing. Unlike `prepare-download`, an unknown session is
+/// refused (403) and never turns into a new request to the host.
+pub(crate) async fn files(
+    req: Request<Incoming>,
+    state: AppState,
+    client_info: RequestClientInfo,
+) -> Result<Response<BoxedBody>, AppError> {
+    let web = require_web(&state)?;
+    let query = parse_query(req.uri().query());
+
+    let Some(session_id) = query.get("sessionId") else {
+        return Err(AppError::BadRequest("Missing sessionId.".to_string()));
+    };
+
+    let valid = web
+        .sessions
+        .lock()
+        .await
+        .get(session_id)
+        .is_some_and(|session| session.accepted && session.ip == client_info.ip);
+    if !valid {
+        return Err(AppError::Message(
+            StatusCode::FORBIDDEN,
+            "Invalid sessionId.".to_string(),
+        ));
+    }
+
+    Ok(file_list_response(&state, &web, session_id.clone()).await)
+}
+
 fn require_web(state: &AppState) -> Result<Arc<WebPageState>, AppError> {
     state.web.clone().ok_or(AppError::Message(
         StatusCode::FORBIDDEN,
@@ -586,7 +644,7 @@ async fn file_list_response(
                 download: true,
             },
             session_id,
-            files: web.files.clone(),
+            files: web.files(),
         },
     }
     .into_response()

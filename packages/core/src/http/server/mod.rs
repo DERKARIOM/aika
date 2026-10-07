@@ -11,6 +11,7 @@ use crate::http::server::internal::{InternalConfig, InternalState};
 use crate::http::server::v2::ServerEventV2;
 use crate::http::server::web::WebSendConfig;
 use crate::http::state::ClientInfo;
+use crate::model::transfer::FileDto;
 use common::client_cert_verifier::CustomClientCertVerifier;
 use common::error::AppError;
 use common::response;
@@ -23,6 +24,7 @@ use hyper_util::server::conn::auto::Builder;
 use lru::LruCache;
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::num::NonZeroUsize;
@@ -132,6 +134,8 @@ impl AppState {
 pub struct ServerHandle {
     v2: Option<Arc<V2State>>,
 
+    web: Option<Arc<WebPageState>>,
+
     chat: Arc<std::sync::RwLock<Option<ChatHub>>>,
 
     /// The task running the accept loops. Completes after a stop has been
@@ -155,6 +159,20 @@ impl ServerHandle {
     pub fn attach_chat_hub(&self, hub: Option<ChatHub>) {
         if let Ok(mut slot) = self.chat.write() {
             *slot = hub;
+        }
+    }
+
+    /// Replaces the files offered for download by web send, without
+    /// restarting the server: accepted web clients keep their session.
+    ///
+    /// Returns `false` when web send is not enabled on this server.
+    pub fn set_web_send_files(&self, files: HashMap<String, FileDto>) -> bool {
+        match &self.web {
+            Some(web) => {
+                web.set_files(files);
+                true
+            }
+            None => false,
         }
     }
 
@@ -245,6 +263,7 @@ pub async fn start_with_port(
 
     Ok(ServerHandle {
         v2: state.v2.clone(),
+        web: state.web.clone(),
         chat: state.chat.clone(),
         task: Mutex::new(Some(task)),
     })
@@ -455,6 +474,7 @@ async fn handle_request_inner(mut req: Request<Incoming>) -> Result<Response<Box
         (&Method::GET, "/api/localsend/v2/download") => {
             web::download(req, state, client_info).await
         }
+        (&Method::GET, "/api/localsend/v2/web/files") => web::files(req, state, client_info).await,
         (&Method::POST, "/api/localsend/v2/web/prepare-upload") => {
             web::prepare_upload(req, state, client_info).await
         }

@@ -89,6 +89,12 @@ class HttpServerService {
     await _requireServer().cancelSession(sessionId: sessionId);
   }
 
+  /// Replaces the files offered for download by web send, without
+  /// restarting the server (accepted browsers keep their session).
+  Future<void> setWebSendFiles({required Map<String, FileDto> files}) async {
+    await _requireServer().setWebSendFiles(files: files);
+  }
+
   /// Answers a pending web prepare-download request.
   /// [accept] grants the download; `false` declines it.
   Future<void> respondPrepareDownload({required String sessionId, required bool accept}) async {

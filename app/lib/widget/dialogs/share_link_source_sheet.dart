@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:localsend_app/gen/strings.g.dart';
+import 'package:localsend_app/model/cross_file.dart';
+import 'package:localsend_app/provider/selection/selected_sending_files_provider.dart';
 import 'package:localsend_app/util/native/file_picker.dart';
 import 'package:localsend_app/widget/dialogs/custom_bottom_sheet.dart';
+import 'package:localsend_app/widget/dialogs/message_input_dialog.dart';
+import 'package:refena_flutter/refena_flutter.dart';
 import 'package:routerino/routerino.dart';
 
 /// What the user wants to share through a new web share link.
@@ -40,7 +44,34 @@ enum ShareLinkSource {
   }
 }
 
-/// Bottom sheet opened by "Créer un lien de partage" on the Receive tab.
+/// Asks for a source with [ShareLinkSourceSheet], lets the user pick from it
+/// and returns the picked files (empty when cancelled).
+///
+/// The regular pickers are reused (same permissions, Android cache handling
+/// and folder support as the Send tab): they add to the send selection, and
+/// only the files added by this pick are returned.
+Future<List<CrossFile>> pickFilesForShareLink(BuildContext context, Ref ref) async {
+  final source = await context.pushBottomSheet(() => const ShareLinkSourceSheet());
+  if (source is! ShareLinkSource || !context.mounted) {
+    return const [];
+  }
+
+  final before = ref.read(selectedSendingFilesProvider);
+  final pickerOption = source.pickerOption;
+  if (pickerOption == null) {
+    final text = await showDialog<String>(context: context, builder: (_) => const MessageInputDialog());
+    if (text == null || text.trim().isEmpty) {
+      return const [];
+    }
+    ref.redux(selectedSendingFilesProvider).dispatch(AddMessageAction(message: text));
+  } else {
+    await ref.global.dispatchAsync(PickFileAction(option: pickerOption, context: context));
+  }
+
+  return ref.read(selectedSendingFilesProvider).where((file) => !before.any((old) => identical(old, file))).toList();
+}
+
+/// Bottom sheet listing what can be added to a web share link.
 /// Pops with the chosen [ShareLinkSource], or nothing when dismissed.
 class ShareLinkSourceSheet extends StatelessWidget {
   const ShareLinkSourceSheet();
@@ -52,8 +83,8 @@ class ShareLinkSourceSheet extends StatelessWidget {
     final sources = ShareLinkSource.forPlatform();
 
     return CustomBottomSheet(
-      title: isFr ? 'Créer un lien de partage' : 'Create a share link',
-      description: isFr ? 'Choisissez ce que vous voulez partager.' : 'Choose what you want to share.',
+      title: isFr ? 'Ajouter des fichiers au lien' : 'Add files to the link',
+      description: isFr ? 'Ils pourront être téléchargés depuis le lien.' : 'They can be downloaded from the link.',
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -77,8 +108,8 @@ class ShareLinkSourceSheet extends StatelessWidget {
               Expanded(
                 child: Text(
                   isFr
-                      ? 'Le destinataire ouvre le lien dans son navigateur, sur le même Wi-Fi, sans installer Aika.'
-                      : 'The recipient opens the link in a browser, on the same Wi-Fi, without installing Aika.',
+                      ? 'Les appareils déjà connectés au lien voient les nouveaux fichiers sans recharger la page.'
+                      : 'Devices already on the link see the new files without reloading the page.',
                   style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12),
                 ),
               ),
