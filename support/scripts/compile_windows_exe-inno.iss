@@ -20,7 +20,7 @@
 ; app/pubspec.yaml's version.
 
 #define MyAppName "Aika"
-#define MyAppVersion "1.1.5"
+#define MyAppVersion "1.3.6"
 #define MyAppPublisher "Bachir Abdoul Kader"
 #define MyAppURL "https://naniger.com"
 #define MyAppExeName "aika.exe"

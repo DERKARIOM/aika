@@ -1,3 +1,7 @@
+## 1.3.6
+
+- Améliorations et corrections.
+
 ## 1.1.5
 
 - Mises à jour Google Play (Android) : les mises à jour importantes s'installent désormais via l'écran officiel de Google Play, et Aika reste bloquée tant qu'une mise à jour obligatoire n'est pas installée (sauf si Google Play est injoignable, pour ne jamais empêcher le transfert local hors ligne).
