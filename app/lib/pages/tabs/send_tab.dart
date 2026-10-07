@@ -210,9 +210,15 @@ class SendTab extends StatelessWidget {
                     ),
                   ],
                 ),
-                _ShareViaLinkCard(
-                  onTap: () async => vm.onTapSendMode(context, SendMode.link),
-                ),
+                // Replaces the former "Partager via un lien" card (still
+                // available in the send-mode menu): scanning the code shown
+                // on the receiver's "Recevoir" tab is the quickest way to
+                // send to another Aika device. Only shown once there is
+                // something to send.
+                if (vm.selectedFiles.isNotEmpty)
+                  _ScanQrToSendCard(
+                    onTap: () async => _onTapQrScan(context),
+                  ),
                 if (vm.nearbyDevices.isEmpty)
                   const Padding(
                     padding: EdgeInsets.only(bottom: 10, left: _horizontalPadding, right: _horizontalPadding),
@@ -607,34 +613,32 @@ class _MultiSendDeviceListTile extends StatelessWidget {
   }
 }
 
-/// A prominent, dedicated card that surfaces "Partager via un lien" (share via
-/// link) directly on the Send screen, instead of leaving it buried in the
-/// secondary send-mode menu (the gear icon). Tapping it reuses the exact same
-/// [SendTabVm.onTapSendMode] flow as the menu entry: it checks the current
-/// file selection, shows [NoFilesDialog] when empty, otherwise opens
-/// [WebSendPage]. The other send modes (single/multiple recipient) and the
-/// secondary menu are left untouched.
-class _ShareViaLinkCard extends StatelessWidget {
+/// A prominent card that opens the QR pairing scanner ([_onTapQrScan]):
+/// scan the code shown on the other device's "Recevoir" tab and the selected
+/// files are sent right away (or the device is just added when nothing is
+/// selected yet).
+class _ScanQrToSendCard extends StatelessWidget {
   final VoidCallback onTap;
 
-  const _ShareViaLinkCard({required this.onTap});
+  const _ScanQrToSendCard({required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isFr = LocaleSettings.currentLocale == AppLocale.fr;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10, left: _horizontalPadding, right: _horizontalPadding),
       child: CustomListTile(
         glass: true,
         onTap: onTap,
-        icon: const Icon(Icons.qr_code, size: 46),
+        icon: const Icon(Icons.qr_code_scanner_rounded, size: 46),
         title: Text(
-          t.sendTab.sendModes.link,
+          isFr ? 'Scanner le code QR pour envoyer' : 'Scan the QR code to send',
           style: const TextStyle(fontSize: 20),
         ),
         subTitle: Text(
-          t.dialogs.sendModeHelp.link,
-          maxLines: 1,
+          isFr ? 'Scannez le code de l’onglet « Recevoir » de l’autre appareil' : 'Scan the code on the other device’s “Receive” tab',
+          maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(color: colorScheme.onSurfaceVariant),
         ),
