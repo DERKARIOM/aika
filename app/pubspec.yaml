@@ -27,6 +27,9 @@ dependencies:
   # Cross-platform (Android/iOS/macOS/Windows/Linux) drift database opener.
   drift_flutter: ^0.3.0
   dynamic_color: 1.8.1
+  # Native calls (Windows free disk space on the "Recevoir" page). Already
+  # used by other plugins: declared only because Aika now imports it.
+  ffi: ^2.2.0
   file_picker: 11.0.2
   file_selector: 1.1.0
   flutter:

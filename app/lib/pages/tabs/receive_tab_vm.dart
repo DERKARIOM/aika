@@ -16,6 +16,10 @@ class ReceiveTabVm {
   /// Local IP addresses, the most likely primary one first.
   final List<String> localIps;
 
+  /// Folder received files are saved to (`null` = default), for the
+  /// storage card on desktop.
+  final String? destination;
+
   /// Opens the web share page with a link (and QR code) that shares no
   /// files: browsers without Aika use it to send files to this device.
   final Future<void> Function(BuildContext context) onCreateShareLink;
@@ -24,14 +28,21 @@ class ReceiveTabVm {
     required this.aliasSettings,
     required this.serverState,
     required this.localIps,
+    required this.destination,
     required this.onCreateShareLink,
   });
 
   bool get isReceiving => serverState != null;
+
+  /// A web share link is open: the server also answers browsers.
+  bool get isSharingLink => serverState?.webSendState != null;
+
+  /// A transfer is being received right now.
+  bool get isReceivingSession => serverState?.session != null;
 }
 
 final receiveTabVmProvider = ViewProvider((ref) {
-  final alias = ref.watch(settingsProvider.select((s) => s.alias));
+  final (alias, destination) = ref.watch(settingsProvider.select((s) => (s.alias, s.destination)));
   final localIps = ref.watch(localIpProvider).localIps;
   final serverState = ref.watch(serverProvider);
 
@@ -39,6 +50,7 @@ final receiveTabVmProvider = ViewProvider((ref) {
     aliasSettings: alias,
     serverState: serverState,
     localIps: localIps,
+    destination: destination,
     onCreateShareLink: (context) async {
       await context.push(() => const WebSendPage([]));
     },

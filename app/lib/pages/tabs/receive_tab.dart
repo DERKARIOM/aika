@@ -4,13 +4,19 @@ import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'package:flutter/material.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/qr_pairing_payload.dart';
+import 'package:localsend_app/pages/home_page.dart';
+import 'package:localsend_app/pages/home_page_controller.dart';
 import 'package:localsend_app/pages/qr_pairing_display_page.dart';
 import 'package:localsend_app/pages/receive_history_page.dart';
 import 'package:localsend_app/pages/tabs/receive_tab_vm.dart';
 import 'package:localsend_app/provider/animation_provider.dart';
 import 'package:localsend_app/provider/device_info_provider.dart';
+import 'package:localsend_app/provider/selection/selected_sending_files_provider.dart';
 import 'package:localsend_app/util/ip_helper.dart';
+import 'package:localsend_app/util/native/file_picker.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
+import 'package:localsend_app/util/native/storage_info.dart';
+import 'package:localsend_app/widget/dialogs/custom_bottom_sheet.dart';
 import 'package:localsend_isolates/constants.dart';
 import 'package:localsend_isolates/model/device.dart';
 import 'package:pretty_qr_code/pretty_qr_code.dart';
@@ -23,7 +29,11 @@ String _t({required String fr, required String en}) {
   return LocaleSettings.currentLocale == AppLocale.fr ? fr : en;
 }
 
-/// The "Recevoir" tab: this device's QR code, front and center.
+/// The "Recevoir" tab: a compact personal dashboard.
+///
+/// From top to bottom: the real state of the receive server, this device's
+/// QR code and name, the free space of its storage, then the two ways to
+/// share (send files, or a share link for devices without Aika).
 ///
 /// The QR code is the exact same Smart QR pairing code as the
 /// "Mon QR Code" page ([QrPairingPayload], scanned by [QrPairingScannerPage]
@@ -31,90 +41,14 @@ String _t({required String fr, required String en}) {
 /// fingerprint, valid for a short time. Here it is renewed automatically
 /// before it expires and whenever the network or server settings change, so
 /// the code shown is always scannable.
-class ReceiveTab extends StatelessWidget {
+class ReceiveTab extends StatefulWidget {
   const ReceiveTab();
 
   @override
-  Widget build(BuildContext context) {
-    final vm = context.watch(receiveTabVmProvider);
-
-    return Stack(
-      children: [
-        // Makes the top part draggable on macOS (no native title bar).
-        if (checkPlatform([TargetPlatform.macOS])) SizedBox(height: 50, child: MoveWindow()),
-        SafeArea(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 480),
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
-                children: [
-                  const _Header(),
-                  const SizedBox(height: 20),
-                  _MyQrCard(vm: vm),
-                  const SizedBox(height: 16),
-                  _ShareLinkCard(onTap: () async => vm.onCreateShareLink(context)),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+  State<ReceiveTab> createState() => _ReceiveTabState();
 }
 
-class _Header extends StatelessWidget {
-  const _Header();
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                t.receiveTab.title,
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.5),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                _t(
-                  fr: 'Scannez ce code QR pour vous connecter à mon appareil',
-                  en: 'Scan this QR code to connect to my device',
-                ),
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 8),
-        IconButton.filledTonal(
-          tooltip: _t(fr: 'Historique', en: 'History'),
-          onPressed: () async => context.push(() => const ReceiveHistoryPage()),
-          icon: const Icon(Icons.history_rounded),
-        ),
-      ],
-    );
-  }
-}
-
-/// The QR code card: readiness, the code itself, this device's identity and
-/// local network details.
-class _MyQrCard extends StatefulWidget {
-  final ReceiveTabVm vm;
-
-  const _MyQrCard({required this.vm});
-
-  @override
-  State<_MyQrCard> createState() => _MyQrCardState();
-}
-
-class _MyQrCardState extends State<_MyQrCard> with Refena {
+class _ReceiveTabState extends State<ReceiveTab> with Refena {
   /// A code is renewed this long before it expires, so the one on screen is
   /// always valid for at least this long when someone scans it.
   static const _renewMargin = Duration(seconds: 30);
@@ -135,8 +69,8 @@ class _MyQrCardState extends State<_MyQrCard> with Refena {
   /// Returns a valid code for [device], generating a new one when there is
   /// none yet, when it is about to expire, or when anything it encodes
   /// changed (IP, port, encryption, alias, certificate).
-  QrPairingPayload? _currentPayload(Device device) {
-    if (!widget.vm.isReceiving || !_hasUsableIp(device)) {
+  QrPairingPayload? _currentPayload(ReceiveTabVm vm, Device device) {
+    if (!vm.isReceiving || !_hasUsableIp(device)) {
       _renewTimer?.cancel();
       _payload = null;
       return null;
@@ -181,96 +115,278 @@ class _MyQrCardState extends State<_MyQrCard> with Refena {
 
   @override
   Widget build(BuildContext context) {
+    final vm = context.watch(receiveTabVmProvider);
     final device = ref.watch(deviceFullInfoProvider);
-    final animations = ref.watch(animationProvider);
-    final payload = _currentPayload(device);
-    final colorScheme = Theme.of(context).colorScheme;
-    final vm = widget.vm;
+    final payload = _currentPayload(vm, device);
 
-    final _ReadyState readyState = !vm.isReceiving
+    final _ReadyState state = !vm.isReceiving
         ? _ReadyState.offline
         : payload == null
         ? _ReadyState.noNetwork
+        : vm.isSharingLink
+        ? _ReadyState.sharing
         : _ReadyState.ready;
 
+    return Stack(
+      children: [
+        // Makes the top part draggable on macOS (no native title bar).
+        if (checkPlatform([TargetPlatform.macOS])) SizedBox(height: 50, child: MoveWindow()),
+        SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+                children: [
+                  _Header(state: state),
+                  const SizedBox(height: 16),
+                  _QrCard(vm: vm, payload: payload, state: state),
+                  const SizedBox(height: 12),
+                  _StorageCard(destination: vm.destination, receiving: vm.isReceivingSession),
+                  const SizedBox(height: 16),
+                  _Actions(onCreateShareLink: () async => vm.onCreateShareLink(context)),
+                  const SizedBox(height: 6),
+                  _Footer(vm: vm, state: state),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// What the status pill and the QR card show. Always derived from the real
+/// server and network state, never set by hand.
+enum _ReadyState {
+  /// Server running, local network available: the QR code is scannable.
+  ready,
+
+  /// Same, and a web share link is open (the server also answers browsers).
+  sharing,
+
+  /// Server running but no usable local IP (no Wi-Fi / hotspot).
+  noNetwork,
+
+  /// Receive server stopped.
+  offline,
+}
+
+class _Header extends StatelessWidget {
+  final _ReadyState state;
+
+  const _Header({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                t.receiveTab.title,
+                style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.5),
+              ),
+            ),
+            IconButton.filledTonal(
+              tooltip: _t(fr: 'Historique', en: 'History'),
+              onPressed: () async => context.push(() => const ReceiveHistoryPage()),
+              icon: const Icon(Icons.history_rounded),
+            ),
+          ],
+        ),
+        const SizedBox(height: 2),
+        Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 12,
+          runSpacing: 8,
+          children: [
+            Text(
+              _t(fr: 'Partagez avec vos autres appareils', en: 'Share with your other devices'),
+              style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+            _StatusPill(state: state),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  final _ReadyState state;
+
+  const _StatusPill({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final animations = context.watch(animationProvider);
+    final (label, color) = switch (state) {
+      _ReadyState.ready => (_t(fr: 'Prêt à recevoir', en: 'Ready to receive'), colorScheme.primary),
+      _ReadyState.sharing => (_t(fr: 'Serveur de partage actif', en: 'Share server active'), colorScheme.primary),
+      _ReadyState.noNetwork => (_t(fr: 'Connexion indisponible', en: 'Connection unavailable'), colorScheme.error),
+      _ReadyState.offline => (t.general.offline, colorScheme.onSurfaceVariant),
+    };
+    return Semantics(
+      liveRegion: true,
+      child: AnimatedSwitcher(
+        duration: animations ? const Duration(milliseconds: 250) : Duration.zero,
+        child: Container(
+          key: ValueKey(state),
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 7),
+              Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 12.5)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Rounded card used by every block of the page.
+class _Card extends StatelessWidget {
+  final EdgeInsetsGeometry padding;
+  final double radius;
+  final Widget child;
+
+  const _Card({required this.child, this.padding = const EdgeInsets.all(16), this.radius = 24});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+      padding: padding,
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(radius),
         border: Border.all(color: colorScheme.outlineVariant),
       ),
+      child: child,
+    );
+  }
+}
+
+/// "Votre QR Code": the code, this device's character name and short ID.
+class _QrCard extends StatelessWidget {
+  final ReceiveTabVm vm;
+  final QrPairingPayload? payload;
+  final _ReadyState state;
+
+  const _QrCard({required this.vm, required this.payload, required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final animations = context.watch(animationProvider);
+    final payload = this.payload;
+    final ids = vm.isReceiving ? vm.localIps.map((ip) => ip.visualId).toSet() : const <String>{};
+
+    return _Card(
+      padding: const EdgeInsets.fromLTRB(16, 6, 6, 16),
       child: Column(
         children: [
           Row(
             children: [
-              _StatusPill(state: readyState),
-              const Spacer(),
-              if (payload != null)
-                IconButton(
-                  tooltip: _t(fr: 'Agrandir', en: 'Enlarge'),
-                  onPressed: () async => _showFullScreen(context, payload),
-                  icon: const Icon(Icons.open_in_full_rounded, size: 20),
+              Expanded(
+                child: Text(
+                  _t(fr: 'Votre QR Code', en: 'Your QR code'),
+                  style: theme.textTheme.titleSmall?.copyWith(color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.w700),
                 ),
+              ),
+              // Keeps the row height when the button is hidden.
+              SizedBox(
+                height: 44,
+                child: payload == null
+                    ? null
+                    : IconButton(
+                        tooltip: _t(fr: 'Agrandir le QR Code', en: 'Enlarge the QR code'),
+                        onPressed: () async => _showFullScreen(context, payload),
+                        icon: const Icon(Icons.open_in_full_rounded, size: 20),
+                      ),
+              ),
             ],
           ),
-          const SizedBox(height: 12),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final size = (constraints.maxWidth - 40).clamp(180.0, 280.0).toDouble();
-              return AnimatedSwitcher(
-                duration: animations ? const Duration(milliseconds: 300) : Duration.zero,
-                child: payload != null
-                    ? GestureDetector(
-                        key: ValueKey(payload.pairId),
-                        onTap: () async => _showFullScreen(context, payload),
-                        child: _QrImage(data: payload.encode(), size: size),
-                      )
-                    : _QrPlaceholder(key: ValueKey(readyState), state: readyState, size: size),
-              );
-            },
-          ),
-          const SizedBox(height: 18),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              vm.serverState?.alias ?? vm.aliasSettings,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+          Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: Column(
+              children: [
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    // Compact, but never below what a phone camera reads
+                    // reliably for this dense code (~2.5 px per module).
+                    final size = (constraints.maxWidth * 0.62).clamp(200.0, 240.0).toDouble();
+                    return AnimatedSwitcher(
+                      duration: animations ? const Duration(milliseconds: 300) : Duration.zero,
+                      child: payload != null
+                          ? GestureDetector(
+                              key: ValueKey(payload.pairId),
+                              onTap: () async => _showFullScreen(context, payload),
+                              child: _QrImage(data: payload.encode(), size: size),
+                            )
+                          : _QrPlaceholder(key: ValueKey(state), state: state, size: size),
+                    );
+                  },
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        vm.serverState?.alias ?? vm.aliasSettings,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                    for (final id in ids) ...[
+                      const SizedBox(width: 8),
+                      _IdChip(id: id),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 4),
+                if (state == _ReadyState.noNetwork)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: FilledButton.tonalIcon(
+                      // Reuses the full network preparation flow (hotspot on
+                      // Android, guidance to the settings elsewhere).
+                      onPressed: () async => context.push(() => const QrPairingDisplayPage()),
+                      icon: const Icon(Icons.wifi_tethering_rounded),
+                      label: Text(_t(fr: 'Préparer la connexion', en: 'Prepare the connection')),
+                    ),
+                  )
+                else
+                  Text(
+                    state == _ReadyState.offline
+                        ? t.qrPairing.display.offline
+                        : _t(fr: 'Scannez pour vous connecter', en: 'Scan to connect'),
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
+                  ),
+              ],
             ),
           ),
-          if (vm.isReceiving && vm.localIps.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            _NetworkInfo(ips: vm.localIps, port: vm.serverState!.port, https: vm.serverState!.https),
-          ],
-          const SizedBox(height: 14),
-          if (readyState == _ReadyState.ready)
-            Text(
-              _t(
-                fr: 'Code sécurisé, renouvelé automatiquement toutes les ${qrPairingDefaultTtl.inMinutes} minutes.',
-                en: 'Secure code, renewed automatically every ${qrPairingDefaultTtl.inMinutes} minutes.',
-              ),
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
-            )
-          else if (readyState == _ReadyState.noNetwork)
-            FilledButton.tonalIcon(
-              // Reuses the full network preparation flow (hotspot on
-              // Android, guidance to the settings elsewhere).
-              onPressed: () async => context.push(() => const QrPairingDisplayPage()),
-              icon: const Icon(Icons.wifi_tethering_rounded),
-              label: Text(_t(fr: 'Préparer la connexion', en: 'Prepare the connection')),
-            )
-          else
-            Text(
-              t.qrPairing.display.offline,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
-            ),
-          if (readyState == _ReadyState.ready)
-            TextButton(
-              onPressed: () async => context.push(() => const QrPairingDisplayPage()),
-              child: Text(_t(fr: 'Options du code QR', en: 'QR code options')),
-            ),
         ],
       ),
     );
@@ -294,8 +410,12 @@ class _MyQrCardState extends State<_MyQrCard> with Refena {
                   Text(payload.alias, style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 4),
                   Text(
-                    '${payload.ip}:${payload.port}',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    _t(
+                      fr: 'Code sécurisé, renouvelé automatiquement toutes les ${qrPairingDefaultTtl.inMinutes} minutes.',
+                      en: 'Secure code, renewed automatically every ${qrPairingDefaultTtl.inMinutes} minutes.',
+                    ),
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
                   ),
                   const SizedBox(height: 8),
                   TextButton(
@@ -312,38 +432,29 @@ class _MyQrCardState extends State<_MyQrCard> with Refena {
   }
 }
 
-enum _ReadyState { ready, noNetwork, offline }
+/// Short device ID (end of the local IP), as on the other devices' lists.
+class _IdChip extends StatelessWidget {
+  final String id;
 
-class _StatusPill extends StatelessWidget {
-  final _ReadyState state;
-
-  const _StatusPill({required this.state});
+  const _IdChip({required this.id});
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final (label, color) = switch (state) {
-      _ReadyState.ready => (_t(fr: 'Prêt à recevoir', en: 'Ready to receive'), colorScheme.primary),
-      _ReadyState.noNetwork => (_t(fr: 'Aucun réseau local', en: 'No local network'), colorScheme.error),
-      _ReadyState.offline => (t.general.offline, colorScheme.onSurfaceVariant),
-    };
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 8),
-          Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 13)),
-        ],
+      child: Text(
+        '#$id',
+        style: TextStyle(
+          fontWeight: FontWeight.w700,
+          fontSize: 13,
+          color: colorScheme.onSurfaceVariant,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
       ),
     );
   }
@@ -367,10 +478,10 @@ class _QrImage extends StatelessWidget {
       child: Container(
         width: size,
         height: size,
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(18),
         ),
         child: PrettyQrView.data(
           data: data,
@@ -396,132 +507,374 @@ class _QrPlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final noNetwork = state == _ReadyState.noNetwork;
     return Container(
       width: size,
       height: size,
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: colorScheme.outlineVariant),
       ),
-      child: Icon(
-        state == _ReadyState.noNetwork ? Icons.wifi_off_rounded : Icons.qr_code_2_rounded,
-        size: 64,
-        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            noNetwork ? Icons.wifi_off_rounded : Icons.qr_code_2_rounded,
+            size: 48,
+            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+          ),
+          if (noNetwork) ...[
+            const SizedBox(height: 10),
+            Text(
+              _t(fr: 'Aucun réseau local détecté', en: 'No local network detected'),
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+            ),
+          ],
+        ],
       ),
     );
   }
 }
 
-/// Local network details: short device ID(s) and the address to type in
-/// "manual sending" when scanning is not possible.
-class _NetworkInfo extends StatelessWidget {
-  final List<String> ips;
-  final int port;
-  final bool https;
+/// "Stockage de l'appareil": real free / used / total space of the volume
+/// received files go to. Hidden when the platform cannot report it reliably.
+class _StorageCard extends StatefulWidget {
+  final String? destination;
 
-  const _NetworkInfo({required this.ips, required this.port, required this.https});
+  /// A transfer is being received: the space is read again when it ends.
+  final bool receiving;
+
+  const _StorageCard({required this.destination, required this.receiving});
+
+  @override
+  State<_StorageCard> createState() => _StorageCardState();
+}
+
+class _StorageCardState extends State<_StorageCard> with WidgetsBindingObserver {
+  StorageInfo? _info;
+  bool _loaded = false;
+  int _generation = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_load());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(_StorageCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final transferEnded = oldWidget.receiving && !widget.receiving;
+    if (transferEnded || oldWidget.destination != widget.destination) {
+      unawaited(_load());
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Files may have been added or deleted while Aika was in the background.
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_load());
+    }
+  }
+
+  Future<void> _load() async {
+    final generation = ++_generation;
+    final info = await readStorageInfo(destination: widget.destination);
+    if (mounted && generation == _generation) {
+      setState(() {
+        _info = info;
+        _loaded = true;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final ids = ips.map((ip) => ip.visualId).toSet();
-    return Column(
-      children: [
-        Wrap(
-          alignment: WrapAlignment.center,
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final id in ids)
+    final info = _info;
+    final animations = context.watch(animationProvider);
+    return AnimatedSize(
+      duration: animations ? const Duration(milliseconds: 250) : Duration.zero,
+      alignment: Alignment.topCenter,
+      child: !_loaded || info == null ? const SizedBox(width: double.infinity) : _StorageContent(info: info),
+    );
+  }
+}
+
+class _StorageContent extends StatelessWidget {
+  final StorageInfo info;
+
+  const _StorageContent({required this.info});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final total = info.totalBytes;
+    final used = info.usedBytes;
+    final fraction = info.usedFraction;
+    final free = _t(fr: '${formatStorageSize(info.freeBytes)} libres', en: '${formatStorageSize(info.freeBytes)} free');
+
+    return _Card(
+      radius: 20,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                width: 32,
+                height: 32,
                 decoration: BoxDecoration(
-                  color: colorScheme.surface,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: colorScheme.outlineVariant),
+                  color: colorScheme.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
                 ),
+                child: Icon(Icons.sd_storage_outlined, size: 18, color: colorScheme.primary),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
                 child: Text(
-                  '#$id',
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontFeatures: [FontFeature.tabularFigures()]),
+                  _t(fr: 'Stockage de l’appareil', en: 'Device storage'),
+                  style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
+              Text(free, style: TextStyle(fontWeight: FontWeight.w800, color: colorScheme.primary)),
+            ],
+          ),
+          if (fraction != null && total != null && used != null) ...[
+            const SizedBox(height: 10),
+            Semantics(
+              label: _t(fr: 'Stockage utilisé', en: 'Storage used'),
+              value: '${(fraction * 100).round()} %',
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: fraction),
+                  duration: context.watch(animationProvider) ? const Duration(milliseconds: 600) : Duration.zero,
+                  curve: Curves.easeOutCubic,
+                  builder: (context, value, _) => LinearProgressIndicator(
+                    value: value,
+                    minHeight: 6,
+                    backgroundColor: colorScheme.onSurface.withValues(alpha: 0.08),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _t(
+                fr: '${formatStorageSize(used)} utilisés sur ${formatStorageSize(total)}',
+                en: '${formatStorageSize(used)} used of ${formatStorageSize(total)}',
+              ),
+              style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
+            ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Bytes as "86 Go" / "4,2 Go" / "512 Mo" (French) or "86 GB" (English).
+/// Decimal units, as phones and file managers display storage.
+@visibleForTesting
+String formatStorageSize(int bytes) {
+  final fr = LocaleSettings.currentLocale == AppLocale.fr;
+  const units = [('o', 'B'), ('Ko', 'KB'), ('Mo', 'MB'), ('Go', 'GB'), ('To', 'TB')];
+  var value = bytes.toDouble();
+  var unit = 0;
+  while (value >= 1000 && unit < units.length - 1) {
+    value /= 1000;
+    unit++;
+  }
+  var text = value >= 100 || unit == 0 ? value.round().toString() : value.toStringAsFixed(1);
+  if (text.endsWith('.0')) {
+    text = text.substring(0, text.length - 2);
+  }
+  if (fr) {
+    text = text.replaceAll('.', ',');
+  }
+  final (frUnit, enUnit) = units[unit];
+  return '$text ${fr ? frUnit : enUnit}';
+}
+
+/// The two ways to share from here.
+class _Actions extends StatelessWidget {
+  final Future<void> Function() onCreateShareLink;
+
+  const _Actions({required this.onCreateShareLink});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        FilledButton.icon(
+          onPressed: () async => _sendFiles(context),
+          style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(54),
+            textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+          ),
+          icon: const Icon(Icons.send_rounded),
+          label: Text(_t(fr: 'Envoyer des fichiers', en: 'Send files')),
         ),
-        const SizedBox(height: 8),
-        SelectableText(
-          '${ips.first}:$port${https ? '' : ' · HTTP'}',
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: onCreateShareLink,
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size.fromHeight(50),
+            textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          ),
+          icon: const Icon(Icons.link_rounded),
+          label: Text(_t(fr: 'Créer un lien de partage', en: 'Create a share link')),
         ),
       ],
     );
   }
+
+  /// Same pickers as the Send tab; once something is selected, the Send tab
+  /// opens on the selection to choose the receiving device.
+  Future<void> _sendFiles(BuildContext context) async {
+    final option = await context.pushBottomSheet(() => const _SendSourceSheet());
+    if (option is! FilePickerOption || !context.mounted) {
+      return;
+    }
+    final ref = context.ref;
+    final before = ref.read(selectedSendingFilesProvider).length;
+    await ref.global.dispatchAsync(PickFileAction(option: option, context: context));
+    if (ref.read(selectedSendingFilesProvider).length > before) {
+      ref.redux(homePageControllerProvider).dispatch(ChangeTabAction(HomeTab.send));
+    }
+  }
 }
 
-/// "Créer un lien de partage": creates a link and a QR code at once, for
-/// devices without Aika, which open it in a browser to send files here.
-class _ShareLinkCard extends StatelessWidget {
-  final VoidCallback onTap;
+/// Bottom sheet listing what can be sent, in the platform's usual order.
+/// Pops with the chosen [FilePickerOption], or nothing when dismissed.
+class _SendSourceSheet extends StatelessWidget {
+  const _SendSourceSheet();
 
-  const _ShareLinkCard({required this.onTap});
+  @override
+  Widget build(BuildContext context) {
+    final options = FilePickerOption.getOptionsForPlatform();
+    return CustomBottomSheet(
+      title: _t(fr: 'Envoyer…', en: 'Send…'),
+      description: _t(
+        fr: 'Choisissez ce que vous voulez envoyer, puis l’appareil destinataire.',
+        en: 'Choose what to send, then the receiving device.',
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Fixed-height tiles, two per row: the height never depends on
+          // the width, so the sheet fits on wide desktop windows too.
+          const spacing = 10.0;
+          final tileWidth = (constraints.maxWidth - spacing) / 2;
+          return Wrap(
+            spacing: spacing,
+            runSpacing: spacing,
+            children: [
+              for (final option in options)
+                SizedBox(
+                  width: tileWidth,
+                  height: 64,
+                  child: _SourceTile(option: option),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _SourceTile extends StatelessWidget {
+  final FilePickerOption option;
+
+  const _SourceTile({required this.option});
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final isFr = LocaleSettings.currentLocale == AppLocale.fr;
-    final title = isFr ? 'Créer un lien de partage' : 'Create a share link';
-
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: colorScheme.outlineVariant),
+    return Material(
+      color: colorScheme.surfaceContainerHigh,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: colorScheme.outlineVariant),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => context.pop(option),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Row(
             children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(Icons.link_rounded, color: colorScheme.onPrimaryContainer),
-              ),
+              Icon(option.icon, color: colorScheme.primary),
               const SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-                    const SizedBox(height: 3),
-                    Text(
-                      isFr
-                          ? 'Si l’autre appareil n’a pas Aika : il scanne le code QR ou ouvre le lien dans son navigateur pour vous envoyer ses fichiers.'
-                          : 'If the other device doesn’t have Aika: it scans the QR code or opens the link in a browser to send you its files.',
-                      style: TextStyle(fontSize: 13, height: 1.4, color: colorScheme.onSurfaceVariant),
-                    ),
-                  ],
+                child: Text(
+                  option.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          FilledButton.icon(
-            onPressed: onTap,
-            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-            icon: const Icon(Icons.add_link_rounded),
-            label: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-          ),
-        ],
+        ),
       ),
+    );
+  }
+}
+
+/// Local address (to type in "manual sending" when scanning is not
+/// possible) and the QR code options.
+class _Footer extends StatelessWidget {
+  final ReceiveTabVm vm;
+  final _ReadyState state;
+
+  const _Footer({required this.vm, required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final server = vm.serverState;
+    final address = switch (state) {
+      _ReadyState.ready || _ReadyState.sharing when server != null && vm.localIps.isNotEmpty =>
+        '${vm.localIps.first}:${server.port}${server.https ? '' : ' · HTTP'}',
+      _ReadyState.noNetwork => _t(fr: 'Wi-Fi ou point d’accès requis', en: 'Wi-Fi or hotspot required'),
+      _ => null,
+    };
+
+    return Row(
+      children: [
+        if (address != null) ...[
+          Icon(Icons.wifi_rounded, size: 15, color: colorScheme.onSurfaceVariant),
+          const SizedBox(width: 6),
+          Expanded(
+            child: SelectableText(
+              address,
+              maxLines: 1,
+              style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
+            ),
+          ),
+        ] else
+          const Spacer(),
+        TextButton(
+          onPressed: () async => context.push(() => const QrPairingDisplayPage()),
+          child: Text(_t(fr: 'Options du code QR', en: 'QR code options')),
+        ),
+      ],
     );
   }
 }
