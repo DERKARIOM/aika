@@ -4,8 +4,6 @@ import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'package:flutter/material.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/qr_pairing_payload.dart';
-import 'package:localsend_app/pages/home_page.dart';
-import 'package:localsend_app/pages/home_page_controller.dart';
 import 'package:localsend_app/pages/qr_pairing_display_page.dart';
 import 'package:localsend_app/pages/receive_history_page.dart';
 import 'package:localsend_app/pages/tabs/receive_tab_vm.dart';
@@ -17,6 +15,7 @@ import 'package:localsend_app/util/native/file_picker.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/native/storage_info.dart';
 import 'package:localsend_app/widget/dialogs/custom_bottom_sheet.dart';
+import 'package:localsend_app/widget/dialogs/send_target_sheet.dart';
 import 'package:localsend_isolates/constants.dart';
 import 'package:localsend_isolates/model/device.dart';
 import 'package:pretty_qr_code/pretty_qr_code.dart';
@@ -770,8 +769,9 @@ class _Actions extends StatelessWidget {
     );
   }
 
-  /// Same pickers as the Send tab; once something is selected, the Send tab
-  /// opens on the selection to choose the receiving device.
+  /// Same pickers as the Send tab; once something is selected, a second
+  /// sheet lists the nearby devices (and the QR scanner) so the transfer
+  /// starts from here, without opening the Send tab.
   Future<void> _sendFiles(BuildContext context) async {
     final option = await context.pushBottomSheet(() => const _SendSourceSheet());
     if (option is! FilePickerOption || !context.mounted) {
@@ -780,9 +780,10 @@ class _Actions extends StatelessWidget {
     final ref = context.ref;
     final before = ref.read(selectedSendingFilesProvider).length;
     await ref.global.dispatchAsync(PickFileAction(option: option, context: context));
-    if (ref.read(selectedSendingFilesProvider).length > before) {
-      ref.redux(homePageControllerProvider).dispatch(ChangeTabAction(HomeTab.send));
+    if (!context.mounted || ref.read(selectedSendingFilesProvider).length <= before) {
+      return;
     }
+    await pickTargetAndSend(context);
   }
 }
 

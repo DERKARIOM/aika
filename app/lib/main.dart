@@ -8,6 +8,7 @@ import 'package:localsend_app/model/persistence/color_mode.dart';
 import 'package:localsend_app/pages/home_page.dart';
 import 'package:localsend_app/provider/chat/chat_provider.dart';
 import 'package:localsend_app/provider/local_ip_provider.dart';
+import 'package:localsend_app/provider/network/receive_watchdog.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
 // [FOSS_REMOVE_START]
 import 'package:localsend_app/provider/update_provider.dart';
@@ -60,9 +61,21 @@ class LocalSendApp extends StatelessWidget {
                 ref.redux(localIpProvider).dispatch(InitLocalIpAction());
                 // Links may have died while in the background (mobile).
                 ref.notifier(chatProvider).retryLinksNow();
+                // After a long background stay, the OS may have closed the
+                // receive server and discovery sockets: rebind them.
+                // ignore: discarded_futures
+                ref.read(receiveWatchdogProvider).onResumed().then((restarted) {
+                  if (restarted) {
+                    ref.notifier(chatProvider).retryLinksNow();
+                  }
+                });
                 // [FOSS_REMOVE_START]
                 maybeCheckForUpdate(ref, trigger: UpdateCheckTrigger.resume);
                 // [FOSS_REMOVE_END]
+                break;
+              case AppLifecycleState.paused:
+              case AppLifecycleState.hidden:
+                ref.read(receiveWatchdogProvider).onBackground();
                 break;
               case AppLifecycleState.detached:
                 // The main isolate is only exited when all child isolates are exited.

@@ -147,7 +147,8 @@ class ServerService extends Notifier<ServerState?> {
         );
 
     final started = Completer<void>();
-    final subscription = events.listen(
+    late final StreamSubscription<HttpServerEvent> subscription;
+    subscription = events.listen(
       (event) {
         if (event is HttpServerStartedEvent) {
           if (!started.isCompleted) {
@@ -162,6 +163,16 @@ class ServerService extends Notifier<ServerState?> {
           started.completeError(error);
         } else {
           _logger.severe('HTTP server error: $error');
+        }
+      },
+      onDone: () {
+        // The server ended without stopServer (e.g. its socket was closed
+        // by the OS): don't keep showing "ready to receive", restart it.
+        if (started.isCompleted && identical(_subscription, subscription) && state != null) {
+          _logger.warning('HTTP server stopped unexpectedly, restarting it');
+          _subscription = null;
+          state = null;
+          unawaited(_restartAfterUnexpectedStop());
         }
       },
     );
@@ -188,6 +199,29 @@ class ServerService extends Notifier<ServerState?> {
     state = newServerState;
     _logger.info('Server started. (Port: $port, ${https ? 'HTTPS' : 'HTTP'} only)');
     return newServerState;
+  }
+
+  /// Automatic restarts in the current window, to never loop on a server
+  /// that cannot run (port taken...).
+  final List<DateTime> _autoRestarts = [];
+
+  Future<void> _restartAfterUnexpectedStop() async {
+    final now = DateTime.now();
+    _autoRestarts.removeWhere((t) => now.difference(t) > const Duration(minutes: 5));
+    if (_autoRestarts.length >= 3) {
+      _logger.warning('Too many unexpected server stops, not restarting it automatically');
+      return;
+    }
+    _autoRestarts.add(now);
+    await Future<void>.delayed(const Duration(seconds: 1));
+    if (state != null) {
+      return;
+    }
+    try {
+      await startServerFromSettings();
+    } catch (e) {
+      _logger.warning('Could not restart the server', e);
+    }
   }
 
   Future<void> stopServer() async {
