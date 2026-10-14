@@ -33,7 +33,9 @@ enum HomeTab {
   String get label {
     switch (this) {
       case HomeTab.receive:
-        return t.receiveTab.title;
+        // The Receive tab is the app's home screen (QR code, storage,
+        // quick send), hence "Accueil" in the navigation.
+        return LocaleSettings.currentLocale == AppLocale.fr ? 'Accueil' : 'Home';
       case HomeTab.send:
         return t.sendTab.title;
       case HomeTab.chat:
