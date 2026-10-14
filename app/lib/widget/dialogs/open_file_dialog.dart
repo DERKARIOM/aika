@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/util/native/channel/android_channel.dart' as android_channel;
+import 'package:localsend_app/util/native/file_clipboard.dart';
 import 'package:localsend_app/util/native/open_file.dart';
 import 'package:localsend_app/util/native/open_folder.dart';
 import 'package:localsend_isolates/model/file_type.dart';
@@ -16,11 +17,16 @@ class OpenFileDialog extends StatefulWidget {
   final FileType fileType;
   final bool openGallery;
 
+  /// Every file received in the session, for "Copier". Defaults to
+  /// [filePath] alone.
+  final List<String>? filePaths;
+
   const OpenFileDialog({
     super.key,
     required this.filePath,
     required this.fileType,
     required this.openGallery,
+    this.filePaths,
   });
 
   static Future<void> open(
@@ -28,6 +34,7 @@ class OpenFileDialog extends StatefulWidget {
     required String filePath,
     required FileType fileType,
     required bool openGallery,
+    List<String>? filePaths,
   }) async {
     await showDialog(
       context: context,
@@ -35,6 +42,7 @@ class OpenFileDialog extends StatefulWidget {
         filePath: filePath,
         fileType: fileType,
         openGallery: openGallery,
+        filePaths: filePaths,
       ),
     );
   }
@@ -46,6 +54,27 @@ class OpenFileDialog extends StatefulWidget {
 class _OpenFileDialogState extends State<OpenFileDialog> {
   late Timer _timer;
   int _countdown = 5; // Starting countdown value
+
+  /// Received files that can be put on the clipboard on this platform.
+  late final List<String> _copyable = copyableReceivedFiles(
+    widget.openGallery ? const [] : (widget.filePaths ?? [widget.filePath]),
+  );
+  bool _copied = false;
+
+  Future<void> _copy() async {
+    final copied = await copyReceivedFilesToClipboard(_copyable);
+    if (!mounted) {
+      return;
+    }
+    // Stays open once copied: no countdown hurrying the user.
+    _timer.cancel();
+    setState(() => _copied = copied);
+    if (!copied) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(t.general.error)),
+      );
+    }
+  }
 
   @override
   void dispose() {
@@ -95,12 +124,24 @@ class _OpenFileDialogState extends State<OpenFileDialog> {
             ),
             child: Text(t.receiveHistoryPage.entryActions.showInFolder),
           ),
+        if (_copyable.isNotEmpty)
+          TextButton.icon(
+            onPressed: _copied ? null : _copy,
+            icon: Icon(_copied ? Icons.check_rounded : Icons.copy_rounded, size: 18),
+            label: Text(
+              _copied
+                  ? t.general.copiedToClipboard
+                  : _copyable.length > 1
+                  ? '${t.general.copy} (${_copyable.length})'
+                  : t.general.copy,
+            ),
+          ),
         TextButton(
           onPressed: () {
             _timer.cancel();
             context.pop();
           },
-          child: Text('${t.general.close} ($_countdown)'),
+          child: Text(_timer.isActive ? '${t.general.close} ($_countdown)' : t.general.close),
         ),
       ],
     );

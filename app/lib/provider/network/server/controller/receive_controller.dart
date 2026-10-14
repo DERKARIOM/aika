@@ -744,6 +744,12 @@ class ReceiveController {
               filePath: filePath,
               fileType: fileType,
               openGallery: savedToGallery,
+              // Every file of the session, for "Copier".
+              filePaths: session.files.values
+                  .where((f) => f.status == FileStatus.finished && !f.savedToGallery)
+                  .map((f) => f.path)
+                  .whereType<String>()
+                  .toList(),
             );
           }
         });

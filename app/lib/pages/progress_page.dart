@@ -14,11 +14,13 @@ import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/util/file_size_helper.dart';
 import 'package:localsend_app/util/file_speed_helper.dart';
 import 'package:localsend_app/util/native/directories.dart';
+import 'package:localsend_app/util/native/file_clipboard.dart';
 import 'package:localsend_app/util/native/open_file.dart';
 import 'package:localsend_app/util/native/open_folder.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/native/taskbar_helper.dart';
 import 'package:localsend_app/util/ui/nav_bar_padding.dart';
+import 'package:localsend_app/util/ui/snackbar.dart';
 import 'package:localsend_app/widget/custom_basic_appbar.dart';
 import 'package:localsend_app/widget/custom_progress_bar.dart';
 import 'package:localsend_app/widget/dialogs/cancel_session_dialog.dart';
@@ -523,6 +525,12 @@ class _ProgressPageState extends State<ProgressPage> with Refena {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
+                              if (receiveSession != null && status != SessionStatus.sending)
+                                _CopyReceivedFilesButton(
+                                  paths: receiveSession.files.values
+                                      .where((f) => f.status == FileStatus.finished && !f.savedToGallery)
+                                      .map((f) => f.path),
+                                ),
                               TextButton.icon(
                                 style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.onSurface),
                                 onPressed: () {
@@ -641,5 +649,32 @@ extension on SessionStatus {
       default:
         return '';
     }
+  }
+}
+
+/// "Copier": puts the received files on the clipboard, to paste them
+/// straight into another app. Hidden where the platform cannot do it.
+class _CopyReceivedFilesButton extends StatelessWidget {
+  final Iterable<String?> paths;
+
+  const _CopyReceivedFilesButton({required this.paths});
+
+  @override
+  Widget build(BuildContext context) {
+    final copyable = copyableReceivedFiles(paths);
+    if (copyable.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return TextButton.icon(
+      style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.onSurface),
+      onPressed: () async {
+        final copied = await copyReceivedFilesToClipboard(copyable);
+        if (context.mounted) {
+          context.showSnackBar(copied ? t.general.copiedToClipboard : t.general.error);
+        }
+      },
+      icon: const Icon(Icons.copy_rounded),
+      label: Text(copyable.length > 1 ? '${t.general.copy} (${copyable.length})' : t.general.copy),
+    );
   }
 }
