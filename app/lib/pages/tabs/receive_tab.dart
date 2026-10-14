@@ -135,19 +135,27 @@ class _ReceiveTabState extends State<ReceiveTab> with Refena {
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 480),
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-                children: [
-                  _Header(state: state),
-                  const SizedBox(height: 16),
-                  _QrCard(vm: vm, payload: payload, state: state),
-                  const SizedBox(height: 12),
-                  _StorageCard(destination: vm.destination, receiving: vm.isReceivingSession),
-                  const SizedBox(height: 16),
-                  _Actions(onCreateShareLink: () async => vm.onCreateShareLink(context)),
-                  const SizedBox(height: 6),
-                  _Footer(vm: vm, state: state),
-                ],
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final qrSize = _qrSizeFor(context, constraints);
+                  // Everything fits on one screen on usual phones; very
+                  // small screens or large text scroll instead of overflowing.
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _Header(state: state),
+                        const SizedBox(height: 12),
+                        _QrCard(vm: vm, payload: payload, state: state, qrSize: qrSize),
+                        const SizedBox(height: 10),
+                        _StorageCard(destination: vm.destination, receiving: vm.isReceivingSession),
+                        const SizedBox(height: 12),
+                        _Actions(onCreateShareLink: () async => vm.onCreateShareLink(context)),
+                      ],
+                    ),
+                  );
+                },
               ),
             ),
           ),
@@ -155,7 +163,26 @@ class _ReceiveTabState extends State<ReceiveTab> with Refena {
       ],
     );
   }
+
+  /// The QR code takes the height the rest of the page leaves, between a
+  /// size phone cameras still read reliably for this dense code (~2.5 px per
+  /// module) and a comfortable maximum.
+  static double _qrSizeFor(BuildContext context, BoxConstraints constraints) {
+    const minSize = 180.0;
+    const maxSize = 240.0;
+    final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+    // Height of everything but the QR code: paddings, icons and buttons
+    // (fixed) plus the text lines (grow with the system text size).
+    final rest = 292 + 140 * textScale;
+    final byHeight = constraints.maxHeight.isFinite ? constraints.maxHeight - rest : maxSize;
+    final byWidth = constraints.maxWidth - 2 * 16 - 2 * 14;
+    return byHeight.clamp(minSize, maxSize).clamp(minSize, byWidth.clamp(minSize, maxSize)).toDouble();
+  }
 }
+
+/// Corner radius of every element of the page.
+const _radius = 10.0;
+const _shape = RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(_radius)));
 
 /// What the status pill and the QR card show. Always derived from the real
 /// server and network state, never set by hand.
@@ -186,31 +213,34 @@ class _Header extends StatelessWidget {
       children: [
         Row(
           children: [
-            Expanded(
+            Flexible(
               child: Text(
                 t.receiveTab.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.5),
               ),
             ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: _StatusPill(state: state),
+              ),
+            ),
+            const Spacer(),
             IconButton.filledTonal(
               tooltip: _t(fr: 'Historique', en: 'History'),
+              style: IconButton.styleFrom(shape: _shape),
               onPressed: () async => context.push(() => const ReceiveHistoryPage()),
               icon: const Icon(Icons.history_rounded),
             ),
           ],
         ),
-        const SizedBox(height: 2),
-        Wrap(
-          crossAxisAlignment: WrapCrossAlignment.center,
-          spacing: 12,
-          runSpacing: 8,
-          children: [
-            Text(
-              _t(fr: 'Partagez avec vos autres appareils', en: 'Share with your other devices'),
-              style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            ),
-            _StatusPill(state: state),
-          ],
+        Text(
+          _t(fr: 'Partagez avec vos autres appareils', en: 'Share with your other devices'),
+          style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
       ],
     );
@@ -241,7 +271,7 @@ class _StatusPill extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
           decoration: BoxDecoration(
             color: color.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(_radius),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -264,10 +294,9 @@ class _StatusPill extends StatelessWidget {
 /// Rounded card used by every block of the page.
 class _Card extends StatelessWidget {
   final EdgeInsetsGeometry padding;
-  final double radius;
   final Widget child;
 
-  const _Card({required this.child, this.padding = const EdgeInsets.all(16), this.radius = 24});
+  const _Card({required this.child, this.padding = const EdgeInsets.all(14)});
 
   @override
   Widget build(BuildContext context) {
@@ -276,7 +305,7 @@ class _Card extends StatelessWidget {
       padding: padding,
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(radius),
+        borderRadius: BorderRadius.circular(_radius),
         border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: child,
@@ -289,8 +318,9 @@ class _QrCard extends StatelessWidget {
   final ReceiveTabVm vm;
   final QrPairingPayload? payload;
   final _ReadyState state;
+  final double qrSize;
 
-  const _QrCard({required this.vm, required this.payload, required this.state});
+  const _QrCard({required this.vm, required this.payload, required this.state, required this.qrSize});
 
   @override
   Widget build(BuildContext context) {
@@ -301,7 +331,7 @@ class _QrCard extends StatelessWidget {
     final ids = vm.isReceiving ? vm.localIps.map((ip) => ip.visualId).toSet() : const <String>{};
 
     return _Card(
-      padding: const EdgeInsets.fromLTRB(16, 6, 6, 16),
+      padding: const EdgeInsets.fromLTRB(14, 2, 4, 12),
       child: Column(
         children: [
           Row(
@@ -312,41 +342,36 @@ class _QrCard extends StatelessWidget {
                   style: theme.textTheme.titleSmall?.copyWith(color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.w700),
                 ),
               ),
-              // Keeps the row height when the button is hidden.
-              SizedBox(
-                height: 44,
-                child: payload == null
-                    ? null
-                    : IconButton(
-                        tooltip: _t(fr: 'Agrandir le QR Code', en: 'Enlarge the QR code'),
-                        onPressed: () async => _showFullScreen(context, payload),
-                        icon: const Icon(Icons.open_in_full_rounded, size: 20),
-                      ),
+              IconButton(
+                tooltip: _t(fr: 'Options du code QR', en: 'QR code options'),
+                style: IconButton.styleFrom(shape: _shape),
+                onPressed: () async => context.push(() => const QrPairingDisplayPage()),
+                icon: const Icon(Icons.tune_rounded, size: 20),
               ),
+              if (payload != null)
+                IconButton(
+                  tooltip: _t(fr: 'Agrandir le QR Code', en: 'Enlarge the QR code'),
+                  style: IconButton.styleFrom(shape: _shape),
+                  onPressed: () async => _showFullScreen(context, payload),
+                  icon: const Icon(Icons.open_in_full_rounded, size: 20),
+                ),
             ],
           ),
           Padding(
             padding: const EdgeInsets.only(right: 10),
             child: Column(
               children: [
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    // Compact, but never below what a phone camera reads
-                    // reliably for this dense code (~2.5 px per module).
-                    final size = (constraints.maxWidth * 0.62).clamp(200.0, 240.0).toDouble();
-                    return AnimatedSwitcher(
-                      duration: animations ? const Duration(milliseconds: 300) : Duration.zero,
-                      child: payload != null
-                          ? GestureDetector(
-                              key: ValueKey(payload.pairId),
-                              onTap: () async => _showFullScreen(context, payload),
-                              child: _QrImage(data: payload.encode(), size: size),
-                            )
-                          : _QrPlaceholder(key: ValueKey(state), state: state, size: size),
-                    );
-                  },
+                AnimatedSwitcher(
+                  duration: animations ? const Duration(milliseconds: 300) : Duration.zero,
+                  child: payload != null
+                      ? GestureDetector(
+                          key: ValueKey(payload.pairId),
+                          onTap: () async => _showFullScreen(context, payload),
+                          child: _QrImage(data: payload.encode(), size: qrSize),
+                        )
+                      : _QrPlaceholder(key: ValueKey(state), state: state, size: qrSize),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 10),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -364,11 +389,12 @@ class _QrCard extends StatelessWidget {
                     ],
                   ],
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 if (state == _ReadyState.noNetwork)
                   Padding(
                     padding: const EdgeInsets.only(top: 6),
                     child: FilledButton.tonalIcon(
+                      style: FilledButton.styleFrom(shape: _shape),
                       // Reuses the full network preparation flow (hotspot on
                       // Android, guidance to the settings elsewhere).
                       onPressed: () async => context.push(() => const QrPairingDisplayPage()),
@@ -396,7 +422,7 @@ class _QrCard extends StatelessWidget {
     await showDialog(
       context: context,
       builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        shape: _shape,
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: LayoutBuilder(
@@ -444,7 +470,7 @@ class _IdChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(_radius),
         border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Text(
@@ -481,7 +507,7 @@ class _QrImage extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(_radius),
         ),
         child: PrettyQrView.data(
           data: data,
@@ -514,7 +540,7 @@ class _QrPlaceholder extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(_radius),
         border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Column(
@@ -626,21 +652,20 @@ class _StorageContent extends StatelessWidget {
     final free = _t(fr: '${formatStorageSize(info.freeBytes)} libres', en: '${formatStorageSize(info.freeBytes)} free');
 
     return _Card(
-      radius: 20,
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Container(
-                width: 32,
-                height: 32,
+                width: 28,
+                height: 28,
                 decoration: BoxDecoration(
                   color: colorScheme.primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(_radius),
                 ),
-                child: Icon(Icons.sd_storage_outlined, size: 18, color: colorScheme.primary),
+                child: Icon(Icons.sd_storage_outlined, size: 16, color: colorScheme.primary),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -653,12 +678,12 @@ class _StorageContent extends StatelessWidget {
             ],
           ),
           if (fraction != null && total != null && used != null) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             Semantics(
               label: _t(fr: 'Stockage utilisé', en: 'Storage used'),
               value: '${(fraction * 100).round()} %',
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(3),
+                borderRadius: BorderRadius.circular(_radius),
                 child: TweenAnimationBuilder<double>(
                   tween: Tween(begin: 0, end: fraction),
                   duration: context.watch(animationProvider) ? const Duration(milliseconds: 600) : Duration.zero,
@@ -671,7 +696,7 @@ class _StorageContent extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
               _t(
                 fr: '${formatStorageSize(used)} utilisés sur ${formatStorageSize(total)}',
@@ -723,17 +748,19 @@ class _Actions extends StatelessWidget {
         FilledButton.icon(
           onPressed: () async => _sendFiles(context),
           style: FilledButton.styleFrom(
-            minimumSize: const Size.fromHeight(54),
+            minimumSize: const Size.fromHeight(50),
+            shape: _shape,
             textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
           ),
           icon: const Icon(Icons.send_rounded),
           label: Text(_t(fr: 'Envoyer des fichiers', en: 'Send files')),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         OutlinedButton.icon(
           onPressed: onCreateShareLink,
           style: OutlinedButton.styleFrom(
-            minimumSize: const Size.fromHeight(50),
+            minimumSize: const Size.fromHeight(48),
+            shape: _shape,
             textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
           ),
           icon: const Icon(Icons.link_rounded),
@@ -808,7 +835,7 @@ class _SourceTile extends StatelessWidget {
     return Material(
       color: colorScheme.surfaceContainerHigh,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(_radius),
         side: BorderSide(color: colorScheme.outlineVariant),
       ),
       clipBehavior: Clip.antiAlias,
@@ -832,49 +859,6 @@ class _SourceTile extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Local address (to type in "manual sending" when scanning is not
-/// possible) and the QR code options.
-class _Footer extends StatelessWidget {
-  final ReceiveTabVm vm;
-  final _ReadyState state;
-
-  const _Footer({required this.vm, required this.state});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final server = vm.serverState;
-    final address = switch (state) {
-      _ReadyState.ready || _ReadyState.sharing when server != null && vm.localIps.isNotEmpty =>
-        '${vm.localIps.first}:${server.port}${server.https ? '' : ' · HTTP'}',
-      _ReadyState.noNetwork => _t(fr: 'Wi-Fi ou point d’accès requis', en: 'Wi-Fi or hotspot required'),
-      _ => null,
-    };
-
-    return Row(
-      children: [
-        if (address != null) ...[
-          Icon(Icons.wifi_rounded, size: 15, color: colorScheme.onSurfaceVariant),
-          const SizedBox(width: 6),
-          Expanded(
-            child: SelectableText(
-              address,
-              maxLines: 1,
-              style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
-            ),
-          ),
-        ] else
-          const Spacer(),
-        TextButton(
-          onPressed: () async => context.push(() => const QrPairingDisplayPage()),
-          child: Text(_t(fr: 'Options du code QR', en: 'QR code options')),
-        ),
-      ],
     );
   }
 }

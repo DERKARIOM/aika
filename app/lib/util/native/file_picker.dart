@@ -145,12 +145,13 @@ class PickFileAction extends AsyncGlobalAction {
 /// Shows the loading dialog and returns a callback closing exactly that
 /// dialog. Unlike popping until the root, it never closes the page the
 /// picker was opened from (e.g. the web share page).
-VoidCallback _showLoadingDialog(BuildContext context) {
+VoidCallback _showLoadingDialog(BuildContext context, {int? fileCount}) {
   final navigator = Navigator.of(context, rootNavigator: true);
   final route = DialogRoute<void>(
     context: context,
     barrierDismissible: false,
-    builder: (_) => const LoadingDialog(),
+    barrierColor: Colors.black54,
+    builder: (_) => LoadingDialog(fileCount: fileCount),
   );
   // ignore: discarded_futures
   navigator.push(route);
@@ -182,6 +183,11 @@ Future<void> _pickFiles(BuildContext context, Ref ref) async {
       }
     } else {
       final result = await openFiles();
+      // Reading the files' metadata can take a moment for many or large
+      // files: show it is in progress as soon as the picker closes.
+      if (result.isNotEmpty && context.mounted) {
+        closeLoadingDialog = _showLoadingDialog(context, fileCount: result.length);
+      }
       await ref
           .redux(selectedSendingFilesProvider)
           .dispatchAsync(
@@ -277,7 +283,17 @@ Future<void> _pickMedia(BuildContext context, Ref ref) async {
     }
   });
 
-  if (result != null) {
+  if (result == null || result.isEmpty) {
+    return;
+  }
+
+  // Each photo or video is resolved to its file (and downloaded first when
+  // it only lives in the cloud): show it is in progress right away.
+  VoidCallback? closeLoadingDialog;
+  if (context.mounted) {
+    closeLoadingDialog = _showLoadingDialog(context, fileCount: result.length);
+  }
+  try {
     await ref
         .redux(selectedSendingFilesProvider)
         .dispatchAsync(
@@ -286,6 +302,8 @@ Future<void> _pickMedia(BuildContext context, Ref ref) async {
             converter: CrossFileConverters.convertAssetEntity,
           ),
         );
+  } finally {
+    closeLoadingDialog?.call();
   }
 }
 
