@@ -47,9 +47,12 @@ Future<void> pickTargetAndSend(BuildContext context) async {
     return;
   }
 
+  if (target == null || !context.mounted) {
+    return;
+  }
   final ref = context.ref;
   final files = ref.read(selectedSendingFilesProvider);
-  if (target == null || files.isEmpty || !context.mounted) {
+  if (files.isEmpty) {
     return;
   }
   await ref.notifier(sendProvider).startSession(target: target, files: files, background: false);

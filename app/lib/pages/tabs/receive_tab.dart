@@ -4,6 +4,7 @@ import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'package:flutter/material.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/qr_pairing_payload.dart';
+import 'package:localsend_app/pages/link_download_page.dart';
 import 'package:localsend_app/pages/qr_pairing_display_page.dart';
 import 'package:localsend_app/pages/receive_history_page.dart';
 import 'package:localsend_app/pages/tabs/receive_tab_vm.dart';
@@ -172,7 +173,7 @@ class _ReceiveTabState extends State<ReceiveTab> with Refena {
     final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
     // Height of everything but the QR code: paddings, icons and buttons
     // (fixed) plus the text lines (grow with the system text size).
-    final rest = 292 + 140 * textScale;
+    final rest = 348 + 158 * textScale;
     final byHeight = constraints.maxHeight.isFinite ? constraints.maxHeight - rest : maxSize;
     final byWidth = constraints.maxWidth - 2 * 16 - 2 * 14;
     return byHeight.clamp(minSize, maxSize).clamp(minSize, byWidth.clamp(minSize, maxSize)).toDouble();
@@ -733,7 +734,7 @@ String formatStorageSize(int bytes) {
   return '$text ${fr ? frUnit : enUnit}';
 }
 
-/// The two ways to share from here.
+/// Quick actions: send, share link, download from a link.
 class _Actions extends StatelessWidget {
   final Future<void> Function() onCreateShareLink;
 
@@ -764,6 +765,17 @@ class _Actions extends StatelessWidget {
           ),
           icon: const Icon(Icons.link_rounded),
           label: Text(_t(fr: 'Créer un lien de partage', en: 'Create a share link')),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: () async => context.push(() => const LinkDownloadPage()),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size.fromHeight(48),
+            shape: _shape,
+            textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          ),
+          icon: const Icon(Icons.download_rounded),
+          label: Text(_t(fr: 'Télécharger depuis un lien', en: 'Download from a link')),
         ),
       ],
     );

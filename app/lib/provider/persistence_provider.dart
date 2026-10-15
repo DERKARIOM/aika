@@ -58,6 +58,15 @@ const _receiveHistory = 'ls_receive_history';
 // Favorites
 const _favorites = 'ls_favorites';
 
+// Local history of "Télécharger depuis un lien" (JSON entries, newest first).
+const _linkDownloadHistory = 'aika_link_download_history';
+const _linkDownloadQueue = 'aika_link_download_queue'; // paused / queued / failed downloads
+const _linkDownloadParallel = 'aika_link_download_parallel';
+const _linkDownloadConnections = 'aika_link_download_connections';
+const _linkDownloadClipboard = 'aika_link_download_clipboard_watch';
+const _browserBridgeEnabled = 'aika_browser_bridge_enabled';
+const _browserBridgeToken = 'aika_browser_bridge_token';
+
 // App Window Offset and Size info
 const _windowOffsetX = 'ls_window_offset_x';
 const _windowOffsetY = 'ls_window_offset_y';
@@ -281,6 +290,60 @@ class PersistenceService {
   Future<void> setReceiveHistory(List<ReceiveHistoryEntry> entries) async {
     final historyRaw = entries.map((entry) => jsonEncode(entry.toJson())).toList();
     await _prefs.setStringList(_receiveHistory, historyRaw);
+  }
+
+  /// Raw JSON entries of the "Télécharger depuis un lien" history, newest
+  /// first (parsed by link_download_provider.dart).
+  List<String> getLinkDownloadHistory() {
+    return _prefs.getStringList(_linkDownloadHistory) ?? [];
+  }
+
+  Future<void> setLinkDownloadHistory(List<String> entries) async {
+    await _prefs.setStringList(_linkDownloadHistory, entries);
+  }
+
+  /// Unfinished downloads (JSON entries) restored when Aika starts again.
+  List<String> getLinkDownloadQueue() {
+    return _prefs.getStringList(_linkDownloadQueue) ?? [];
+  }
+
+  Future<void> setLinkDownloadQueue(List<String> entries) async {
+    await _prefs.setStringList(_linkDownloadQueue, entries);
+  }
+
+  /// Downloads running at the same time (`null` = default).
+  int? getLinkDownloadParallel() => _prefs.getInt(_linkDownloadParallel);
+
+  Future<void> setLinkDownloadParallel(int value) async {
+    await _prefs.setInt(_linkDownloadParallel, value);
+  }
+
+  /// Connections per download (`null` = default for the platform).
+  int? getLinkDownloadConnections() => _prefs.getInt(_linkDownloadConnections);
+
+  Future<void> setLinkDownloadConnections(int value) async {
+    await _prefs.setInt(_linkDownloadConnections, value);
+  }
+
+  /// Offer to download file links copied to the clipboard (desktop).
+  bool getLinkDownloadClipboardWatch() => _prefs.getBool(_linkDownloadClipboard) ?? false;
+
+  Future<void> setLinkDownloadClipboardWatch(bool value) async {
+    await _prefs.setBool(_linkDownloadClipboard, value);
+  }
+
+  /// Browser extension integration (computers only).
+  bool getBrowserBridgeEnabled() => _prefs.getBool(_browserBridgeEnabled) ?? false;
+
+  Future<void> setBrowserBridgeEnabled(bool value) async {
+    await _prefs.setBool(_browserBridgeEnabled, value);
+  }
+
+  /// Pairing code typed once in the browser extension.
+  String? getBrowserBridgeToken() => _prefs.getString(_browserBridgeToken);
+
+  Future<void> setBrowserBridgeToken(String value) async {
+    await _prefs.setString(_browserBridgeToken, value);
   }
 
   List<FavoriteDevice> getFavorites() {

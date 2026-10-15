@@ -1,0 +1,67 @@
+:root {
+  --bg: #ffffff;
+  --surface: #f3f6f5;
+  --border: #d9e2df;
+  --text: #13201c;
+  --muted: #5d6b67;
+  --accent: #1d9e75;
+  --accent-text: #ffffff;
+  --danger: #c62828;
+  --warning: #b26a00;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1513;
+    --surface: #18211e;
+    --border: #2a3632;
+    --text: #e6efec;
+    --muted: #9aaba6;
+    --accent: #2bb38c;
+    --accent-text: #04241a;
+    --danger: #ef6b6b;
+    --warning: #f0b35a;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  width: 320px;
+  padding: 14px;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+header { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
+header img { border-radius: 8px; }
+h1 { margin: 0; font-size: 16px; }
+header p { margin: 0; color: var(--muted); font-size: 12px; }
+.status {
+  display: flex; gap: 8px; align-items: center;
+  padding: 8px 10px; border-radius: var(--radius);
+  background: var(--surface); border: 1px solid var(--border); margin-bottom: 12px;
+}
+.status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.status.ok .dot { background: var(--accent); }
+.status.error .dot { background: var(--danger); }
+.status.warn .dot { background: var(--warning); }
+.row { display: flex; align-items: center; gap: 8px; margin: 10px 0; cursor: pointer; }
+.row.switch { justify-content: space-between; font-weight: 600; }
+.field { margin: 12px 0; }
+.field > label { display: block; font-weight: 600; margin-bottom: 6px; }
+.inline { display: flex; gap: 6px; align-items: center; }
+input[type='text'], input[type='number'] {
+  flex: 1; min-width: 0; padding: 8px 10px; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit;
+}
+input[type='text'] { font-family: ui-monospace, Consolas, monospace; letter-spacing: 1px; text-transform: uppercase; }
+input[type='number'] { max-width: 90px; }
+input:focus { outline: 2px solid var(--accent); outline-offset: 0; }
+input[type='checkbox'] { accent-color: var(--accent); width: 16px; height: 16px; }
+button {
+  padding: 8px 12px; border-radius: var(--radius); border: 1px solid var(--border);
+  background: var(--surface); color: var(--text); font: inherit; font-weight: 600; cursor: pointer;
+}
+button.primary { background: var(--accent); color: var(--accent-text); border-color: transparent; }
+.hint, .last, .unit { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
+.last:empty { display: none; }

@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <img src="icons/icon48.png" alt="" width="32" height="32" />
+      <div>
+        <h1>Aika</h1>
+        <p id="subtitle"></p>
+      </div>
+    </header>
+
+    <div id="status" class="status checking"><span class="dot"></span><span id="status-text"></span></div>
+
+    <label class="row switch">
+      <span id="label-enabled"></span>
+      <input type="checkbox" id="enabled" />
+    </label>
+
+    <div class="field">
+      <label for="token" id="label-token"></label>
+      <div class="inline">
+        <input id="token" type="text" autocomplete="off" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX" maxlength="40" />
+        <button id="save" class="primary"></button>
+      </div>
+      <p class="hint" id="hint-token"></p>
+    </div>
+
+    <div class="field">
+      <label for="min-size" id="label-min"></label>
+      <div class="inline">
+        <input id="min-size" type="number" min="0" max="10000" step="1" />
+        <span class="unit" id="unit-mb"></span>
+      </div>
+    </div>
+
+    <label class="row check">
+      <input type="checkbox" id="incognito" />
+      <span id="label-incognito"></span>
+    </label>
+
+    <p id="last" class="last"></p>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

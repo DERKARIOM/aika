@@ -10,9 +10,11 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:localsend_app/config/refena.dart';
 import 'package:localsend_app/config/theme.dart';
+import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/chat/chat_database.dart';
 import 'package:localsend_app/pages/home_page.dart';
 import 'package:localsend_app/pages/home_page_controller.dart';
+import 'package:localsend_app/pages/link_download_page.dart';
 import 'package:localsend_app/provider/animation_provider.dart';
 import 'package:localsend_app/provider/app_arguments_provider.dart';
 import 'package:localsend_app/provider/chat/blocked_devices_provider.dart';
@@ -21,6 +23,7 @@ import 'package:localsend_app/provider/chat/chat_database_provider.dart';
 import 'package:localsend_app/provider/chat/chat_notification_service.dart';
 import 'package:localsend_app/provider/chat/chat_provider.dart';
 import 'package:localsend_app/provider/device_info_provider.dart';
+import 'package:localsend_app/provider/link_download_provider.dart';
 import 'package:localsend_app/provider/network/nearby_devices_provider.dart';
 import 'package:localsend_app/provider/network/server/server_provider.dart';
 import 'package:localsend_app/provider/network/webrtc/signaling_provider.dart';
@@ -36,6 +39,8 @@ import 'package:localsend_app/provider/update_provider.dart';
 // [FOSS_REMOVE_END]
 import 'package:localsend_app/provider/window_dimensions_provider.dart';
 import 'package:localsend_app/util/i18n.dart';
+import 'package:localsend_app/util/link_download/link_problem.dart';
+import 'package:localsend_app/util/link_download/url_policy.dart';
 import 'package:localsend_app/util/native/autostart_helper.dart';
 import 'package:localsend_app/util/native/cache_helper.dart';
 import 'package:localsend_app/util/native/channel/android_channel.dart' as android_channel;
@@ -57,6 +62,7 @@ import 'package:localsend_isolates/rust/frb_generated.dart';
 import 'package:localsend_isolates/util/logger.dart';
 import 'package:logging/logging.dart';
 import 'package:refena_flutter/refena_flutter.dart';
+import 'package:routerino/routerino.dart';
 import 'package:share_handler/share_handler.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -204,6 +210,8 @@ Future<RefenaContainer> preInit(List<String> args) async {
 }
 
 StreamSubscription? _sharedMediaSubscription;
+StreamSubscription<Uri>? _clipboardLinkSubscription;
+StreamSubscription<String>? _browserDownloadSubscription;
 
 /// Will be called when home page has been initialized
 Future<void> postInit(BuildContext context, Ref ref, bool appStart) async {
@@ -309,6 +317,22 @@ Future<void> postInit(BuildContext context, Ref ref, bool appStart) async {
     });
   }
 
+  if (checkPlatformIsDesktop()) {
+    // "Détecter les liens copiés" (download options, off by default).
+    final linkDownloads = ref.notifier(linkDownloadProvider);
+    _clipboardLinkSubscription?.cancel(); // ignore: unawaited_futures
+    _clipboardLinkSubscription = linkDownloads.clipboardLinks.listen((uri) {
+      final name = uri.pathSegments.where((s) => s.isNotEmpty).lastOrNull ?? uri.host;
+      _offerLinkDownload(uri.toString(), label: name);
+    });
+    unawaited(linkDownloads.startClipboardWatch());
+
+    // Downloads handed over by the Aika browser extension (option).
+    _browserDownloadSubscription?.cancel(); // ignore: unawaited_futures
+    _browserDownloadSubscription = linkDownloads.browserDownloads.listen(_announceBrowserDownload);
+    unawaited(linkDownloads.startBrowserBridge());
+  }
+
   if (appStart && !hasInitialShare && (checkPlatformWithGallery() || checkPlatformCanReceiveShareIntent())) {
     // Clear cache on every app start.
     // If we received a share intent, then don't clear it, otherwise the shared file will be lost.
@@ -354,7 +378,59 @@ class _HandleShareIntentAction extends AsyncGlobalAction {
         );
 
     ref.redux(homePageControllerProvider).dispatch(ChangeTabAction(HomeTab.send));
+
+    // A single web link shared from a browser or a social app: also offer
+    // "Télécharger depuis un lien" (the usual behaviour above is unchanged).
+    final sharedLink = _singleSharedLink(payload);
+    if (sharedLink != null) {
+      _offerLinkDownload(sharedLink);
+    }
   }
+}
+
+/// The shared link when the payload is only one http(s) link, else `null`.
+String? _singleSharedLink(SharedMedia payload) {
+  final text = payload.content?.trim();
+  final hasFiles = payload.attachments?.any((a) => a != null) ?? false;
+  if (text == null || text.isEmpty || hasFiles || text.contains(RegExp(r'\s'))) {
+    return null;
+  }
+  try {
+    return parseUserLink(text).toString();
+  } on LinkDownloadException {
+    return null;
+  }
+}
+
+void _announceBrowserDownload(String fileName) {
+  final context = Routerino.context;
+  if (!context.mounted) {
+    return;
+  }
+  final fr = LocaleSettings.currentLocale == AppLocale.fr;
+  context.showSnackBarWithAction(
+    text: fr ? 'Téléchargement repris du navigateur : $fileName' : 'Download taken over from the browser: $fileName',
+    actionLabel: fr ? 'Voir' : 'Show',
+    onAction: () => unawaited(context.push(() => const LinkDownloadPage())),
+  );
+}
+
+void _offerLinkDownload(String link, {String? label}) {
+  // Leaves time for the home page to appear on a cold start from a share.
+  unawaited(
+    Future<void>.delayed(const Duration(milliseconds: 800), () {
+      final context = Routerino.context;
+      if (!context.mounted) {
+        return;
+      }
+      final fr = LocaleSettings.currentLocale == AppLocale.fr;
+      context.showSnackBarWithAction(
+        text: label != null ? (fr ? 'Lien copié : $label' : 'Link copied: $label') : (fr ? 'Lien reçu' : 'Link received'),
+        actionLabel: fr ? 'Télécharger' : 'Download',
+        onAction: () => unawaited(context.push(() => LinkDownloadPage(initialUrl: link))),
+      );
+    }),
+  );
 }
 
 class _HandleAppStartArgumentsAction extends AsyncGlobalAction {
