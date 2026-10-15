@@ -339,6 +339,7 @@ class LinkDownloadService extends Notifier<LinkDownloadState> {
   final _browserDownloads = StreamController<String>.broadcast();
   BrowserBridgeServer? _bridge;
   Timer? _clipboardTimer;
+  AppLifecycleListener? _clipboardOnResume;
   String? _lastClipboard;
   bool _partsCleaned = false;
 
@@ -578,6 +579,8 @@ class LinkDownloadService extends Notifier<LinkDownloadState> {
     } else {
       _clipboardTimer?.cancel();
       _clipboardTimer = null;
+      _clipboardOnResume?.dispose();
+      _clipboardOnResume = null;
     }
   }
 
@@ -585,13 +588,22 @@ class LinkDownloadService extends Notifier<LinkDownloadState> {
   /// link to a file (`.zip`, `.exe`, `.mp4`, `.pdf`, ...) is announced on
   /// [clipboardLinks]. Only checked while Aika is in the foreground; the
   /// clipboard never leaves the device.
+  ///
+  /// Android forbids reading the clipboard in the background, so there it
+  /// is read once each time Aika comes to the foreground: copy a link in
+  /// Chrome, open Aika, and the download is offered.
   Future<void> startClipboardWatch() async {
-    if (!checkPlatformIsDesktop() || !state.settings.clipboardWatch || _clipboardTimer != null) {
+    if (!state.settings.clipboardWatch || _clipboardTimer != null || _clipboardOnResume != null) {
       return;
     }
-    // What is already copied is not "new": only later copies are offered.
-    _lastClipboard = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
-    _clipboardTimer = Timer.periodic(_clipboardInterval, (_) => unawaited(_checkClipboard()));
+    if (checkPlatformIsDesktop()) {
+      // What is already copied is not "new": only later copies are offered.
+      _lastClipboard = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
+      _clipboardTimer = Timer.periodic(_clipboardInterval, (_) => unawaited(_checkClipboard()));
+    } else if (checkPlatform([TargetPlatform.android])) {
+      _clipboardOnResume = AppLifecycleListener(onResume: () => unawaited(_checkClipboard()));
+      await _checkClipboard(); // A link copied just before opening Aika.
+    }
   }
 
   /// Turns the browser extension integration on or off (computers only).
@@ -678,7 +690,9 @@ class LinkDownloadService extends Notifier<LinkDownloadState> {
   }
 
   Future<void> _checkClipboard() async {
-    if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+    // Only while Aika is on screen (null = still starting, also on screen).
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    if (lifecycle != null && lifecycle != AppLifecycleState.resumed) {
       return;
     }
     final String? text;

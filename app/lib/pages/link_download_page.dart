@@ -1334,7 +1334,7 @@ class _OptionsDialog extends StatelessWidget {
                 const SizedBox(height: 12),
                 const _BrowserBridgeTile(),
               ],
-              if (checkPlatformIsDesktop()) ...[
+              if (checkPlatformIsDesktop() || checkPlatform([TargetPlatform.android])) ...[
                 const SizedBox(height: 12),
                 _SwitchRow(
                   value: settings.clipboardWatch,
@@ -1342,8 +1342,12 @@ class _OptionsDialog extends StatelessWidget {
                   title: Text(_t(fr: 'Détecter les liens copiés', en: 'Detect copied links'), style: const TextStyle(fontWeight: FontWeight.w600)),
                   subtitle: Text(
                     _t(
-                      fr: 'Quand vous copiez un lien vers un fichier (.zip, .exe, .mp4…), Aika propose de le télécharger. Le presse-papiers reste sur cet appareil.',
-                      en: 'When you copy a link to a file (.zip, .exe, .mp4…), Aika offers to download it. The clipboard stays on this device.',
+                      fr: checkPlatformIsDesktop()
+                          ? 'Quand vous copiez un lien vers un fichier (.zip, .exe, .mp4…), Aika propose de le télécharger. Le presse-papiers reste sur cet appareil.'
+                          : 'Copiez un lien vers un fichier (.apk, .zip, .mp4…) puis ouvrez Aika : le téléchargement est proposé. Android affiche alors « Aika a collé du contenu ».',
+                      en: checkPlatformIsDesktop()
+                          ? 'When you copy a link to a file (.zip, .exe, .mp4…), Aika offers to download it. The clipboard stays on this device.'
+                          : 'Copy a link to a file (.apk, .zip, .mp4…), then open Aika: the download is offered. Android then shows “Aika pasted from your clipboard”.',
                     ),
                   ),
                 ),

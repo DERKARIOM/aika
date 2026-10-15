@@ -39,7 +39,9 @@ import 'package:localsend_app/provider/update_provider.dart';
 // [FOSS_REMOVE_END]
 import 'package:localsend_app/provider/window_dimensions_provider.dart';
 import 'package:localsend_app/util/i18n.dart';
+import 'package:localsend_app/util/link_download/github_source.dart';
 import 'package:localsend_app/util/link_download/link_problem.dart';
+import 'package:localsend_app/util/link_download/link_sources.dart';
 import 'package:localsend_app/util/link_download/url_policy.dart';
 import 'package:localsend_app/util/native/autostart_helper.dart';
 import 'package:localsend_app/util/native/cache_helper.dart';
@@ -317,8 +319,9 @@ Future<void> postInit(BuildContext context, Ref ref, bool appStart) async {
     });
   }
 
-  if (checkPlatformIsDesktop()) {
-    // "Détecter les liens copiés" (download options, off by default).
+  if (checkPlatformIsDesktop() || checkPlatform([TargetPlatform.android])) {
+    // "Détecter les liens copiés" (download options, off by default):
+    // checked continuously on computers, when Aika is opened on Android.
     final linkDownloads = ref.notifier(linkDownloadProvider);
     _clipboardLinkSubscription?.cancel(); // ignore: unawaited_futures
     _clipboardLinkSubscription = linkDownloads.clipboardLinks.listen((uri) {
@@ -326,6 +329,10 @@ Future<void> postInit(BuildContext context, Ref ref, bool appStart) async {
       _offerLinkDownload(uri.toString(), label: name);
     });
     unawaited(linkDownloads.startClipboardWatch());
+  }
+
+  if (checkPlatformIsDesktop()) {
+    final linkDownloads = ref.notifier(linkDownloadProvider);
 
     // Downloads handed over by the Aika browser extension (option).
     _browserDownloadSubscription?.cancel(); // ignore: unawaited_futures
@@ -364,6 +371,14 @@ class _HandleShareIntentAction extends AsyncGlobalAction {
 
   @override
   Future<void> reduce() async {
+    // A link to a file shared from a browser ("Partager le lien" → Aika):
+    // straight to "Télécharger depuis un lien", already analysed.
+    final sharedLink = _singleSharedLink(payload);
+    if (sharedLink != null && _isDownloadLink(sharedLink)) {
+      _openLinkDownload(sharedLink);
+      return;
+    }
+
     final message = payload.content;
     if (message != null && message.trim().isNotEmpty) {
       ref.redux(selectedSendingFilesProvider).dispatch(AddMessageAction(message: message));
@@ -379,9 +394,8 @@ class _HandleShareIntentAction extends AsyncGlobalAction {
 
     ref.redux(homePageControllerProvider).dispatch(ChangeTabAction(HomeTab.send));
 
-    // A single web link shared from a browser or a social app: also offer
-    // "Télécharger depuis un lien" (the usual behaviour above is unchanged).
-    final sharedLink = _singleSharedLink(payload);
+    // Any other single web link (a page, a post...): the usual behaviour
+    // above is kept, and downloading it is offered.
     if (sharedLink != null) {
       _offerLinkDownload(sharedLink);
     }
@@ -400,6 +414,24 @@ String? _singleSharedLink(SharedMedia payload) {
   } on LinkDownloadException {
     return null;
   }
+}
+
+/// A link to a file (by its extension) or to a GitHub Actions artifact.
+bool _isDownloadLink(String link) {
+  final uri = Uri.parse(link);
+  return looksLikeDirectFileLink(uri) || GitHubArtifactRef.tryParse(uri) != null;
+}
+
+void _openLinkDownload(String link) {
+  // Leaves time for the home page to appear on a cold start from a share.
+  unawaited(
+    Future<void>.delayed(const Duration(milliseconds: 600), () {
+      final context = Routerino.context;
+      if (context.mounted) {
+        unawaited(context.push(() => LinkDownloadPage(initialUrl: link)));
+      }
+    }),
+  );
 }
 
 void _announceBrowserDownload(String fileName) {
