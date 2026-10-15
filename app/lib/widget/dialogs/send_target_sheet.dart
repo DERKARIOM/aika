@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/pages/qr_pairing_scanner_page.dart';
+import 'package:localsend_app/pages/send_files_page.dart';
 import 'package:localsend_app/provider/animation_provider.dart';
 import 'package:localsend_app/provider/favorites_provider.dart';
 import 'package:localsend_app/provider/network/nearby_devices_provider.dart';
@@ -24,6 +25,9 @@ String _t({required String fr, required String en}) => LocaleSettings.currentLoc
 /// Popped by [SendTargetSheet] when the user wants to scan a QR code.
 const _scanQr = 'scan-qr';
 
+/// Popped by [SendTargetSheet] for the full send screen.
+const _moreOptions = 'more-options';
+
 /// Asks where to send the current selection ([selectedSendingFilesProvider])
 /// and starts sending, without going through the Send tab:
 /// - a nearby device → sent right away;
@@ -40,6 +44,10 @@ Future<void> pickTargetAndSend(BuildContext context) async {
   final Device? target;
   if (result is Device) {
     target = result;
+  } else if (result == _moreOptions) {
+    // Full send screen: same selection, more options (text, edit…).
+    await context.push(() => const SendFilesPage());
+    return;
   } else if (result == _scanQr) {
     // The scanner records the paired device itself (AddLastDeviceAction).
     target = await context.pushWithResult<Device, QrPairingScannerPage>(() => const QrPairingScannerPage());
@@ -71,6 +79,7 @@ class _SendTargetSheetState extends State<SendTargetSheet> {
   @override
   void initState() {
     super.initState();
+    SendScreenVisibility.enter();
     // Same as the Send tab: only scan when nothing is known yet, so opening
     // the sheet stays instant and does not flood the network.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -82,6 +91,12 @@ class _SendTargetSheetState extends State<SendTargetSheet> {
         await ref.global.dispatchAsync(StartSmartScan(forceLegacy: false));
       }
     });
+  }
+
+  @override
+  void dispose() {
+    SendScreenVisibility.leave();
+    super.dispose();
   }
 
   @override
@@ -141,6 +156,14 @@ class _SendTargetSheetState extends State<SendTargetSheet> {
                     onTap: () => context.pop(device),
                   ),
                 ),
+            const SizedBox(height: 4),
+            Center(
+              child: TextButton.icon(
+                onPressed: () => context.pop(_moreOptions),
+                icon: const Icon(Icons.tune_rounded),
+                label: Text(_t(fr: 'Plus d’options d’envoi', en: 'More sending options')),
+              ),
+            ),
           ],
         ),
       ),

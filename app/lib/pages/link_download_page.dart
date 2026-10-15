@@ -17,11 +17,9 @@ import 'package:localsend_app/util/native/open_folder.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/ui/snackbar.dart';
 import 'package:localsend_app/widget/custom_basic_appbar.dart';
-import 'package:localsend_app/widget/dialogs/custom_bottom_sheet.dart';
 import 'package:localsend_isolates/model/file_type.dart';
 import 'package:path/path.dart' as p;
 import 'package:refena_flutter/refena_flutter.dart';
-import 'package:routerino/routerino.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 String _t({required String fr, required String en}) => LocaleSettings.currentLocale == AppLocale.fr ? fr : en;

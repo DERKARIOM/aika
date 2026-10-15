@@ -7,6 +7,7 @@ import 'package:localsend_app/model/qr_pairing_payload.dart';
 import 'package:localsend_app/pages/link_download_page.dart';
 import 'package:localsend_app/pages/qr_pairing_display_page.dart';
 import 'package:localsend_app/pages/receive_history_page.dart';
+import 'package:localsend_app/pages/send_files_page.dart';
 import 'package:localsend_app/pages/tabs/receive_tab_vm.dart';
 import 'package:localsend_app/provider/animation_provider.dart';
 import 'package:localsend_app/provider/device_info_provider.dart';
@@ -786,6 +787,10 @@ class _Actions extends StatelessWidget {
   /// starts from here, without opening the Send tab.
   Future<void> _sendFiles(BuildContext context) async {
     final option = await context.pushBottomSheet(() => const _SendSourceSheet());
+    if (option == _moreOptions && context.mounted) {
+      await context.push(() => const SendFilesPage());
+      return;
+    }
     if (option is! FilePickerOption || !context.mounted) {
       return;
     }
@@ -801,6 +806,9 @@ class _Actions extends StatelessWidget {
 
 /// Bottom sheet listing what can be sent, in the platform's usual order.
 /// Pops with the chosen [FilePickerOption], or nothing when dismissed.
+/// Popped by [_SendSourceSheet] for the full send screen.
+const _moreOptions = 'more-options';
+
 class _SendSourceSheet extends StatelessWidget {
   const _SendSourceSheet();
 
@@ -819,16 +827,27 @@ class _SendSourceSheet extends StatelessWidget {
           // the width, so the sheet fits on wide desktop windows too.
           const spacing = 10.0;
           final tileWidth = (constraints.maxWidth - spacing) / 2;
-          return Wrap(
-            spacing: spacing,
-            runSpacing: spacing,
+          return Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              for (final option in options)
-                SizedBox(
-                  width: tileWidth,
-                  height: 64,
-                  child: _SourceTile(option: option),
-                ),
+              Wrap(
+                spacing: spacing,
+                runSpacing: spacing,
+                children: [
+                  for (final option in options)
+                    SizedBox(
+                      width: tileWidth,
+                      height: 64,
+                      child: _SourceTile(option: option),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              TextButton.icon(
+                onPressed: () => context.pop(_moreOptions),
+                icon: const Icon(Icons.tune_rounded),
+                label: Text(_t(fr: 'Plus d’options d’envoi', en: 'More sending options')),
+              ),
             ],
           );
         },

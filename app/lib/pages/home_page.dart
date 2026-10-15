@@ -8,9 +8,10 @@ import 'package:localsend_app/config/theme.dart';
 import 'package:localsend_app/gen/assets.gen.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/pages/home_page_controller.dart';
+import 'package:localsend_app/pages/send_files_page.dart';
 import 'package:localsend_app/pages/tabs/chat_tab.dart';
+import 'package:localsend_app/pages/tabs/collections_tab.dart';
 import 'package:localsend_app/pages/tabs/receive_tab.dart';
-import 'package:localsend_app/pages/tabs/send_tab.dart';
 import 'package:localsend_app/pages/tabs/settings_tab.dart';
 import 'package:localsend_app/provider/chat/chat_conversations_provider.dart';
 import 'package:localsend_app/provider/selection/selected_sending_files_provider.dart';
@@ -22,7 +23,7 @@ import 'package:refena_flutter/refena_flutter.dart';
 
 enum HomeTab {
   receive(Icons.wifi),
-  send(Icons.send),
+  collections(Icons.photo_library_outlined),
   chat(Icons.chat_bubble_outline_rounded),
   settings(Icons.settings);
 
@@ -36,8 +37,8 @@ enum HomeTab {
         // The Receive tab is the app's home screen (QR code, storage,
         // quick send), hence "Accueil" in the navigation.
         return LocaleSettings.currentLocale == AppLocale.fr ? 'Accueil' : 'Home';
-      case HomeTab.send:
-        return t.sendTab.title;
+      case HomeTab.collections:
+        return 'Collections';
       case HomeTab.chat:
         return t.chat.title;
       case HomeTab.settings:
@@ -111,7 +112,8 @@ class _HomePageState extends State<HomePage> with Refena {
                 ),
               );
         }
-        vm.changeTab(HomeTab.send);
+        // Dropped files go to the send screen (the Send tab became a page).
+        openSendScreen();
       },
       child: ResponsiveBuilder(
         builder: (sizingInformation) {
@@ -231,7 +233,7 @@ class _HomePageState extends State<HomePage> with Refena {
                           physics: const NeverScrollableScrollPhysics(),
                           children: const [
                             SafeArea(child: ReceiveTab()),
-                            SafeArea(child: SendTab()),
+                            SafeArea(child: CollectionsTab()),
                             SafeArea(child: ChatTab()),
                             SettingsTab(),
                           ],
