@@ -284,9 +284,15 @@ class _CollectionCard extends StatelessWidget {
       case _CardAction.rename:
         await editCollectionInfo(context, collection);
       case _CardAction.share:
-        await shareCollectionByLink(context, collection.id, await service.items(collection.id));
+        final items = await service.items(collection.id);
+        if (context.mounted) {
+          await shareCollectionByLink(context, collection.id, items);
+        }
       case _CardAction.send:
-        await sendCollectionItems(context, collection.id, await service.items(collection.id));
+        final items = await service.items(collection.id);
+        if (context.mounted) {
+          await sendCollectionItems(context, collection.id, items);
+        }
       case _CardAction.delete:
         await deleteCollectionFlow(context, collection);
     }

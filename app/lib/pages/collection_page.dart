@@ -437,7 +437,8 @@ class _ReorderPageState extends State<_ReorderPage> {
   late final List<CollectionItem> _items = [...widget.items];
 
   Future<void> _onReorder(int oldIndex, int newIndex) async {
-    final target = newIndex > oldIndex ? newIndex - 1 : newIndex;
+    // onReorderItem already gives the index after removing the moved item.
+    final target = newIndex;
     final item = _items[oldIndex];
     setState(() => _items.insert(target, _items.removeAt(oldIndex)));
     await context.ref.notifier(collectionsProvider).moveItem(widget.collectionId, item.id, target);
@@ -452,7 +453,7 @@ class _ReorderPageState extends State<_ReorderPage> {
         child: ReorderableListView.builder(
           padding: const EdgeInsets.symmetric(vertical: 8),
           itemCount: _items.length,
-          onReorder: _onReorder,
+          onReorderItem: _onReorder,
           buildDefaultDragHandles: false,
           itemBuilder: (context, index) {
             final item = _items[index];

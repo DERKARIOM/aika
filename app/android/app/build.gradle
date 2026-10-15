@@ -22,6 +22,20 @@ if (flutterVersionName == null) {
     flutterVersionName = '1.0'
 }
 
+// app/pubspec.yaml ("version: X.Y.Z+N") is the single source of the version.
+// local.properties is only refreshed by `flutter` commands: a bundle made from
+// Android Studio ("Generate Signed Bundle") would otherwise reuse a stale
+// version code and be refused by Google Play ("version code already used").
+def pubspecFile = rootProject.file('../pubspec.yaml')
+if (pubspecFile.exists()) {
+    def versionLine = pubspecFile.readLines('UTF-8').find { it ==~ /^version:\s*\S+\s*$/ }
+    def matcher = versionLine =~ /^version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+([0-9]+)\s*$/
+    if (matcher.find()) {
+        flutterVersionName = matcher.group(1)
+        flutterVersionCode = matcher.group(2)
+    }
+}
+
 android {
     namespace "com.naniger.aika"
     compileSdkVersion 36
