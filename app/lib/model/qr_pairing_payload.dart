@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:localsend_isolates/model/device.dart';
 import 'package:uuid/uuid.dart';
@@ -17,6 +18,9 @@ const qrPairingSchemaVersion = 1;
 /// interpret its fields, and to give the user a clear error message instead
 /// of a confusing crash.
 const _qrPairingMagic = 'aika.pair';
+
+/// Most extra addresses carried by a QR code (keeps it easy to scan).
+const qrPairingMaxAltIps = 4;
 
 /// Default lifetime of a freshly generated pairing QR code.
 /// Kept short on purpose: the code is meant to be scanned right away by a
@@ -122,6 +126,19 @@ class QrPairingPayload {
   /// Passphrase of the hotspot named by [wifiSsid], if any.
   final String? wifiPassphrase;
 
+  /// Security of that hotspot: "wpa2" (default when absent), "wpa3" or
+  /// "open". Some recent phones protect their hotspot with WPA3 only.
+  final String? wifiSecurity;
+
+  /// Other local addresses of the emitter, tried after [ip] by the scanning
+  /// device. A device on a Wi-Fi network *and* running its own hotspot has
+  /// one address per network, and only the hotspot's one is reachable for a
+  /// device that just joined that hotspot. Older versions ignore this field.
+  final List<String> altIps;
+
+  /// Every address to try, [ip] first, without duplicates.
+  List<String> get candidateIps => {ip, ...altIps}.toList();
+
   const QrPairingPayload({
     required this.pairId,
     required this.protocolVersion,
@@ -136,6 +153,8 @@ class QrPairingPayload {
     required this.expiresAt,
     this.wifiSsid,
     this.wifiPassphrase,
+    this.wifiSecurity,
+    this.altIps = const [],
   });
 
   /// Builds a fresh payload for the current device, valid for [ttl].
@@ -151,6 +170,8 @@ class QrPairingPayload {
     Duration ttl = qrPairingDefaultTtl,
     String? wifiSsid,
     String? wifiPassphrase,
+    String? wifiSecurity,
+    List<String> altIps = const [],
   }) {
     final now = DateTime.now();
     return QrPairingPayload(
@@ -167,7 +188,15 @@ class QrPairingPayload {
       expiresAt: now.add(ttl),
       wifiSsid: wifiSsid,
       wifiPassphrase: wifiPassphrase,
+      // WPA2 is the default: only other values are written (smaller code).
+      wifiSecurity: wifiSsid == null || wifiSecurity == 'wpa2' ? null : wifiSecurity,
+      altIps: cleanAltIps(ip, altIps),
     );
+  }
+
+  /// Valid IP literals other than [primary], at most [qrPairingMaxAltIps].
+  static List<String> cleanAltIps(String primary, Iterable<String> ips) {
+    return ips.where((a) => a != primary && InternetAddress.tryParse(a) != null).toSet().take(qrPairingMaxAltIps).toList();
   }
 
   bool get isExpired => DateTime.now().isAfter(expiresAt);
@@ -195,6 +224,8 @@ class QrPairingPayload {
       'expiresAt': expiresAt.toUtc().millisecondsSinceEpoch,
       if (wifiSsid != null) 'wifiSsid': wifiSsid,
       if (wifiPassphrase != null) 'wifiPassphrase': wifiPassphrase,
+      if (wifiSecurity != null) 'wifiSecurity': wifiSecurity,
+      if (altIps.isNotEmpty) 'ips': altIps,
     });
   }
 
@@ -224,6 +255,13 @@ class QrPairingPayload {
 
     try {
       final deviceTypeName = json['deviceType'] as String?;
+      final ip = json['ip'] as String;
+      // Only IP literals: a QR code must never make the device contact an
+      // arbitrary host name.
+      if (InternetAddress.tryParse(ip) == null) {
+        return QrPairingDecodeResult.failure(QrPairingError.malformed);
+      }
+      final rawAltIps = json['ips'];
       final payload = QrPairingPayload(
         pairId: json['pairId'] as String,
         protocolVersion: json['protocolVersion'] as String,
@@ -233,7 +271,7 @@ class QrPairingPayload {
           (e) => e.name == deviceTypeName,
           orElse: () => DeviceType.desktop,
         ),
-        ip: json['ip'] as String,
+        ip: ip,
         port: json['port'] as int,
         https: json['https'] as bool,
         fingerprint: json['fingerprint'] as String,
@@ -241,6 +279,12 @@ class QrPairingPayload {
         expiresAt: DateTime.fromMillisecondsSinceEpoch(json['expiresAt'] as int, isUtc: true),
         wifiSsid: json['wifiSsid'] as String?,
         wifiPassphrase: json['wifiPassphrase'] as String?,
+        wifiSecurity: switch (json['wifiSecurity']) {
+          'wpa3' => 'wpa3',
+          'open' => 'open',
+          _ => null, // WPA2, also for unknown values
+        },
+        altIps: rawAltIps is List ? cleanAltIps(ip, rawAltIps.whereType<String>()) : const [],
       );
 
       if (payload.isExpired) {

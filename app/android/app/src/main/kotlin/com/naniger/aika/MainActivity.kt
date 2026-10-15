@@ -13,6 +13,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.net.Uri
+import android.net.wifi.SoftApConfiguration
 import android.net.wifi.WifiManager
 import android.net.wifi.WifiNetworkSpecifier
 import android.os.Build
@@ -49,6 +50,12 @@ class MainActivity : FlutterActivity() {
         fun createDefaultIntent(launchContext: Context): Intent {
             return withNewEngine().build(launchContext)
         }
+
+        // Process-wide (not per activity instance): when the activity is recreated
+        // (configuration change), the new instance must still be able to stop the
+        // hotspot or release the joined Wi-Fi.
+        private var hotspotReservation: WifiManager.LocalOnlyHotspotReservation? = null
+        private var wifiNetworkCallback: ConnectivityManager.NetworkCallback? = null
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -147,8 +154,6 @@ class MainActivity : FlutterActivity() {
     // turned on for the call to succeed. Both failure modes surface here as onFailed/
     // SecurityException and are reported back to Dart, which falls back to guiding the
     // user to Settings manually.
-    private var hotspotReservation: WifiManager.LocalOnlyHotspotReservation? = null
-
     private fun startLocalOnlyHotspot(result: MethodChannel.Result) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             result.error("UNSUPPORTED", "Local-only hotspot requires Android 8.0 (API 26) or higher", null)
@@ -218,12 +223,21 @@ class MainActivity : FlutterActivity() {
             mapOf(
                 "ssid" to config?.ssid,
                 "passphrase" to config?.passphrase,
+                // Recent Android versions may protect the hotspot with WPA3 only:
+                // the joining device must then use a WPA3 specifier (a WPA2 one
+                // would never connect). Transition mode accepts WPA2 clients.
+                "security" to when (config?.securityType) {
+                    SoftApConfiguration.SECURITY_TYPE_OPEN -> "open"
+                    SoftApConfiguration.SECURITY_TYPE_WPA3_SAE -> "wpa3"
+                    else -> "wpa2"
+                },
             )
         } else {
             val config = reservation.wifiConfiguration
             mapOf(
                 "ssid" to config?.SSID,
                 "passphrase" to config?.preSharedKey,
+                "security" to "wpa2",
             )
         }
     }
@@ -258,8 +272,6 @@ class MainActivity : FlutterActivity() {
     // (right after the pairing HTTP call completes), and again defensively in onDestroy(), so
     // the device is never left unable to reach the internet because of a stale binding to an
     // ephemeral hotspot that no longer exists.
-    private var wifiNetworkCallback: ConnectivityManager.NetworkCallback? = null
-
     private fun joinWifiNetwork(call: MethodCall, result: MethodChannel.Result) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             result.error("UNSUPPORTED", "Programmatic Wi-Fi join requires Android 10 (API 29) or higher", null)
@@ -268,6 +280,7 @@ class MainActivity : FlutterActivity() {
 
         val ssid = call.argument<String>("ssid")
         val passphrase = call.argument<String>("passphrase")
+        val security = call.argument<String>("security") ?: "wpa2"
         if (ssid.isNullOrEmpty()) {
             result.error("INVALID_ARGUMENT", "Missing ssid", null)
             return
@@ -285,8 +298,12 @@ class MainActivity : FlutterActivity() {
 
         val specifier = try {
             val builder = WifiNetworkSpecifier.Builder().setSsid(ssid)
-            if (!passphrase.isNullOrEmpty()) {
-                builder.setWpa2Passphrase(passphrase)
+            if (!passphrase.isNullOrEmpty() && security != "open") {
+                if (security == "wpa3") {
+                    builder.setWpa3Passphrase(passphrase)
+                } else {
+                    builder.setWpa2Passphrase(passphrase)
+                }
             }
             builder.build()
         } catch (e: IllegalArgumentException) {
@@ -316,6 +333,20 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 } catch (e: Exception) {
                     result.error("JOIN_FAILED", e.message ?: "Failed to bind to the joined network", null)
+                }
+            }
+
+            // The receiver stopped its hotspot (or went out of range): stop routing
+            // the app through a network that no longer exists, so Internet comes
+            // back right away instead of waiting for the Dart side to unbind.
+            override fun onLost(network: Network) {
+                super.onLost(network)
+                try {
+                    if (connectivityManager.boundNetworkForProcess == network) {
+                        connectivityManager.bindProcessToNetwork(null)
+                    }
+                } catch (e: Exception) {
+                    // Best-effort.
                 }
             }
 
@@ -363,9 +394,14 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
-        stopLocalOnlyHotspot()
-        (applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager)?.let {
-            unbindWifiNetworkInternal(it)
+        // A configuration change (e.g. dark mode, language) recreates the activity
+        // while the app keeps running: a transfer in progress over the hotspot or
+        // the joined Wi-Fi must not be cut.
+        if (!isChangingConfigurations) {
+            stopLocalOnlyHotspot()
+            (applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager)?.let {
+                unbindWifiNetworkInternal(it)
+            }
         }
         super.onDestroy()
     }

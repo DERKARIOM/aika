@@ -3,7 +3,7 @@ description: A modern app for transferring and sharing data between devices
 homepage: https://naniger.com/
 publish_to: "none"
 
-version: 1.3.6+20
+version: 1.5.8+21
 
 environment:
   flutter: ^3.41.0

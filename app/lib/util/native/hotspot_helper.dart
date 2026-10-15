@@ -42,14 +42,17 @@ class HotspotActivationResult {
   final String? ssid;
   final String? passphrase;
 
+  /// Wi-Fi security of the hotspot ("wpa2", "wpa3", "open"), when known.
+  final String? security;
+
   /// Machine-readable failure reason (native error code, "permission_denied",
   /// or "unsupported_platform") — not shown to the user directly, but useful
   /// for logging/telemetry and for deciding whether retrying makes sense.
   final String? failureReason;
 
-  const HotspotActivationResult.success({this.ssid, this.passphrase}) : success = true, failureReason = null;
+  const HotspotActivationResult.success({this.ssid, this.passphrase, this.security}) : success = true, failureReason = null;
 
-  const HotspotActivationResult.failure(this.failureReason) : success = false, ssid = null, passphrase = null;
+  const HotspotActivationResult.failure(this.failureReason) : success = false, ssid = null, passphrase = null, security = null;
 }
 
 /// Requests whichever runtime permission `startLocalOnlyHotspot` needs for
@@ -87,7 +90,7 @@ Future<HotspotActivationResult> tryActivateLocalOnlyHotspot({required int? andro
 
   try {
     final info = await startLocalOnlyHotspotAndroid();
-    return HotspotActivationResult.success(ssid: info.ssid, passphrase: info.passphrase);
+    return HotspotActivationResult.success(ssid: info.ssid, passphrase: info.passphrase, security: info.security);
   } on LocalOnlyHotspotException catch (e) {
     _logger.warning('Local-only hotspot activation failed: ${e.code}');
     return HotspotActivationResult.failure(e.code);
@@ -153,12 +156,12 @@ bool get canAutoJoinWifi => checkPlatform([TargetPlatform.android]);
 /// On success, the caller MUST call [unbindAutoJoinedWifiNetwork] once it no longer needs
 /// this network (right after the pairing HTTP call completes), since the join binds the
 /// *entire app process* to it until then.
-Future<bool> tryAutoJoinWifiNetwork({required String ssid, required String? passphrase}) async {
+Future<bool> tryAutoJoinWifiNetwork({required String ssid, required String? passphrase, String? security}) async {
   if (!canAutoJoinWifi) {
     return false;
   }
   try {
-    return await joinWifiNetworkAndroid(ssid: ssid, passphrase: passphrase);
+    return await joinWifiNetworkAndroid(ssid: ssid, passphrase: passphrase, security: security);
   } catch (e) {
     _logger.warning('Failed to auto-join Wi-Fi network', e);
     return false;

@@ -40,8 +40,15 @@ import 'package:refena_flutter/refena_flutter.dart';
 ///
 /// See [QrNetworkPrepState] for the full state machine and
 /// `lib/util/native/hotspot_helper.dart` for the platform capability notes.
+String _t({required String fr, required String en}) => LocaleSettings.currentLocale == AppLocale.fr ? fr : en;
+
 class QrPairingDisplayPage extends StatefulWidget {
-  const QrPairingDisplayPage();
+  /// Creates Aika's own Wi-Fi right away ("Connexion directe"), even when
+  /// this device is already on a network: the other device then needs no
+  /// common Wi-Fi and joins this one by scanning the code.
+  final bool startDirect;
+
+  const QrPairingDisplayPage({this.startDirect = false});
 
   @override
   State<QrPairingDisplayPage> createState() => _QrPairingDisplayPageState();
@@ -67,6 +74,11 @@ class _QrPairingDisplayPageState extends State<QrPairingDisplayPage> with Refena
   QrNetworkPrepState _networkState = const QrNetworkPrepState.checking();
   String? _hotspotSsid;
   String? _hotspotPassphrase;
+  String? _hotspotSecurity;
+
+  /// Addresses that appeared when the hotspot started: this device's
+  /// address on its own Wi-Fi (put first in the code).
+  List<String> _hotspotIps = const [];
 
   @override
   void initState() {
@@ -109,6 +121,11 @@ class _QrPairingDisplayPageState extends State<QrPairingDisplayPage> with Refena
   Future<void> _prepareNetwork() async {
     setState(() => _networkState = const QrNetworkPrepState.checking());
 
+    if (widget.startDirect && canAutoActivateHotspot && _hotspotSsid == null) {
+      await _activateHotspotFlow();
+      return;
+    }
+
     if (_hasUsableIp(ref.read(deviceFullInfoProvider))) {
       // Already connected (Wi-Fi/Ethernet/existing hotspot): behave exactly
       // like before this feature existed.
@@ -144,6 +161,7 @@ class _QrPairingDisplayPageState extends State<QrPairingDisplayPage> with Refena
     setState(() => _networkState = const QrNetworkPrepState.activatingHotspot());
 
     final androidSdkInt = ref.read(deviceRawInfoProvider).androidSdkInt;
+    final ipsBefore = ref.read(localIpProvider).localIps.toSet();
     final result = await tryActivateLocalOnlyHotspot(androidSdkInt: androidSdkInt);
     if (!mounted) {
       return;
@@ -156,7 +174,28 @@ class _QrPairingDisplayPageState extends State<QrPairingDisplayPage> with Refena
 
     _hotspotSsid = result.ssid;
     _hotspotPassphrase = result.passphrase;
+    _hotspotSecurity = result.security;
+    _hotspotIps = await _waitForNewIps(ipsBefore);
+    if (!mounted) {
+      return;
+    }
     await _waitForIp(hotspotActive: true);
+  }
+
+  /// The hotspot gets its own address, which can take a moment to appear.
+  /// Returns the addresses that were not there before (empty after a short,
+  /// bounded wait: the code then lists every address instead).
+  Future<List<String>> _waitForNewIps(Set<String> before) async {
+    final deadline = DateTime.now().add(const Duration(seconds: 6));
+    while (mounted && DateTime.now().isBefore(deadline)) {
+      await ref.redux(localIpProvider).dispatchAsync(FetchLocalIpAction());
+      final added = ref.read(localIpProvider).localIps.where((ip) => !before.contains(ip)).toList();
+      if (added.isNotEmpty) {
+        return added;
+      }
+      await Future.delayed(_ipPollInterval);
+    }
+    return const [];
   }
 
   /// Waits (with a bounded timeout) for `localIpProvider` to report a usable
@@ -219,6 +258,8 @@ class _QrPairingDisplayPageState extends State<QrPairingDisplayPage> with Refena
     await stopLocalOnlyHotspotIfActive();
     _hotspotSsid = null;
     _hotspotPassphrase = null;
+    _hotspotSecurity = null;
+    _hotspotIps = const [];
     if (!mounted) {
       return;
     }
@@ -233,7 +274,29 @@ class _QrPairingDisplayPageState extends State<QrPairingDisplayPage> with Refena
     if (!mounted) {
       return;
     }
+    if (widget.startDirect) {
+      // Stopped on purpose: show the regular code instead of restarting it.
+      setState(() => _networkState = const QrNetworkPrepState.checking());
+      if (_hasUsableIp(ref.read(deviceFullInfoProvider))) {
+        setState(() => _networkState = const QrNetworkPrepState.ready());
+        _regenerate();
+      } else {
+        setState(() => _networkState = const QrNetworkPrepState.needsManualAction());
+      }
+      return;
+    }
     await _prepareNetwork();
+  }
+
+  /// Every address the other device may try, the most likely first: this
+  /// device's own Wi-Fi when it runs one, then the current network.
+  List<String> _advertisedIps(Device device) {
+    final hotspot = _networkState.status == QrNetworkPrepStatus.hotspotReady;
+    return {
+      if (hotspot) ..._hotspotIps,
+      ?device.ip,
+      ...ref.read(localIpProvider).localIps,
+    }.where((ip) => ip != '-').toList();
   }
 
   bool _hasUsableIp(Device device) {
@@ -252,19 +315,22 @@ class _QrPairingDisplayPageState extends State<QrPairingDisplayPage> with Refena
     // Wi-Fi network. See the scoping rationale on [QrPairingPayload.wifiSsid].
     final isOwnHotspot = _networkState.status == QrNetworkPrepStatus.hotspotReady;
 
+    final ips = _advertisedIps(device);
     setState(() {
       _payload = QrPairingPayload.generate(
         protocolVersion: protocolVersion,
         alias: device.alias,
         deviceModel: device.deviceModel,
         deviceType: device.deviceType,
-        ip: device.ip!,
+        ip: ips.first,
+        altIps: ips.skip(1).toList(),
         port: device.port,
         https: device.https,
         fingerprint: device.fingerprint,
         ttl: _ttl,
         wifiSsid: isOwnHotspot ? _hotspotSsid : null,
         wifiPassphrase: isOwnHotspot ? _hotspotPassphrase : null,
+        wifiSecurity: isOwnHotspot ? _hotspotSecurity : null,
       );
     });
   }
@@ -279,7 +345,10 @@ class _QrPairingDisplayPageState extends State<QrPairingDisplayPage> with Refena
     final currentInfo = ref.watch(deviceFullInfoProvider);
     final payload = _payload;
     final readyStatus = _networkState.status == QrNetworkPrepStatus.ready || _networkState.status == QrNetworkPrepStatus.hotspotReady;
-    if (readyStatus && payload != null && (currentInfo.ip != payload.ip || currentInfo.port != payload.port || currentInfo.https != payload.https)) {
+    if (readyStatus &&
+        payload != null &&
+        _hasUsableIp(currentInfo) &&
+        (_advertisedIps(currentInfo).first != payload.ip || currentInfo.port != payload.port || currentInfo.https != payload.https)) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _regenerate());
     }
 
@@ -454,6 +523,10 @@ class _QrPairingDisplayPageState extends State<QrPairingDisplayPage> with Refena
           ),
         ),
       ),
+      if (_networkState.status == QrNetworkPrepStatus.ready && canAutoActivateHotspot) ...[
+        const SizedBox(height: 16),
+        _DirectConnectionTile(onTap: () => unawaited(_activateHotspotFlow())),
+      ],
       const SizedBox(height: 24),
       Text(t.qrPairing.display.expiration, style: Theme.of(context).textTheme.titleSmall),
       const SizedBox(height: 8),
@@ -655,5 +728,39 @@ extension on Duration {
       return '$inMinutes min';
     }
     return '$inSeconds s';
+  }
+}
+
+/// "Connexion directe": offered while the code uses the current network, for
+/// a device that is not (and has never been) on it.
+class _DirectConnectionTile extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _DirectConnectionTile({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Material(
+      color: colorScheme.surfaceContainerHigh,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: colorScheme.outlineVariant),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: ListTile(
+        onTap: onTap,
+        leading: Icon(Icons.wifi_tethering_rounded, color: colorScheme.primary),
+        title: Text(_t(fr: 'Pas sur le même Wi-Fi ?', en: 'Not on the same Wi-Fi?')),
+        subtitle: Text(
+          _t(
+            fr: 'Connexion directe : Aika crée son propre Wi-Fi, l’autre appareil s’y connecte en scannant le code.',
+            en: 'Direct connection: Aika creates its own Wi-Fi, the other device joins it by scanning the code.',
+          ),
+          style: TextStyle(color: colorScheme.onSurfaceVariant),
+        ),
+        trailing: const Icon(Icons.chevron_right_rounded),
+      ),
+    );
   }
 }

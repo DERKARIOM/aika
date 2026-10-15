@@ -1,3 +1,16 @@
+## 1.5.8
+
+- Nouvel onglet « Collections » (remplace « Envoyer ») : regroupez vos photos, vidéos et documents dans des collections conservées sur l'appareil, avec couverture, description, sélection multiple et réorganisation. Supprimer une collection ne supprime jamais vos fichiers d'origine.
+- Envoi d'une collection (ou d'une partie) vers un appareil proche, ou partage par lien sur le réseau local.
+- Page web de partage améliorée : nom et description de la collection, aperçus des images, sélection de fichiers, « Télécharger la sélection » et téléchargement en ZIP (un seul fichier, même pour des centaines de Go).
+- Envoi direct depuis l'Accueil : choix des fichiers puis de l'appareil (ou scan du QR Code) sans passer par l'écran d'envoi ; l'onglet « Recevoir » devient « Accueil ».
+- Connexion directe par QR Code : l'appareil récepteur peut créer son propre Wi-Fi pour recevoir des fichiers d'un appareil qui n'est pas sur le même réseau (Android), et l'envoi reste connecté jusqu'à la fin du transfert.
+- Téléchargement depuis un lien : gestionnaire de téléchargements (plusieurs connexions, pause et reprise, file d'attente, détection des liens copiés), artefacts GitHub via un compte GitHub, ouverture directe d'un lien partagé vers Aika (Android).
+- Extension Chrome / Edge (Windows) pour envoyer les téléchargements du navigateur vers Aika.
+- Réception en arrière-plan plus fiable (relance automatique du serveur de réception).
+- Identifiants d'appareil (#10…) déplacés dans le détail du QR Code pour un Accueil plus épuré.
+- Corrections et améliorations de stabilité.
+
 ## 1.3.6
 
 - Améliorations et corrections.

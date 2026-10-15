@@ -101,6 +101,9 @@ class _ReceiveTabState extends State<ReceiveTab> with Refena {
       port: device.port,
       https: device.https,
       fingerprint: device.fingerprint,
+      // Other addresses of this device (several networks): the scanner
+      // tries them too.
+      altIps: vm.localIps,
     );
     _payload = payload;
 
@@ -329,6 +332,7 @@ class _QrCard extends StatelessWidget {
     final colorScheme = theme.colorScheme;
     final animations = context.watch(animationProvider);
     final payload = this.payload;
+    // Device IDs (#10…) stay out of the Home screen: shown in the QR details.
     final ids = vm.isReceiving ? vm.localIps.map((ip) => ip.visualId).toSet() : const <String>{};
 
     return _Card(
@@ -343,6 +347,16 @@ class _QrCard extends StatelessWidget {
                   style: theme.textTheme.titleSmall?.copyWith(color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.w700),
                 ),
               ),
+              if (checkPlatform([TargetPlatform.android]))
+                IconButton(
+                  tooltip: _t(
+                    fr: 'Connexion directe (pas besoin du même Wi-Fi)',
+                    en: 'Direct connection (no common Wi-Fi needed)',
+                  ),
+                  style: IconButton.styleFrom(shape: _shape),
+                  onPressed: () async => context.push(() => const QrPairingDisplayPage(startDirect: true)),
+                  icon: const Icon(Icons.wifi_tethering_rounded, size: 20),
+                ),
               IconButton(
                 tooltip: _t(fr: 'Options du code QR', en: 'QR code options'),
                 style: IconButton.styleFrom(shape: _shape),
@@ -353,7 +367,7 @@ class _QrCard extends StatelessWidget {
                 IconButton(
                   tooltip: _t(fr: 'Agrandir le QR Code', en: 'Enlarge the QR code'),
                   style: IconButton.styleFrom(shape: _shape),
-                  onPressed: () async => _showFullScreen(context, payload),
+                  onPressed: () async => _showFullScreen(context, payload, ids),
                   icon: const Icon(Icons.open_in_full_rounded, size: 20),
                 ),
             ],
@@ -367,7 +381,7 @@ class _QrCard extends StatelessWidget {
                   child: payload != null
                       ? GestureDetector(
                           key: ValueKey(payload.pairId),
-                          onTap: () async => _showFullScreen(context, payload),
+                          onTap: () async => _showFullScreen(context, payload, ids),
                           child: _QrImage(data: payload.encode(), size: qrSize),
                         )
                       : _QrPlaceholder(key: ValueKey(state), state: state, size: qrSize),
@@ -384,10 +398,6 @@ class _QrCard extends StatelessWidget {
                         style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
                       ),
                     ),
-                    for (final id in ids) ...[
-                      const SizedBox(width: 8),
-                      _IdChip(id: id),
-                    ],
                   ],
                 ),
                 const SizedBox(height: 2),
@@ -419,7 +429,7 @@ class _QrCard extends StatelessWidget {
     );
   }
 
-  Future<void> _showFullScreen(BuildContext context, QrPairingPayload payload) async {
+  Future<void> _showFullScreen(BuildContext context, QrPairingPayload payload, Set<String> ids) async {
     await showDialog(
       context: context,
       builder: (context) => Dialog(
@@ -435,6 +445,15 @@ class _QrCard extends StatelessWidget {
                   _QrImage(data: payload.encode(), size: size),
                   const SizedBox(height: 14),
                   Text(payload.alias, style: Theme.of(context).textTheme.titleLarge),
+                  if (ids.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      alignment: WrapAlignment.center,
+                      children: [for (final id in ids) _IdChip(id: id)],
+                    ),
+                  ],
                   const SizedBox(height: 4),
                   Text(
                     _t(

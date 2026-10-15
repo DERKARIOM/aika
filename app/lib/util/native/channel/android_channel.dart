@@ -197,10 +197,13 @@ class LocalOnlyHotspotInfo {
   /// The generated SSID of the local-only hotspot, if the platform reported one.
   final String? ssid;
 
-  /// The generated WPA2 passphrase of the local-only hotspot, if the platform reported one.
+  /// The generated passphrase of the local-only hotspot, if the platform reported one.
   final String? passphrase;
 
-  const LocalOnlyHotspotInfo({required this.ssid, required this.passphrase});
+  /// "wpa2" (also for WPA2/WPA3 transition), "wpa3" or "open".
+  final String? security;
+
+  const LocalOnlyHotspotInfo({required this.ssid, required this.passphrase, this.security});
 }
 
 /// Thrown when [startLocalOnlyHotspotAndroid] fails.
@@ -231,6 +234,7 @@ Future<LocalOnlyHotspotInfo> startLocalOnlyHotspotAndroid() async {
     return LocalOnlyHotspotInfo(
       ssid: result?['ssid'] as String?,
       passphrase: result?['passphrase'] as String?,
+      security: result?['security'] as String?,
     );
   } on PlatformException catch (e) {
     throw LocalOnlyHotspotException(code: e.code, message: e.message);
@@ -278,11 +282,12 @@ class WifiJoinException implements Exception {
 /// normal network route. Throws [WifiJoinException] on any failure — the caller should
 /// treat this as "could not auto-join" and fall back to whatever it would have done if no
 /// Wi-Fi credentials had been provided at all (e.g. the user already joined manually).
-Future<bool> joinWifiNetworkAndroid({required String ssid, required String? passphrase}) async {
+Future<bool> joinWifiNetworkAndroid({required String ssid, required String? passphrase, String? security}) async {
   try {
     final result = await _methodChannel.invokeMethod<bool>('joinWifiNetwork', {
       'ssid': ssid,
       'passphrase': passphrase,
+      'security': ?security,
     });
     return result ?? false;
   } on PlatformException catch (e) {

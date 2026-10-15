@@ -7,6 +7,7 @@ import 'package:localsend_app/model/qr_pairing_payload.dart';
 import 'package:localsend_app/provider/device_info_provider.dart';
 import 'package:localsend_app/provider/http_provider.dart';
 import 'package:localsend_app/provider/last_devices.provider.dart';
+import 'package:localsend_app/util/native/direct_wifi_link.dart';
 import 'package:localsend_app/util/native/hotspot_helper.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/qr_image_decoder.dart';
@@ -38,6 +39,9 @@ class QrPairingScannerPage extends StatefulWidget with PopsWithResult<Device> {
 }
 
 class _QrPairingScannerPageState extends State<QrPairingScannerPage> with Refena {
+  /// Per-address limit: an address of another network never answers.
+  static const _registerTimeout = Duration(seconds: 8);
+
   MobileScannerController? _controller;
   bool _busy = false;
   String? _statusText;
@@ -102,43 +106,31 @@ class _QrPairingScannerPageState extends State<QrPairingScannerPage> with Refena
     // joined that network by hand using the SSID/password shown on the emitter's screen.
     var joinedWifi = false;
     if (payload.wifiSsid != null && mounted) {
-      setState(() => _statusText = t.qrPairing.scan.joiningNetwork);
-      joinedWifi = await tryAutoJoinWifiNetwork(ssid: payload.wifiSsid!, passphrase: payload.wifiPassphrase);
+      // A previous direct link (other receiver) is given back first.
+      await DirectWifiLink.release();
+      if (mounted) {
+        setState(() => _statusText = t.qrPairing.scan.joiningNetwork);
+      }
+      joinedWifi = await tryAutoJoinWifiNetwork(
+        ssid: payload.wifiSsid!,
+        passphrase: payload.wifiPassphrase,
+        security: payload.wifiSecurity,
+      );
       if (mounted) {
         setState(() => _statusText = null);
       }
     }
 
-    Device? resolvedDevice;
-    Object? connectionError;
-    try {
-      final selfInfo = ref.read(deviceFullInfoProvider);
-      final response = await ref
-          .read(httpProvider)
-          .v2
-          .register(
-            protocol: payload.https ? ProtocolType.https : ProtocolType.http,
-            ip: payload.ip,
-            port: payload.port,
-            payload: selfInfo.toRegisterDto(),
-          );
-      resolvedDevice = response.body.toDevice(payload.ip, payload.port, payload.https, HttpDiscovery(ip: payload.ip));
-    } catch (e) {
-      connectionError = e;
-    } finally {
-      // Unbind right after this one call, not after the whole pairing flow: the join binds
-      // the *entire app process* to the ephemeral hotspot, and holding that any longer than
-      // necessary would risk leaving the device unable to reach anything else.
+    final (resolvedDevice, connectionError) = await _registerFirstReachable(payload);
+
+    if (!mounted || resolvedDevice == null) {
+      // Nothing to send to: give the normal network back right away.
       if (joinedWifi) {
         await unbindAutoJoinedWifiNetwork();
       }
-    }
-
-    if (!mounted) {
-      return;
-    }
-
-    if (resolvedDevice == null) {
+      if (!mounted) {
+        return;
+      }
       await _resumeWithError(t.qrPairing.scan.unreachable);
       if (connectionError != null && mounted) {
         // Offer details on demand instead of dumping a raw exception on the scan screen.
@@ -162,16 +154,24 @@ class _QrPairingScannerPageState extends State<QrPairingScannerPage> with Refena
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => QrPairingConfirmDialog(
-        device: resolvedDevice!,
+        device: resolvedDevice,
         fingerprintMismatch: fingerprintMismatch,
       ),
     );
 
-    if (!mounted) {
-      return;
-    }
-
-    if (confirmed == true) {
+    if (!mounted || confirmed != true) {
+      if (joinedWifi) {
+        await unbindAutoJoinedWifiNetwork();
+      }
+      if (!mounted) {
+        return;
+      }
+    } else {
+      if (joinedWifi) {
+        // Stay on the receiver's Wi-Fi until the files are sent: the
+        // transfer starts right after this page closes.
+        DirectWifiLink.hold(ref);
+      }
       ref.redux(lastDevicesProvider).dispatch(AddLastDeviceAction(resolvedDevice));
       widget.popWithResult(context, resolvedDevice);
       return;
@@ -179,6 +179,58 @@ class _QrPairingScannerPageState extends State<QrPairingScannerPage> with Refena
 
     setState(() => _busy = false);
     await _controller?.start();
+  }
+
+  /// Contacts the emitter on each of its addresses at once (its QR code may
+  /// list several: Wi-Fi, own hotspot…). An answer whose certificate matches
+  /// the QR code wins right away; otherwise the first answer is used (the
+  /// confirmation dialog then shows the mismatch warning).
+  Future<(Device?, Object?)> _registerFirstReachable(QrPairingPayload payload) async {
+    final selfInfo = ref.read(deviceFullInfoProvider);
+    final ips = payload.candidateIps;
+    final done = Completer<void>();
+    Device? matching;
+    Device? other;
+    Object? lastError;
+    var pending = ips.length;
+
+    Future<void> attempt(String ip) async {
+      try {
+        final response = await ref
+            .read(httpProvider)
+            .v2
+            .register(
+              protocol: payload.https ? ProtocolType.https : ProtocolType.http,
+              ip: ip,
+              port: payload.port,
+              payload: selfInfo.toRegisterDto(),
+            )
+            .timeout(_registerTimeout);
+        final device = response.body.toDevice(ip, payload.port, payload.https, HttpDiscovery(ip: ip));
+        if (device.fingerprint == payload.fingerprint) {
+          matching ??= device;
+          if (!done.isCompleted) {
+            done.complete();
+          }
+        } else {
+          other ??= device;
+        }
+      } catch (e) {
+        lastError = e;
+      } finally {
+        pending--;
+        if (pending == 0 && !done.isCompleted) {
+          done.complete();
+        }
+      }
+    }
+
+    for (final ip in ips) {
+      unawaited(attempt(ip));
+    }
+    await done.future;
+    final device = matching ?? other;
+    return (device, device == null ? lastError : null);
   }
 
   Future<void> _resumeWithError(String message) async {
