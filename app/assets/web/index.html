@@ -178,6 +178,20 @@
     letter-spacing: -0.01em;
   }
 
+  .page-eyebrow {
+    margin: 0 0 6px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--aika-primary-dark);
+  }
+
+  .page-title,
+  .page-desc {
+    overflow-wrap: anywhere;
+  }
+
   .page-desc {
     margin: 0;
     color: var(--aika-text-variant);
@@ -407,6 +421,155 @@
   .file-card.is-done .file-download-btn {
     background: var(--aika-primary);
     color: #ffffff;
+  }
+
+  /* Selection */
+  .select-all-btn {
+    margin-left: auto;
+  }
+
+  .select-all-btn:not([hidden]) ~ .btn-primary,
+  .btn-outline:not([hidden]) ~ .btn-primary {
+    margin-left: 0;
+  }
+
+  .btn-outline {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border: 1px solid var(--aika-outline);
+    border-radius: 999px;
+    padding: 9px 16px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--aika-primary-dark);
+    background: transparent;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+  }
+
+  .btn-outline:hover {
+    background: var(--aika-secondary-container);
+    border-color: var(--aika-primary);
+  }
+
+  .btn-outline svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+
+  .select-all-btn:not([hidden]) ~ .btn-outline {
+    margin-left: 0;
+  }
+
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%);
+    max-width: calc(100% - 32px);
+    padding: 12px 18px;
+    border-radius: var(--aika-radius-sm);
+    background: var(--aika-text);
+    color: var(--aika-bg);
+    font-size: 0.88rem;
+    box-shadow: var(--aika-shadow-hover);
+    z-index: 10;
+  }
+
+  .file-select {
+    position: relative;
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+  }
+
+  .file-select input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .file-check {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid var(--aika-outline);
+    color: transparent;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    pointer-events: none;
+  }
+
+  .file-check svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .file-select input:focus-visible + .file-check {
+    outline: 2px solid var(--aika-primary);
+    outline-offset: 2px;
+  }
+
+  .file-card.is-selected {
+    border-color: var(--aika-primary);
+    background: var(--aika-secondary-container);
+  }
+
+  .file-card.is-selected .file-check {
+    background: var(--aika-primary);
+    border-color: var(--aika-primary);
+    color: #ffffff;
+  }
+
+  .file-grid.single-file .file-select {
+    display: none;
+  }
+
+  /* Image previews (small thumbnails made in the browser) */
+  .file-icon {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .file-icon.has-preview {
+    width: 52px;
+    height: 52px;
+    background: var(--aika-outline-variant);
+  }
+
+  .file-icon.has-preview svg {
+    display: none;
+  }
+
+  .file-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    animation: preview-in 0.2s ease;
+  }
+
+  @keyframes preview-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .file-icon img {
+      animation: none;
+    }
   }
 
   /* Single-file emphasis: same card style, just centered as a standalone block */
@@ -748,6 +911,12 @@
       margin-left: 0;
       justify-content: center;
     }
+    .select-all-btn {
+      margin-left: 0;
+    }
+    .btn-outline {
+      margin-left: 0;
+    }
   }
 </style>
 <script src="main.js" defer></script>
@@ -771,6 +940,7 @@
 
   <main class="content">
     <div class="hero">
+      <p id="page-eyebrow" class="page-eyebrow" hidden></p>
       <h1 class="page-title" data-i18n="title">Échange de fichiers</h1>
       <p class="page-desc" data-i18n="description">Téléchargez les fichiers partagés et envoyez les vôtres</p>
     </div>
@@ -812,6 +982,15 @@
             <span class="summary-value" id="total-size">0 B</span>
             <span class="summary-label" data-i18n="totalSizeLabel">Taille totale</span>
           </div>
+          <button type="button" id="select-all-btn" class="btn-text select-all-btn" hidden></button>
+          <button type="button" id="zip-btn" class="btn-outline" hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M5 3h10l4 4v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/>
+              <path d="M10 3v2h2v2h-2v2h2v2h-2v2"/>
+              <rect x="9" y="14" width="4" height="4" rx="1"/>
+            </svg>
+            <span>Tout en ZIP</span>
+          </button>
           <button type="button" id="download-all-btn" class="btn-primary" hidden>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M12 3v12"/>
@@ -824,6 +1003,11 @@
 
         <p id="files-empty" class="section-empty" data-i18n="empty" hidden>Aucun fichier disponible pour le moment</p>
         <div id="file-grid" class="file-grid"></div>
+        <form id="zip-form" method="post" target="zip-frame" hidden>
+          <input type="hidden" name="fileIds">
+          <input type="hidden" name="name">
+        </form>
+        <iframe name="zip-frame" title="ZIP" hidden></iframe>
       </section>
 
       <!-- 2. Upload files to the host -->
@@ -893,6 +1077,8 @@
       </div>
     </div>
   </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
   <footer class="footer">
     <span data-i18n="footer">Aika — Partage de fichiers rapide et sécurisé</span>

@@ -179,12 +179,16 @@ class _CollectionPageState extends State<CollectionPage> {
           onSelected: (value) async {
             if (value == 'edit') {
               await editCollectionInfo(context, summary);
+            } else if (value == 'reorder') {
+              await context.push(() => _ReorderPage(collectionId: widget.collectionId, items: _items ?? const []));
+              await _reload();
             } else if (value == 'delete' && await deleteCollectionFlow(context, summary) && mounted) {
               context.pop();
             }
           },
           itemBuilder: (_) => [
             PopupMenuItem(value: 'edit', child: Text(_t(fr: 'Modifier le nom et la description', en: 'Edit name and description'))),
+            if ((_items?.length ?? 0) > 1) PopupMenuItem(value: 'reorder', child: Text(_t(fr: 'Réorganiser les fichiers', en: 'Reorder files'))),
             PopupMenuItem(value: 'delete', child: Text(_t(fr: 'Supprimer la collection', en: 'Delete collection'))),
           ],
         ),
@@ -411,6 +415,58 @@ class _BottomActions extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// "Réorganiser": drag the files into the order used for sending and
+/// sharing. Each move is saved right away.
+class _ReorderPage extends StatefulWidget {
+  final String collectionId;
+  final List<CollectionItem> items;
+
+  const _ReorderPage({required this.collectionId, required this.items});
+
+  @override
+  State<_ReorderPage> createState() => _ReorderPageState();
+}
+
+class _ReorderPageState extends State<_ReorderPage> {
+  late final List<CollectionItem> _items = [...widget.items];
+
+  Future<void> _onReorder(int oldIndex, int newIndex) async {
+    final target = newIndex > oldIndex ? newIndex - 1 : newIndex;
+    final item = _items[oldIndex];
+    setState(() => _items.insert(target, _items.removeAt(oldIndex)));
+    await context.ref.notifier(collectionsProvider).moveItem(widget.collectionId, item.id, target);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: basicAikaAppbar(_t(fr: 'Réorganiser', en: 'Reorder')),
+      body: SafeArea(
+        child: ReorderableListView.builder(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          itemCount: _items.length,
+          onReorder: _onReorder,
+          buildDefaultDragHandles: false,
+          itemBuilder: (context, index) {
+            final item = _items[index];
+            return ListTile(
+              key: ValueKey(item.id),
+              leading: ClipRRect(
+                borderRadius: BorderRadius.circular(collectionRadius - 4),
+                child: SizedBox.square(dimension: 48, child: CollectionThumbnail(item: item, cacheSize: 144)),
+              ),
+              title: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Text(formatBytes(item.size), style: TextStyle(color: colorScheme.onSurfaceVariant)),
+              trailing: ReorderableDragStartListener(index: index, child: const Icon(Icons.drag_handle_rounded)),
+            );
+          },
         ),
       ),
     );

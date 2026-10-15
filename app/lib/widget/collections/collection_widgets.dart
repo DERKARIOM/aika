@@ -591,12 +591,50 @@ Future<void> shareCollectionByLink(BuildContext context, String collectionId, Li
     return;
   }
   final service = context.ref.notifier(collectionsProvider);
+  final collection = await service.get(collectionId);
+  if (!context.mounted) {
+    return;
+  }
+  final messenger = ScaffoldMessenger.of(context);
   service.markShared(collectionId);
   try {
-    await context.push(() => WebSendPage(files));
+    await context.push(
+      () => WebSendPage(
+        files,
+        collectionName: collection?.name,
+        collectionDescription: collection?.description,
+        // Files added on the share page are only offered to the collection:
+        // nothing is copied without the user's choice.
+        onFilesAdded: (added) => _offerAddingToCollection(context, messenger, collectionId, added),
+      ),
+    );
   } finally {
     service.markShared(null);
   }
+}
+
+void _offerAddingToCollection(BuildContext context, ScaffoldMessengerState messenger, String collectionId, List<CrossFile> files) {
+  messenger
+    ..removeCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 8),
+        content: Text(
+          _t(
+            fr: '${files.length} fichier(s) ajouté(s) au lien. Les garder aussi dans la collection ?',
+            en: '${files.length} file(s) added to the link. Keep them in the collection too?',
+          ),
+        ),
+        action: SnackBarAction(
+          label: _t(fr: 'Ajouter', en: 'Add'),
+          onPressed: () async {
+            if (context.mounted) {
+              await addPickedFilesToCollection(context, collectionId, files);
+            }
+          },
+        ),
+      ),
+    );
 }
 
 /// Sets the Send selection to [files] (no cache clean-up, unlike

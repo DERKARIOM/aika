@@ -51,10 +51,22 @@ String _t({required String fr, required String en}) {
   return LocaleSettings.currentLocale == AppLocale.fr ? fr : en;
 }
 
+/// Longest collection description put in a share link.
+const _maxLinkDescription = 140;
+
 class WebSendPage extends StatefulWidget {
   final List<CrossFile> files;
 
-  const WebSendPage(this.files);
+  /// When a collection is shared: its name and description, shown on the
+  /// web page (carried in the link as plain text).
+  final String? collectionName;
+  final String? collectionDescription;
+
+  /// Called with the files added while sharing (e.g. to offer adding them
+  /// to the shared collection).
+  final void Function(List<CrossFile> files)? onFilesAdded;
+
+  const WebSendPage(this.files, {this.collectionName, this.collectionDescription, this.onFilesAdded});
 
   @override
   State<WebSendPage> createState() => _WebSendPageState();
@@ -97,6 +109,7 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
       final picked = await pickFilesForShareLink(context, ref);
       if (picked.isNotEmpty) {
         await ref.notifier(serverProvider).addWebSendFiles(picked);
+        widget.onFilesAdded?.call(picked);
       }
     } finally {
       _picking = false;
@@ -253,9 +266,29 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
   /// (which needs the *same* recommended-IP link) never risks drifting from
   /// the per-IP cards below it.
   (String, String) _urlsFor(String ip, int port, String? pin) {
-    final url = '${_encrypted ? 'https' : 'http'}://$ip:$port';
-    final urlWithPin = pin == null ? url : '$url/?pin=${Uri.encodeQueryComponent(pin)}';
+    final base = '${_encrypted ? 'https' : 'http'}://$ip:$port';
+    final collection = _collectionQuery();
+    final url = collection.isEmpty ? base : '$base/?$collection';
+    final pinParam = pin == null ? '' : 'pin=${Uri.encodeQueryComponent(pin)}';
+    final urlWithPin = pin == null ? url : (collection.isEmpty ? '$base/?$pinParam' : '$url&$pinParam');
     return (url, urlWithPin);
+  }
+
+  /// `c=<name>&d=<description>` for a shared collection (the description is
+  /// shortened so the link and its QR code stay easy to scan).
+  String _collectionQuery() {
+    final name = widget.collectionName?.trim() ?? '';
+    if (name.isEmpty) {
+      return '';
+    }
+    var description = widget.collectionDescription?.trim().replaceAll(RegExp(r'\s+'), ' ') ?? '';
+    if (description.length > _maxLinkDescription) {
+      description = '${description.substring(0, _maxLinkDescription - 1)}…';
+    }
+    return [
+      'c=${Uri.encodeQueryComponent(name)}',
+      if (description.isNotEmpty) 'd=${Uri.encodeQueryComponent(description)}',
+    ].join('&');
   }
 
   Future<void> _copyUrl(BuildContext context, String url) async {
@@ -354,7 +387,7 @@ class _WebSendPageState extends State<WebSendPage> with Refena {
       },
       canPop: false,
       child: Scaffold(
-        appBar: basicAikaAppbar(t.webSharePage.title),
+        appBar: basicAikaAppbar(widget.collectionName ?? t.webSharePage.title),
         body: Builder(
           builder: (context) {
             if (_stateEnum != _ServerState.running) {

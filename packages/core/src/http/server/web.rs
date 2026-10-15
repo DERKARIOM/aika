@@ -7,6 +7,9 @@ use crate::http::server::common::pin::check_pin;
 use crate::http::server::common::query::parse_query;
 use crate::http::server::common::response::{full_body, BoxedBody, JsonResponse};
 use crate::http::server::v2::{create_upload_session, WEB_UPLOAD_FINGERPRINT_PREFIX};
+use crate::http::server::web_zip::{
+    zip_entry_names, zip_file_name, Crc32, ZipEntry, ZipPlan, MAX_ZIP_FILES,
+};
 use crate::http::server::{AppState, RequestClientInfo};
 use crate::model::discovery::DeviceType;
 use crate::model::transfer::{FileContent, FileDto, FileMetadata};
@@ -401,6 +404,185 @@ pub(crate) async fn download(
     headers.insert(http::header::CONTENT_LENGTH, http::HeaderValue::from(size));
 
     Ok(response)
+}
+
+/// Maximum size of the form body of a ZIP download request.
+const ZIP_FORM_MAX_BYTES: usize = 512 * 1024;
+
+/// `POST /api/localsend/v2/web/download-zip?sessionId=…` with the form
+/// fields `fileIds` (comma separated) and `name` (optional archive name):
+/// downloads the chosen files as one ZIP archive, built while streaming.
+///
+/// Same access rules as `GET /api/localsend/v2/download`: an accepted session
+/// from the same IP, and only files currently offered. The content of each
+/// file is requested from the application exactly like a single download
+/// ([`WebSendEvent::FileDownload`]), one file after the other.
+pub(crate) async fn download_zip(
+    req: Request<Incoming>,
+    state: AppState,
+    client_info: RequestClientInfo,
+) -> Result<Response<BoxedBody>, AppError> {
+    let web = require_web(&state)?;
+    let query = parse_query(req.uri().query());
+
+    let Some(session_id) = query.get("sessionId").cloned() else {
+        return Err(AppError::BadRequest("Missing sessionId.".to_string()));
+    };
+
+    let valid = web
+        .sessions
+        .lock()
+        .await
+        .get(&session_id)
+        .is_some_and(|session| session.accepted && session.ip == client_info.ip);
+    if !valid {
+        return Err(AppError::Message(
+            StatusCode::FORBIDDEN,
+            "Invalid sessionId.".to_string(),
+        ));
+    }
+
+    let body = Limited::new(req.into_body(), ZIP_FORM_MAX_BYTES)
+        .collect()
+        .await
+        .map_err(|_| AppError::BadRequest("Request too large.".to_string()))?
+        .to_bytes();
+    let form = parse_query(std::str::from_utf8(&body).ok());
+
+    let mut seen = std::collections::HashSet::new();
+    let file_ids: Vec<String> = form
+        .get("fileIds")
+        .map(|ids| {
+            ids.split(',')
+                .map(str::trim)
+                .filter(|id| !id.is_empty() && seen.insert(id.to_string()))
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    if file_ids.is_empty() || file_ids.len() > MAX_ZIP_FILES {
+        return Err(AppError::BadRequest("Invalid fileIds.".to_string()));
+    }
+
+    let mut files = Vec::with_capacity(file_ids.len());
+    for file_id in file_ids {
+        let Some(file) = web.file(&file_id) else {
+            return Err(AppError::Message(
+                StatusCode::FORBIDDEN,
+                "Invalid fileId.".to_string(),
+            ));
+        };
+        files.push((file_id, file));
+    }
+
+    let names = zip_entry_names(files.iter().map(|(_, file)| file.file_name.as_str()));
+    let entries = names
+        .into_iter()
+        .zip(files.iter())
+        .map(|(name, (_, file))| ZipEntry {
+            name,
+            size: file.size,
+        })
+        .collect();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let plan = ZipPlan::new(entries, now);
+    let total_len = plan.total_len();
+
+    let (body_tx, body_rx) = mpsc::channel::<Result<Bytes, std::io::Error>>(8);
+    tokio::spawn(stream_zip(web.clone(), session_id, files, plan, body_tx));
+
+    let archive_name = zip_file_name(form.get("name").map(String::as_str));
+    let encoded_name = utf8_percent_encode(&archive_name, FILE_NAME_ENCODE_SET);
+    let stream = ReceiverStream::new(body_rx).map(|chunk| chunk.map(Frame::data));
+    let mut response = Response::new(StreamBody::new(stream).boxed());
+    let headers = response.headers_mut();
+    headers.insert(
+        http::header::CONTENT_TYPE,
+        http::HeaderValue::from_static("application/zip"),
+    );
+    headers.insert(
+        http::header::CONTENT_DISPOSITION,
+        http::HeaderValue::from_str(&format!("attachment; filename=\"{encoded_name}\""))
+            .map_err(|_| AppError::Status(StatusCode::INTERNAL_SERVER_ERROR))?,
+    );
+    headers.insert(
+        http::header::CONTENT_LENGTH,
+        http::HeaderValue::from(total_len),
+    );
+    Ok(response)
+}
+
+/// Writes the archive into `body_tx`. A file that cannot be read, or whose
+/// size differs from the announced one, ends the response with an error so
+/// the browser reports a failed download instead of saving a broken archive.
+async fn stream_zip(
+    web: Arc<WebPageState>,
+    session_id: String,
+    files: Vec<(String, FileDto)>,
+    plan: ZipPlan,
+    body_tx: mpsc::Sender<Result<Bytes, std::io::Error>>,
+) {
+    let mut crcs = Vec::with_capacity(plan.len());
+    for (index, (file_id, file)) in files.iter().enumerate() {
+        if body_tx
+            .send(Ok(Bytes::from(plan.local_header(index))))
+            .await
+            .is_err()
+        {
+            return; // browser gone
+        }
+
+        let (content_tx, content_rx) = oneshot::channel::<FileContent>();
+        let event = WebSendEvent::FileDownload {
+            session_id: session_id.clone(),
+            file_id: file_id.clone(),
+            file: file.clone(),
+            content_tx,
+        };
+        if web.event_tx.send(event).await.is_err() {
+            return abort_zip(&body_tx, "application unavailable").await;
+        }
+        let Ok(content) = content_rx.await else {
+            return abort_zip(&body_tx, "file unavailable").await;
+        };
+
+        let expected = plan.entry(index).size;
+        let mut content_rx = content.into_receiver();
+        let mut crc = Crc32::new();
+        let mut written = 0u64;
+        while let Some(chunk) = content_rx.recv().await {
+            written += chunk.len() as u64;
+            if written > expected {
+                return abort_zip(&body_tx, "file larger than announced").await;
+            }
+            crc.update(&chunk);
+            if body_tx.send(Ok(chunk)).await.is_err() {
+                return; // browser gone: dropping the receiver stops the reader
+            }
+        }
+        if written != expected {
+            return abort_zip(&body_tx, "file shorter than announced").await;
+        }
+        crcs.push(crc.finish());
+
+        let descriptor = plan.data_descriptor(index, crcs[index]);
+        if body_tx.send(Ok(Bytes::from(descriptor))).await.is_err() {
+            return;
+        }
+    }
+    let _ = body_tx
+        .send(Ok(Bytes::from(plan.central_directory(&crcs))))
+        .await;
+}
+
+async fn abort_zip(body_tx: &mpsc::Sender<Result<Bytes, std::io::Error>>, reason: &str) {
+    tracing::warn!("ZIP download aborted: {reason}");
+    let _ = body_tx
+        .send(Err(std::io::Error::other(reason.to_string())))
+        .await;
 }
 
 /// Body of `POST /api/localsend/v2/web/prepare-upload`.

@@ -4,6 +4,7 @@ pub mod internal;
 pub mod v2;
 pub mod v3;
 pub mod web;
+pub(crate) mod web_zip;
 
 use crate::chat::{ChatHub, CHAT_WS_PATH};
 use crate::crypto::cert::{fingerprint_from_cert_der, public_key_from_cert_der};
@@ -475,6 +476,9 @@ async fn handle_request_inner(mut req: Request<Incoming>) -> Result<Response<Box
             web::download(req, state, client_info).await
         }
         (&Method::GET, "/api/localsend/v2/web/files") => web::files(req, state, client_info).await,
+        (&Method::POST, "/api/localsend/v2/web/download-zip") => {
+            web::download_zip(req, state, client_info).await
+        }
         (&Method::POST, "/api/localsend/v2/web/prepare-upload") => {
             web::prepare_upload(req, state, client_info).await
         }

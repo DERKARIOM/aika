@@ -534,3 +534,182 @@ async fn test_pin_too_many_attempts() {
 
     let _ = std::fs::remove_file(disk_path);
 }
+
+/// Prepares an accepted download session and returns its id.
+async fn accepted_session(port: u16) -> String {
+    LsHttpClientV2::try_new_without_cert()
+        .unwrap()
+        .prepare_download(ProtocolType::Http, "127.0.0.1", port, None, None)
+        .await
+        .unwrap()
+        .session_id
+}
+
+async fn post_zip(
+    port: u16,
+    session_id: &str,
+    form: &[(&str, &str)],
+) -> localsend::reqwest::Response {
+    let body: String = form
+        .iter()
+        .map(|(k, v)| format!("{k}={}", v.replace(',', "%2C").replace(' ', "+")))
+        .collect::<Vec<_>>()
+        .join("&");
+    localsend::reqwest::Client::new()
+        .post(format!(
+            "http://127.0.0.1:{port}/api/localsend/v2/web/download-zip?sessionId={session_id}"
+        ))
+        .header("content-type", "application/x-www-form-urlencoded")
+        .body(body)
+        .send()
+        .await
+        .unwrap()
+}
+
+fn crc32(bytes: &[u8]) -> u32 {
+    let mut crc = 0xFFFF_FFFFu32;
+    for &b in bytes {
+        crc ^= b as u32;
+        for _ in 0..8 {
+            crc = if crc & 1 != 0 {
+                0xEDB8_8320 ^ (crc >> 1)
+            } else {
+                crc >> 1
+            };
+        }
+    }
+    !crc
+}
+
+fn le16(b: &[u8], at: usize) -> usize {
+    u16::from_le_bytes([b[at], b[at + 1]]) as usize
+}
+
+fn le32(b: &[u8], at: usize) -> u32 {
+    u32::from_le_bytes(b[at..at + 4].try_into().unwrap())
+}
+
+/// Reads a (non-ZIP64) stored archive through its central directory, like
+/// unzip tools do, checking every CRC. Returns (name, content) pairs.
+fn read_stored_zip(zip: &[u8]) -> Vec<(String, Vec<u8>)> {
+    let eocd = zip.len() - 22;
+    assert_eq!(le32(zip, eocd), 0x0605_4b50, "end of central directory");
+    let count = le16(zip, eocd + 10);
+    let mut at = le32(zip, eocd + 16) as usize;
+    let mut entries = Vec::new();
+    for _ in 0..count {
+        assert_eq!(le32(zip, at), 0x0201_4b50, "central header");
+        assert_eq!(le16(zip, at + 10), 0, "stored");
+        let crc = le32(zip, at + 16);
+        let size = le32(zip, at + 20) as usize;
+        let name_len = le16(zip, at + 28);
+        let extra_len = le16(zip, at + 30);
+        let local = le32(zip, at + 42) as usize;
+        let name = String::from_utf8(zip[at + 46..at + 46 + name_len].to_vec()).unwrap();
+
+        assert_eq!(le32(zip, local), 0x0403_4b50, "local header");
+        let data_start = local + 30 + le16(zip, local + 26) + le16(zip, local + 28);
+        let data = zip[data_start..data_start + size].to_vec();
+        assert_eq!(crc32(&data), crc, "CRC of {name}");
+        assert_eq!(le32(zip, data_start + size), 0x0807_4b50, "data descriptor");
+        assert_eq!(le32(zip, data_start + size + 4), crc);
+
+        entries.push((name, data));
+        at += 46 + name_len + extra_len;
+    }
+    entries
+}
+
+#[tokio::test]
+async fn test_download_zip() {
+    let (config, contents, disk_path, disk_content) = web_send_config(None);
+    let server = start_test_server(Some((config, contents)), true).await;
+    let session_id = accepted_session(server.port).await;
+
+    let response = post_zip(
+        server.port,
+        &session_id,
+        &[
+            ("fileIds", "file-text,file-disk,file-text"),
+            ("name", "Vacances d'été"),
+        ],
+    )
+    .await;
+    assert_eq!(response.status().as_u16(), 200);
+    assert_eq!(response.headers()["content-type"], "application/zip");
+    assert_eq!(
+        response.headers()["content-disposition"],
+        "attachment; filename=\"Vacances%20d'%C3%A9t%C3%A9.zip\""
+    );
+    let announced: usize = response.headers()["content-length"]
+        .to_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    let zip = response.bytes().await.unwrap();
+    assert_eq!(zip.len(), announced);
+
+    let entries = read_stored_zip(&zip);
+    assert_eq!(entries.len(), 2, "duplicate ids are ignored");
+    assert_eq!(entries[0], ("message.txt".to_string(), b"hello".to_vec()));
+    assert_eq!(entries[1].0, "dir/data.bin");
+    assert_eq!(entries[1].1, disk_content);
+
+    if let Ok(path) = std::env::var("AIKA_ZIP_TEST_OUT") {
+        std::fs::write(path, &zip).unwrap();
+    }
+    let _ = std::fs::remove_file(disk_path);
+}
+
+#[tokio::test]
+async fn test_download_zip_refusals() {
+    let (config, contents, disk_path, _) = web_send_config(None);
+    let server = start_test_server(Some((config, contents)), true).await;
+    let session_id = accepted_session(server.port).await;
+
+    // Unknown session.
+    let response = post_zip(server.port, "not-a-session", &[("fileIds", "file-text")]).await;
+    assert_eq!(response.status().as_u16(), 403);
+    // A file that is not offered.
+    let response = post_zip(server.port, &session_id, &[("fileIds", "file-text,secret")]).await;
+    assert_eq!(response.status().as_u16(), 403);
+    // Nothing chosen.
+    let response = post_zip(server.port, &session_id, &[("fileIds", " , ")]).await;
+    assert_eq!(response.status().as_u16(), 400);
+    let response = post_zip(server.port, &session_id, &[]).await;
+    assert_eq!(response.status().as_u16(), 400);
+    // GET is not a ZIP route.
+    let response = localsend::reqwest::Client::new()
+        .get(format!(
+            "http://127.0.0.1:{}/api/localsend/v2/web/download-zip?sessionId={session_id}",
+            server.port
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_ne!(response.status().as_u16(), 200);
+
+    let _ = std::fs::remove_file(disk_path);
+}
+
+#[tokio::test]
+async fn test_download_zip_fails_on_wrong_size() {
+    // The host announces 10 bytes but only provides 5: the browser must see
+    // a failed download, never a valid-looking but broken archive.
+    let (mut config, mut contents, disk_path, _) = web_send_config(None);
+    config
+        .files
+        .insert("liar".to_string(), file_dto("liar", "liar.txt", 10));
+    contents.insert(
+        "liar".to_string(),
+        TestFileContent::Bytes(Bytes::from_static(b"short")),
+    );
+    let server = start_test_server(Some((config, contents)), true).await;
+    let session_id = accepted_session(server.port).await;
+
+    let response = post_zip(server.port, &session_id, &[("fileIds", "file-text,liar")]).await;
+    assert_eq!(response.status().as_u16(), 200);
+    assert!(response.bytes().await.is_err());
+
+    let _ = std::fs::remove_file(disk_path);
+}

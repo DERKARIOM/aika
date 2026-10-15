@@ -32,6 +32,14 @@ var TRANSLATIONS = {
     filesLabel: 'Fichiers',
     totalSizeLabel: 'Taille totale',
     downloadAll: 'Tout télécharger',
+    downloadSelection: 'Télécharger la sélection ({count})',
+    zipAll: 'Tout en ZIP',
+    zipSelection: 'Sélection en ZIP',
+    zipStarted: 'Préparation du ZIP… le téléchargement va démarrer.',
+    selectAll: 'Tout sélectionner',
+    clearSelection: 'Désélectionner',
+    selectFile: 'Sélectionner {name}',
+    collectionLabel: 'Collection partagée',
     downloadOne: 'Télécharger {name}',
     downloadStarted: 'Téléchargement lancé',
     uploadTitle: 'Envoyer des fichiers',
@@ -84,6 +92,14 @@ var TRANSLATIONS = {
     filesLabel: 'Files',
     totalSizeLabel: 'Total size',
     downloadAll: 'Download all',
+    downloadSelection: 'Download selection ({count})',
+    zipAll: 'All as ZIP',
+    zipSelection: 'Selection as ZIP',
+    zipStarted: 'Preparing the ZIP… the download will start.',
+    selectAll: 'Select all',
+    clearSelection: 'Clear selection',
+    selectFile: 'Select {name}',
+    collectionLabel: 'Shared collection',
     downloadOne: 'Download {name}',
     downloadStarted: 'Download started',
     uploadTitle: 'Send files',
@@ -284,6 +300,22 @@ try {
 
 var queryParams = new URLSearchParams(location.search);
 var queryPin = queryParams.get('pin');
+
+/* A shared collection: its name and description travel in the link (`c` and
+ * `d`), set by the host. Shown as plain text only (never as HTML). */
+var COLLECTION_NAME_MAX = 80;
+var COLLECTION_DESC_MAX = 300;
+
+function cleanTextParam(value, max) {
+  if (!value) {
+    return '';
+  }
+  var clean = String(value).replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return clean.length > max ? clean.slice(0, max) + '…' : clean;
+}
+
+var collectionName = cleanTextParam(queryParams.get('c'), COLLECTION_NAME_MAX);
+var collectionDesc = cleanTextParam(queryParams.get('d'), COLLECTION_DESC_MAX);
 var lastKnownFiles = null;
 
 function fetchJson(url, method, body) {
@@ -395,6 +427,16 @@ var receiveOnly = false;
 var hostAlias = '';
 
 function applyHero() {
+  var isCollection = !receiveOnly && collectionName !== '';
+  var eyebrow = document.getElementById('page-eyebrow');
+  eyebrow.hidden = !isCollection;
+  eyebrow.textContent = t('collectionLabel');
+  if (isCollection) {
+    document.querySelector('.page-title').textContent = collectionName;
+    document.querySelector('.page-desc').textContent = collectionDesc || t('description');
+    document.title = collectionName + ' · Aika';
+    return;
+  }
   document.querySelector('.page-title').textContent = receiveOnly ? t('titleReceiveOnly') : t('title');
   document.querySelector('.page-desc').textContent = receiveOnly
     ? t('descriptionReceiveOnly', { host: hostAlias || 'Aika' })
@@ -506,9 +548,27 @@ function retryIconSvg() {
  * 1. Available files (download)
  * ------------------------------------------------------------------- */
 
+/* Files ticked by the visitor (file id → true), kept across refreshes. */
+var selectedIds = {};
+
+/** Shared files sorted by name, so the order never jumps on refresh. */
+function sortedFileIds(files) {
+  return Object.keys(files).sort(function (a, b) {
+    return String(files[a].fileName).localeCompare(String(files[b].fileName), undefined, { numeric: true, sensitivity: 'base' });
+  });
+}
+
 function renderFiles(files) {
   lastKnownFiles = files;
-  var fileIds = Object.keys(files);
+  var fileIds = sortedFileIds(files);
+
+  // Forget selections and previews of files the host stopped sharing.
+  for (var id in selectedIds) {
+    if (!files[id]) {
+      delete selectedIds[id];
+    }
+  }
+  forgetPreviews(files);
 
   document.getElementById('files-count').textContent = String(fileIds.length);
 
@@ -519,6 +579,9 @@ function renderFiles(files) {
   document.getElementById('total-size').textContent = formatBytes(totalSize);
 
   var grid = document.getElementById('file-grid');
+  if (previewObserver) {
+    previewObserver.disconnect();
+  }
   grid.innerHTML = '';
   grid.classList.toggle('single-file', fileIds.length === 1);
 
@@ -527,14 +590,67 @@ function renderFiles(files) {
   document.getElementById('files-summary').hidden = isEmpty;
 
   for (var j = 0; j < fileIds.length; j++) {
-    grid.appendChild(buildFileCard(fileIds[j], files[fileIds[j]]));
+    var card = buildFileCard(fileIds[j], files[fileIds[j]]);
+    grid.appendChild(card);
+    watchPreview(card, fileIds[j], files[fileIds[j]]);
   }
 
-  var downloadAllBtn = document.getElementById('download-all-btn');
-  downloadAllBtn.hidden = fileIds.length <= 1;
-  downloadAllBtn.onclick = function () {
-    downloadAll(fileIds, files);
+  document.getElementById('download-all-btn').onclick = function () {
+    var chosen = selectedFileIds();
+    downloadAll(chosen.length ? chosen : sortedFileIds(lastKnownFiles), lastKnownFiles);
   };
+  document.getElementById('zip-btn').onclick = function () {
+    var chosen = selectedFileIds();
+    downloadZip(chosen.length ? chosen : sortedFileIds(lastKnownFiles));
+  };
+  document.getElementById('select-all-btn').onclick = function () {
+    var ids = sortedFileIds(lastKnownFiles);
+    var all = selectedFileIds().length === ids.length;
+    selectedIds = {};
+    if (!all) {
+      for (var k = 0; k < ids.length; k++) {
+        selectedIds[ids[k]] = true;
+      }
+    }
+    syncSelection();
+  };
+  syncSelection();
+}
+
+function selectedFileIds() {
+  return sortedFileIds(lastKnownFiles || {}).filter(function (id) {
+    return selectedIds[id] === true;
+  });
+}
+
+/** Updates the checkboxes and the main button ("Tout télécharger" or
+ * "Télécharger la sélection (n)"). */
+function syncSelection() {
+  var ids = sortedFileIds(lastKnownFiles || {});
+  var count = selectedFileIds().length;
+
+  var cards = document.querySelectorAll('.file-card');
+  for (var i = 0; i < cards.length; i++) {
+    var selected = selectedIds[cards[i].getAttribute('data-file-id')] === true;
+    cards[i].classList.toggle('is-selected', selected);
+    var box = cards[i].querySelector('.file-select input');
+    if (box) {
+      box.checked = selected;
+    }
+  }
+
+  var downloadBtn = document.getElementById('download-all-btn');
+  downloadBtn.hidden = ids.length <= 1 && count === 0;
+  downloadBtn.querySelector('span').textContent = count ? t('downloadSelection', { count: count }) : t('downloadAll');
+
+  // One archive instead of many downloads, from two files on.
+  var zipBtn = document.getElementById('zip-btn');
+  zipBtn.hidden = (count || ids.length) < 2;
+  zipBtn.querySelector('span').textContent = count ? t('zipSelection') : t('zipAll');
+
+  var selectAllBtn = document.getElementById('select-all-btn');
+  selectAllBtn.hidden = ids.length <= 1;
+  selectAllBtn.textContent = count === ids.length && count > 0 ? t('clearSelection') : t('selectAll');
 }
 
 function buildFileCard(fileId, file) {
@@ -544,6 +660,7 @@ function buildFileCard(fileId, file) {
   card.setAttribute('data-file-id', fileId);
 
   card.innerHTML =
+    '<label class="file-select"><input type="checkbox"><span class="file-check" aria-hidden="true">' + checkIconSvg() + '</span></label>' +
     fileIconHtml(file.fileName) +
     '<div class="file-info">' +
     '<p class="file-name"></p>' +
@@ -556,6 +673,17 @@ function buildFileCard(fileId, file) {
   card.querySelector('.file-ext').textContent = fileExtension(file.fileName) || category;
   card.querySelector('.file-size').textContent = formatBytes(file.size);
 
+  var checkbox = card.querySelector('.file-select input');
+  checkbox.setAttribute('aria-label', t('selectFile', { name: file.fileName }));
+  checkbox.addEventListener('change', function () {
+    if (checkbox.checked) {
+      selectedIds[fileId] = true;
+    } else {
+      delete selectedIds[fileId];
+    }
+    syncSelection();
+  });
+
   var btn = card.querySelector('.file-download-btn');
   btn.setAttribute('aria-label', t('downloadOne', { name: file.fileName }));
   btn.addEventListener('click', function () {
@@ -566,15 +694,22 @@ function buildFileCard(fileId, file) {
   return card;
 }
 
+function downloadUrl(fileId) {
+  return BASE_URL + '/download?sessionId=' + encodeURIComponent(sessionId) + '&fileId=' + encodeURIComponent(fileId);
+}
+
 function triggerDownload(fileId, fileName) {
-  var url = BASE_URL + '/download?sessionId=' + encodeURIComponent(sessionId) + '&fileId=' + encodeURIComponent(fileId);
   var a = document.createElement('a');
-  a.href = url;
+  a.href = downloadUrl(fileId);
   a.download = fileName;
   a.rel = 'noopener';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
+}
+
+function findCard(fileId) {
+  return document.querySelector('.file-card[data-file-id="' + CSS.escape(fileId) + '"]');
 }
 
 function markDownloading(card, btn) {
@@ -583,16 +718,210 @@ function markDownloading(card, btn) {
   btn.setAttribute('aria-label', t('downloadStarted'));
 }
 
+/* One after the other: browsers block many simultaneous downloads. */
 function downloadAll(fileIds, files) {
   fileIds.forEach(function (fileId, index) {
     setTimeout(function () {
+      if (!files[fileId]) {
+        return;
+      }
       triggerDownload(fileId, files[fileId].fileName);
-      var card = document.querySelector('.file-card[data-file-id="' + CSS.escape(fileId) + '"]');
+      var card = findCard(fileId);
       if (card) {
         markDownloading(card, card.querySelector('.file-download-btn'));
       }
     }, index * 350);
   });
+}
+
+/* The host builds the ZIP while sending it (nothing stored on its disk).
+ * The form posts into a hidden frame: an error never replaces this page. */
+function downloadZip(fileIds) {
+  if (!sessionId || fileIds.length === 0) {
+    return;
+  }
+  var form = document.getElementById('zip-form');
+  form.action = BASE_URL + '/web/download-zip?sessionId=' + encodeURIComponent(sessionId);
+  form.elements.fileIds.value = fileIds.join(',');
+  form.elements.name.value = collectionName || 'Aika';
+  form.submit();
+  showToast(t('zipStarted'));
+  for (var i = 0; i < fileIds.length; i++) {
+    var card = findCard(fileIds[i]);
+    if (card) {
+      markDownloading(card, card.querySelector('.file-download-btn'));
+    }
+  }
+}
+
+var toastTimer = null;
+
+function showToast(message) {
+  var toast = document.getElementById('toast');
+  toast.textContent = message;
+  toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () {
+    toast.hidden = true;
+  }, 4000);
+}
+
+/* ---------------------------------------------------------------------
+ * Image previews
+ *
+ * Only for images the browser can show, below a size limit, and only once
+ * their card scrolls into view. Two at a time, so the host and the network
+ * are never flooded. Each image is shrunk to a small thumbnail right away
+ * and the full image is released: memory stays low even with hundreds of
+ * photos.
+ * ------------------------------------------------------------------- */
+
+var PREVIEW_MAX_BYTES = 15 * 1024 * 1024;
+var PREVIEW_CONCURRENCY = 2;
+var PREVIEW_PX = 160;
+var PREVIEW_TYPES = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  bmp: 'image/bmp',
+  avif: 'image/avif',
+};
+
+var previewUrls = {}; // file id → object URL of the thumbnail
+var previewFailed = {}; // file id → true (never retried)
+var previewQueue = [];
+var previewActive = 0;
+var previewObserver = null;
+
+function previewTypeOf(file) {
+  if (!file || file.size > PREVIEW_MAX_BYTES) {
+    return null;
+  }
+  var dot = file.fileName.lastIndexOf('.');
+  return dot === -1 ? null : PREVIEW_TYPES[file.fileName.slice(dot + 1).toLowerCase()] || null;
+}
+
+function forgetPreviews(files) {
+  for (var id in previewUrls) {
+    if (!files[id]) {
+      URL.revokeObjectURL(previewUrls[id]);
+      delete previewUrls[id];
+    }
+  }
+  previewQueue = previewQueue.filter(function (queued) {
+    return files[queued];
+  });
+}
+
+function watchPreview(card, fileId, file) {
+  if (!previewTypeOf(file) || previewFailed[fileId]) {
+    return;
+  }
+  if (previewUrls[fileId]) {
+    showPreview(card, previewUrls[fileId]);
+    return;
+  }
+  if (!('IntersectionObserver' in window)) {
+    queuePreview(fileId);
+    return;
+  }
+  if (!previewObserver) {
+    previewObserver = new IntersectionObserver(function (entries) {
+      for (var i = 0; i < entries.length; i++) {
+        if (entries[i].isIntersecting) {
+          previewObserver.unobserve(entries[i].target);
+          queuePreview(entries[i].target.getAttribute('data-file-id'));
+        }
+      }
+    }, { rootMargin: '200px' });
+  }
+  previewObserver.observe(card);
+}
+
+function queuePreview(fileId) {
+  if (previewQueue.indexOf(fileId) === -1) {
+    previewQueue.push(fileId);
+  }
+  pumpPreviews();
+}
+
+function pumpPreviews() {
+  while (previewActive < PREVIEW_CONCURRENCY && previewQueue.length) {
+    loadPreview(previewQueue.shift());
+  }
+}
+
+function loadPreview(fileId) {
+  var file = lastKnownFiles && lastKnownFiles[fileId];
+  var type = previewTypeOf(file);
+  if (!type || !sessionId || previewUrls[fileId] || previewFailed[fileId]) {
+    return;
+  }
+  previewActive += 1;
+  fetch(downloadUrl(fileId)).then(function (response) {
+    return response.ok ? response.blob() : null;
+  }).then(function (blob) {
+    return blob ? makeThumbnail(blob, type) : null;
+  }).then(function (url) {
+    if (!url) {
+      previewFailed[fileId] = true;
+      return;
+    }
+    if (!lastKnownFiles || !lastKnownFiles[fileId]) {
+      URL.revokeObjectURL(url); // removed by the host meanwhile
+      return;
+    }
+    previewUrls[fileId] = url;
+    var card = findCard(fileId);
+    if (card) {
+      showPreview(card, url);
+    }
+  }).catch(function () {
+    previewFailed[fileId] = true;
+  }).then(function () {
+    previewActive -= 1;
+    pumpPreviews();
+  });
+}
+
+/** Resolves with the object URL of a small copy of the image, or null. */
+function makeThumbnail(blob, type) {
+  return new Promise(function (resolve) {
+    var source = URL.createObjectURL(new Blob([blob], { type: type }));
+    var img = new Image();
+    img.onload = function () {
+      var scale = Math.min(1, PREVIEW_PX / Math.max(img.naturalWidth, img.naturalHeight, 1));
+      var canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(source);
+      var outType = type === 'image/jpeg' ? 'image/jpeg' : 'image/png';
+      canvas.toBlob(function (small) {
+        resolve(small ? URL.createObjectURL(small) : null);
+      }, outType, 0.82);
+    };
+    img.onerror = function () {
+      URL.revokeObjectURL(source);
+      resolve(null);
+    };
+    img.src = source;
+  });
+}
+
+function showPreview(card, url) {
+  var box = card.querySelector('.file-icon');
+  if (!box || box.querySelector('img')) {
+    return;
+  }
+  var img = document.createElement('img');
+  img.alt = '';
+  img.decoding = 'async';
+  img.src = url;
+  box.classList.add('has-preview');
+  box.appendChild(img);
 }
 
 /* ---------------------------------------------------------------------
