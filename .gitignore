@@ -18,3 +18,6 @@ aika_site_web/
 
 # Binaires téléchargés manuellement depuis les GitHub Releases
 release/
+
+# Windows installers built locally (support/scripts/release_windows.ps1)
+/dist/

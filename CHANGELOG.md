@@ -1,3 +1,11 @@
+## 1.5.9
+
+- Windows : Aika reste opérationnelle même après des heures en arrière-plan ou dans la zone de notification. Plus besoin de quitter et relancer l'application pour transférer des fichiers.
+- Le serveur de réception ne s'arrête plus en silence (erreurs réseau fréquentes sous Windows, mise en veille, reconnexion Wi-Fi) ; s'il ne répond plus, Aika le relance automatiquement, sans jamais couper un transfert en cours.
+- Un transfert interrompu côté expéditeur (Wi-Fi coupé, appareil en veille) ne bloque plus les envois suivants (« Blocked by another session »).
+- Découverte des appareils rétablie automatiquement après une mise en veille, un changement de réseau Wi-Fi ou un démarrage avant la connexion au réseau ; l'adresse IP affichée est mise à jour sur Windows.
+- Les appareils qui changent d'adresse IP ne sont plus affichés en double, et les connexions vers un appareil injoignable échouent rapidement au lieu de rester « en attente ».
+
 ## 1.5.8
 
 - Nouvel onglet « Collections » (remplace « Envoyer ») : regroupez vos photos, vidéos et documents dans des collections conservées sur l'appareil, avec couverture, description, sélection multiple et réorganisation. Supprimer une collection ne supprime jamais vos fichiers d'origine.
