@@ -1,12 +1,17 @@
 name: Release
 
 # Builds and publishes a draft GitHub Release for Aika on Linux (.deb),
-# Windows (Inno Setup installer, unsigned), macOS (.dmg, unsigned) and iOS
-# (.ipa, unsigned, built by ios-release.yml called as a reusable workflow).
+# macOS (.dmg, unsigned) and iOS (.ipa, unsigned, built by ios-release.yml
+# called as a reusable workflow).
 #
 # Android is intentionally NOT built here: the Play Store AAB is built and
 # signed locally (`flutter build appbundle --release`), so the upload key
 # never has to be stored in GitHub secrets.
+#
+# Windows is NOT built here either: the installer is built locally with
+# support/scripts/release_windows.ps1 (Inno Setup, same steps as the former
+# build-windows job), then attached by hand to the draft release created
+# below, together with its .sha256 file.
 #
 # Version: app/pubspec.yaml is the single source ("version: X.Y.Z+N").
 # Flutter propagates it to every platform (versionName/versionCode,
@@ -154,83 +159,6 @@ jobs:
           name: linux-deb
           path: app/dist/release/Aika-v*.deb
 
-  build-windows:
-    needs: validate
-    runs-on: windows-latest
-    steps:
-      - name: Fix long file paths
-        run: git config --system core.longpaths true
-
-      - uses: actions/checkout@v6
-
-
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: "stable"
-
-      - name: Dependencies (app)
-        working-directory: app
-        run: flutter pub get
-
-      - name: Dependencies (cargokit - rust_builder)
-        working-directory: packages/localsend_isolates/rust_builder/cargokit/build_tool
-        run: flutter pub get
-
-      - name: Build Windows
-        working-directory: app
-        env:
-          CARGOKIT_VERBOSE: "1"
-        run: flutter build windows --release -v
-
-      - name: Verify build output
-        shell: bash
-        run: |
-          if [ ! -f "app/build/windows/x64/runner/Release/aika.exe" ]; then
-            echo "::error::app/build/windows/x64/runner/Release/aika.exe not found — flutter build windows produced no output."
-            exit 1
-          fi
-
-      - name: Bundle Visual C++ runtime DLLs
-        shell: pwsh
-        run: |
-          Copy-Item support\build\windows\x64\msvcp140.dll app\build\windows\x64\runner\Release\
-          Copy-Item support\build\windows\x64\vcruntime140.dll app\build\windows\x64\runner\Release\
-          Copy-Item support\build\windows\x64\vcruntime140_1.dll app\build\windows\x64\runner\Release\
-
-      - name: Set Inno Setup version to match this release
-        shell: pwsh
-        run: |
-          $version = "${{ needs.validate.outputs.version }}"
-          (Get-Content support\scripts\compile_windows_exe-inno.iss) -replace '#define MyAppVersion ".*"', "#define MyAppVersion `"$version`"" | Set-Content support\scripts\compile_windows_exe-inno.iss
-
-      - name: Ensure Inno Setup is installed
-        shell: pwsh
-        run: |
-          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          if (!(Test-Path $iscc)) {
-            choco install innosetup -y
-          }
-
-      - name: Compile installer (Inno Setup)
-        shell: cmd
-        run: '"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" support\scripts\compile_windows_exe-inno.iss'
-
-      - name: Verify installer exists
-        shell: bash
-        run: |
-          if [ ! -f "dist/Aika-v${{ needs.validate.outputs.version }}-windows-x64-setup.exe" ]; then
-            echo "::error::Expected installer not found in dist/"
-            ls -la dist || true
-            exit 1
-          fi
-
-      - name: Upload installer artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: windows-installer
-          path: dist/Aika-v*-windows-x64-setup.exe
-
   build-macos:
     needs: validate
     runs-on: macos-latest
@@ -311,7 +239,7 @@ jobs:
       contents: write
 
   checksums:
-    needs: [validate, build-linux, build-windows, build-macos, build-ios]
+    needs: [validate, build-linux, build-macos, build-ios]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v7
@@ -321,7 +249,7 @@ jobs:
       - name: Collect assets and compute SHA256SUMS
         run: |
           mkdir -p release-assets
-          find artifacts -maxdepth 2 -type f \( -name "*.deb" -o -name "*.exe" -o -name "*.dmg" \) -exec cp {} release-assets/ \;
+          find artifacts -maxdepth 2 -type f \( -name "*.deb" -o -name "*.dmg" \) -exec cp {} release-assets/ \;
           IPA=$(find artifacts -maxdepth 2 -type f -name "Aika.ipa" | head -n1)
           if [ -z "$IPA" ]; then
             echo "::error::Aika.ipa not found in the iOS build artifacts."
@@ -371,7 +299,7 @@ jobs:
 
             ### Installation
             - **Linux (.deb)** : `sudo apt install ./Aika-v${{ needs.validate.outputs.version }}-linux-x86-64.deb`
-            - **Windows** : téléchargez et lancez `Aika-v${{ needs.validate.outputs.version }}-windows-x64-setup.exe`. Non signé : Windows SmartScreen affichera un avertissement au premier lancement (« Informations complémentaires » → « Exécuter quand même »).
+            - **Windows** : téléchargez et lancez `Aika-v${{ needs.validate.outputs.version }}-windows-x64-setup.exe` (empreinte SHA-256 dans le fichier `.sha256` joint). Non signé : Windows SmartScreen affichera un avertissement au premier lancement (« Informations complémentaires » → « Exécuter quand même »).
             - **macOS** : téléchargez et ouvrez le `.dmg`, glissez Aika dans Applications. Non signé/notarié : au premier lancement, faites un clic droit sur Aika.app puis « Ouvrir » pour contourner Gatekeeper.
             - **iOS** : `Aika-v${{ needs.validate.outputs.version }}-ios-unsigned.ipa` n'est pas signé ; il doit être re-signé via Sideloadly ou AltStore (voir `app/docs/IOS_RELEASE.md`).
             - **Android** : disponible sur le Google Play Store.
