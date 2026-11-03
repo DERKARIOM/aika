@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:bitsdojo_window/bitsdojo_window.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:localsend_app/gen/assets.gen.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/provider/animation_provider.dart';
+import 'package:localsend_app/provider/network/receive_watchdog.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:logging/logging.dart';
 import 'package:refena_flutter/refena_flutter.dart';
@@ -74,6 +76,7 @@ Future<void> hideToTray() async {
   // Disable animations
   try {
     RefenaScope.defaultRef.notifier(sleepProvider).setState((_) => true);
+    RefenaScope.defaultRef.read(receiveWatchdogProvider).onBackground();
   } catch (e) {
     _logger.warning('Failed to update sleep state (Refena not yet initialized)', e);
   }
@@ -92,6 +95,8 @@ Future<void> showFromTray() async {
   // Enable animations
   try {
     RefenaScope.defaultRef.notifier(sleepProvider).setState((_) => false);
+    // Back from the tray: check reception before the user starts a transfer.
+    unawaited(RefenaScope.defaultRef.read(receiveWatchdogProvider).onResumed());
   } catch (e) {
     _logger.warning('Failed to update sleep state (Refena not yet initialized)', e);
   }

@@ -48,3 +48,6 @@ full = ["crypto", "http", "webrtc"]
 
 [dev-dependencies]
 rcgen = "0.14"
+# Controllable clock for the abandoned-session tests.
+tokio = { version = "1.49.0", features = ["full", "test-util"] }
+socket2 = "0.6.2"

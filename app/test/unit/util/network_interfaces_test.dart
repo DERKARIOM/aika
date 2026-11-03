@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:localsend_isolates/util/network_interfaces.dart';
 import 'package:test/test.dart';
 
@@ -45,5 +47,57 @@ void main() {
     expect(ignored('3.3.3.3'), true);
     expect(ignored('3.3.3.4'), true);
     expect(ignored('4.3.3.3'), false);
+  });
+
+  group('networkFingerprintOf', () {
+    List<InternetAddress> ips(List<String> ips) => ips.map((ip) => InternetAddress(ip)).toList();
+
+    test('does not depend on the order of interfaces and addresses', () {
+      final a = networkFingerprintOf({
+        'wlan0': ips(['192.168.1.10', '10.0.0.2']),
+        'eth0': ips(['172.16.0.4']),
+      });
+      final b = networkFingerprintOf({
+        'eth0': ips(['172.16.0.4']),
+        'wlan0': ips(['10.0.0.2', '192.168.1.10']),
+      });
+      expect(a, b);
+    });
+
+    test('changes with a new IP, a new interface or no network at all', () {
+      final base = networkFingerprintOf({
+        'wlan0': ips(['192.168.1.10']),
+      });
+      expect(
+        networkFingerprintOf({
+          'wlan0': ips(['192.168.1.11']),
+        }),
+        isNot(base),
+      );
+      expect(
+        networkFingerprintOf({
+          'wlan0': ips(['192.168.1.10']),
+          'eth0': ips(['10.0.0.1']),
+        }),
+        isNot(base),
+      );
+      expect(networkFingerprintOf({}), isNot(base));
+    });
+
+    test('ignores IPv6 addresses (privacy addresses rotate)', () {
+      expect(
+        networkFingerprintOf({
+          'wlan0': ips(['192.168.1.10', 'fe80::1']),
+        }),
+        networkFingerprintOf({
+          'wlan0': ips(['192.168.1.10', 'fe80::2']),
+        }),
+      );
+    });
+
+    test('works on the real interfaces of this machine', () async {
+      final interfaces = await NetworkInterface.list();
+      expect(networkInterfacesFingerprint(interfaces), networkInterfacesFingerprint(interfaces.reversed));
+    });
   });
 }

@@ -88,8 +88,11 @@ class RegisterDeviceAction extends AsyncReduxAction<NearbyDevicesService, Nearby
     } else {
       await Future.microtask(() {});
     }
+    // A device that answers from a new address (new DHCP lease, other
+    // network) replaces its stale entry: tapping it must reach the device.
+    final devices = {...state.devices}..removeWhere((ip, d) => ip != device.ip && d.fingerprint == device.fingerprint);
     return state.copyWith(
-      devices: {...state.devices}..update(device.ip!, (_) => device, ifAbsent: () => device),
+      devices: devices..[device.ip!] = device,
     );
   }
 }

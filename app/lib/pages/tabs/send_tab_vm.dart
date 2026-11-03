@@ -204,6 +204,10 @@ class SendTabInitAction extends AsyncGlobalAction {
     final devices = ref.read(nearbyDevicesProvider).devices;
     if (devices.isEmpty) {
       await dispatchAsync(StartSmartScan(forceLegacy: false));
+    } else {
+      // Devices found earlier may have changed (left, new address): a cheap
+      // announcement makes every device present answer again.
+      ref.redux(nearbyDevicesProvider).dispatch(StartMulticastScan());
     }
   }
 }

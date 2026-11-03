@@ -20,6 +20,7 @@ use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 use std::sync::Arc;
 use tokio::sync::oneshot;
+use tokio::time::Instant;
 use uuid::Uuid;
 
 /// Prefix of the `info.fingerprint` of upload sessions created by a web
@@ -273,15 +274,36 @@ pub(crate) async fn create_upload_session(
     }
 
     // Claim the single session slot.
-    {
+    let abandoned_session_id = {
         let mut slot = v2.session.lock().await;
-        if slot.is_some() {
-            return Err(AppError::Message(
-                StatusCode::CONFLICT,
-                "Blocked by another session".to_string(),
-            ));
-        }
+        let abandoned = match slot.as_ref() {
+            None => None,
+            Some(SessionStateV2::Active(session)) if session.is_abandoned(Instant::now()) => {
+                Some(session.session_id.clone())
+            }
+            Some(_) => {
+                return Err(AppError::Message(
+                    StatusCode::CONFLICT,
+                    "Blocked by another session".to_string(),
+                ));
+            }
+        };
         *slot = Some(SessionStateV2::Pending);
+        abandoned
+    };
+
+    if let Some(abandoned_session_id) = abandoned_session_id {
+        // Lets the application close the transfer it still displays.
+        tracing::warn!(
+            "Upload session {abandoned_session_id} abandoned by its sender, replaced by a new request from {sender_ip}"
+        );
+        let _ = v2
+            .event_tx
+            .send(ServerEventV2::SessionEnd {
+                session_id: abandoned_session_id,
+                reason: SessionEndReasonV2::Cancelled,
+            })
+            .await;
     }
 
     let session_id = Uuid::new_v4().to_string();
@@ -349,6 +371,7 @@ pub(crate) async fn create_upload_session(
             session_id: session_id.clone(),
             sender_ip,
             files,
+            last_activity: Instant::now(),
         }));
     }
     pending_guard.disarm();
@@ -401,7 +424,9 @@ pub(crate) async fn upload(
             return Err(invalid_token_error());
         }
         file.status = FileStatusV2::InProgress;
-        file.dto.clone()
+        let dto = file.dto.clone();
+        session.touch();
+        dto
     };
 
     // Marks the file as failed if this request is aborted mid-transfer.
@@ -614,6 +639,7 @@ async fn finalize_file(v2: &V2State, session_id: &str, file_id: &str, success: b
         if session.session_id != session_id {
             return;
         }
+        session.touch();
         if let Some(file) = session.files.get_mut(file_id) {
             if file.status == FileStatusV2::InProgress {
                 file.status = match success {

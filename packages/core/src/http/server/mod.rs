@@ -317,8 +317,36 @@ async fn start_server_with_listener(
         tls_acceptor.is_some()
     );
 
+    // Consecutive listener errors, for the backoff.
+    let mut failures: u32 = 0;
     loop {
-        let (tcp_stream, remote_addr) = incoming.accept().await?;
+        // An accept error must never end the server: the listener would be
+        // gone while the application keeps showing "ready to receive".
+        // On Windows, `accept` fails routinely with WSAECONNRESET when a
+        // peer resets a connection before it is accepted (e.g. the HTTP
+        // subnet scan of other devices), and with WSAENETDOWN/ENOBUFS
+        // around sleep, Wi-Fi reconnection or adapter resets.
+        let (tcp_stream, remote_addr) = match incoming.accept().await {
+            Ok(connection) => {
+                failures = 0;
+                connection
+            }
+            Err(err) => {
+                match accept_error_backoff(&err, failures) {
+                    None => tracing::debug!("Ignoring failed incoming connection: {err}"),
+                    Some(delay) => {
+                        failures = failures.saturating_add(1);
+                        tracing::warn!(
+                            "Accepting connections failed ({failures}x), retrying in {delay:?}: {err}"
+                        );
+                        tokio::time::sleep(delay).await;
+                    }
+                }
+                continue;
+            }
+        };
+
+        configure_accepted_stream(&tcp_stream);
 
         let tls_acceptor = tls_acceptor.clone();
         let app_state = app_state.clone();
@@ -342,10 +370,18 @@ async fn serve_connection(
 ) {
     let res = match tls_acceptor {
         Some(tls_acceptor) => {
-            let tls_stream = match tls_acceptor.accept(tcp_stream).await {
-                Ok(tls_stream) => tls_stream,
-                Err(err) => {
+            // A peer that connects and never completes the handshake (gone
+            // to sleep, scan aborted...) must not hold a task and a socket forever.
+            let handshake =
+                tokio::time::timeout(TLS_HANDSHAKE_TIMEOUT, tls_acceptor.accept(tcp_stream)).await;
+            let tls_stream = match handshake {
+                Ok(Ok(tls_stream)) => tls_stream,
+                Ok(Err(err)) => {
                     tracing::warn!("TLS handshake error: {err:#}");
+                    return;
+                }
+                Err(_) => {
+                    tracing::debug!("TLS handshake with {remote_addr} timed out");
                     return;
                 }
             };
@@ -394,6 +430,99 @@ async fn serve_connection(
 
     if let Err(err) = res {
         tracing::warn!("Failed to serve connection: {err:#}");
+    }
+}
+
+/// Maximum duration of the TLS handshake of an incoming connection.
+const TLS_HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// Idle time after which TCP keepalive probes check that the peer is still there.
+const TCP_KEEPALIVE_TIME: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Interval between two TCP keepalive probes.
+const TCP_KEEPALIVE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Decides how to continue after a failed `accept`.
+///
+/// Returns `None` for errors tied to a single incoming connection (the peer
+/// reset or aborted it before it was accepted): the next connection can be
+/// accepted right away. Returns a delay for errors of the listener itself
+/// (too many open files, no buffer space, network down...) that usually
+/// clear by themselves: retrying immediately would only spin the CPU. The
+/// delay doubles with each consecutive failure (`failures`), up to 10 s.
+pub(crate) fn accept_error_backoff(
+    err: &std::io::Error,
+    failures: u32,
+) -> Option<std::time::Duration> {
+    use std::io::ErrorKind;
+    match err.kind() {
+        ErrorKind::ConnectionAborted
+        | ErrorKind::ConnectionReset
+        | ErrorKind::ConnectionRefused
+        | ErrorKind::Interrupted
+        | ErrorKind::WouldBlock
+        | ErrorKind::TimedOut => None,
+        _ => {
+            let delay = 250_u64.saturating_mul(1 << failures.min(6));
+            Some(std::time::Duration::from_millis(delay.min(10_000)))
+        }
+    }
+}
+
+/// Enables TCP keepalive on an accepted connection so that a peer that
+/// vanished without closing it (Wi-Fi lost, device asleep) is detected and
+/// its connection released instead of piling up for hours.
+fn configure_accepted_stream(tcp_stream: &tokio::net::TcpStream) {
+    let _ = tcp_stream.set_nodelay(true);
+    let keepalive = socket2::TcpKeepalive::new()
+        .with_time(TCP_KEEPALIVE_TIME)
+        .with_interval(TCP_KEEPALIVE_INTERVAL);
+    if let Err(err) = socket2::SockRef::from(tcp_stream).set_tcp_keepalive(&keepalive) {
+        tracing::debug!("Could not enable TCP keepalive: {err}");
+    }
+}
+
+#[cfg(test)]
+mod accept_tests {
+    use super::accept_error_backoff;
+    use std::io::{Error, ErrorKind};
+
+    #[test]
+    fn per_connection_errors_are_retried_immediately() {
+        for kind in [
+            ErrorKind::ConnectionReset,
+            ErrorKind::ConnectionAborted,
+            ErrorKind::ConnectionRefused,
+            ErrorKind::Interrupted,
+        ] {
+            assert_eq!(
+                accept_error_backoff(&Error::from(kind), 3),
+                None,
+                "{kind:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn listener_errors_back_off() {
+        // EMFILE / ENOBUFS / WSAENETDOWN surface as other kinds.
+        assert!(accept_error_backoff(&Error::from(ErrorKind::OutOfMemory), 0).is_some());
+        assert!(accept_error_backoff(&Error::from_raw_os_error(24), 0).is_some());
+        assert!(accept_error_backoff(&Error::other("network down"), 0).is_some());
+    }
+
+    #[test]
+    fn backoff_grows_and_is_capped() {
+        let delay = |failures| {
+            accept_error_backoff(&Error::other("network down"), failures)
+                .unwrap()
+                .as_millis()
+        };
+        assert_eq!(delay(0), 250);
+        assert_eq!(delay(1), 500);
+        assert_eq!(delay(3), 2000);
+        assert_eq!(delay(6), 10_000);
+        assert_eq!(delay(u32::MAX), 10_000);
     }
 }
 

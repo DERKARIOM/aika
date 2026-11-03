@@ -12,6 +12,7 @@ import 'package:localsend_app/util/alias_generator.dart';
 import 'package:localsend_isolates/constants.dart';
 import 'package:localsend_isolates/isolate.dart';
 import 'package:localsend_isolates/model/dto/multicast_dto.dart';
+import 'package:localsend_isolates/model/session_status.dart';
 import 'package:localsend_isolates/rust/api/server.dart' show WebSendI18n, WebSendParams;
 import 'package:localsend_isolates/util/rust.dart';
 import 'package:logging/logging.dart';
@@ -73,6 +74,14 @@ class ServerService extends Notifier<ServerState?> {
 
   StreamSubscription<HttpServerEvent>? _subscription;
 
+  /// Whether the server is meant to run: true from the first start attempt,
+  /// false only after an explicit [stopServer]. Lets the watchdog bring back
+  /// a server that stopped on its own or could not start (port still taken
+  /// by another program, no network yet...).
+  bool _shouldRun = false;
+
+  bool get shouldRun => _shouldRun;
+
   ServerService();
 
   @override
@@ -113,6 +122,7 @@ class ServerService extends Notifier<ServerState?> {
     }
 
     _logger.info('Starting server...');
+    _shouldRun = true;
 
     // The server isolate derives its configuration from the sync state,
     // so it must be published before the start task.
@@ -226,6 +236,7 @@ class ServerService extends Notifier<ServerState?> {
 
   Future<void> stopServer() async {
     _logger.info('Stopping server...');
+    _shouldRun = false;
     await _subscription?.cancel();
     _subscription = null;
     await ref.redux(parentIsolateProvider).dispatchAsync(IsolateHttpServerStopAction());
@@ -236,6 +247,26 @@ class ServerService extends Notifier<ServerState?> {
   Future<ServerState?> restartServerFromSettings() async {
     await stopServer();
     return await startServerFromSettings();
+  }
+
+  /// Restarts a server that stopped working (see [ReceiveWatchdog]).
+  ///
+  /// Unlike [restartServerFromSettings], a transfer that already ended stays
+  /// displayed: the progress page of the user is not emptied. The next
+  /// incoming request closes it as usual.
+  Future<ServerState?> recoverServer() async {
+    final endedSession = switch (state?.session) {
+      final session? when session.status != SessionStatus.waiting && session.status != SessionStatus.sending => session,
+      _ => null,
+    };
+    if (state != null) {
+      await stopServer();
+    }
+    final newState = await startServerFromSettings();
+    if (newState != null && endedSession != null) {
+      state = newState.copyWith(session: endedSession);
+    }
+    return state;
   }
 
   Future<ServerState?> restartServer({required String alias, required int port, required bool https, WebSendState? webSendState}) async {

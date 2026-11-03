@@ -24,6 +24,7 @@ import 'package:localsend_app/provider/chat/chat_provider.dart';
 import 'package:localsend_app/provider/device_info_provider.dart';
 import 'package:localsend_app/provider/link_download_provider.dart';
 import 'package:localsend_app/provider/network/nearby_devices_provider.dart';
+import 'package:localsend_app/provider/network/receive_watchdog.dart';
 import 'package:localsend_app/provider/network/server/server_provider.dart';
 import 'package:localsend_app/provider/network/webrtc/signaling_provider.dart';
 import 'package:localsend_app/provider/persistence_provider.dart';
@@ -241,6 +242,10 @@ Future<void> postInit(BuildContext context, Ref ref, bool appStart) async {
   }
 
   ref.redux(signalingProvider).dispatch(SetupSignalingConnection());
+
+  // Desktop: Aika may sit in the tray for hours while the system sleeps or
+  // the network changes. A light periodic check repairs what breaks.
+  ref.read(receiveWatchdogProvider).startMonitoring();
 
   // Chat: keep the blocked-devices list and the conversation list synced
   // with the database for as long as the app runs, start the chat links

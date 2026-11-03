@@ -4,6 +4,9 @@ analyzer:
   exclude:
     - lib/**.g.dart
     - lib/**.freezed.dart
+    # Vendored build tool (own pubspec, resolved by cargokit at build time).
+    - rust_builder/**
+    - build/**
 
 formatter:
   trailing_commas: preserve

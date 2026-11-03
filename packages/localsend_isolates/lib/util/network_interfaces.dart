@@ -5,9 +5,12 @@ import 'package:logging/logging.dart';
 final _logger = Logger('NetworkInterface');
 
 /// Returns a list of network interfaces respecting the whitelist and blacklist.
+///
+/// [log] can be disabled for periodic checks, to not flood the logs.
 Future<List<NetworkInterface>> getNetworkInterfaces({
   required List<String>? whitelist,
   required List<String>? blacklist,
+  bool log = true,
 }) async {
   final result = <NetworkInterface>[];
   final digestedWhitelist = whitelist?.map(buildRegExpFromIpFilter).toList();
@@ -19,7 +22,9 @@ Future<List<NetworkInterface>> getNetworkInterfaces({
       networkBlacklist: digestedBlacklist,
       interface: interface.addresses.map((a) => a.address).toList(),
     )) {
-      _logger.info('Ignore network interface ${interface.name} (${interface.addresses.map((a) => a.address).toList()})');
+      if (log) {
+        _logger.info('Ignore network interface ${interface.name} (${interface.addresses.map((a) => a.address).toList()})');
+      }
       continue;
     }
     result.add(interface);
@@ -65,4 +70,23 @@ bool isNetworkIgnored({
     return true;
   }
   return false;
+}
+
+/// A stable description of the given interfaces and their IPv4 addresses.
+/// Two equal fingerprints mean that nothing relevant for the sockets changed.
+String networkInterfacesFingerprint(Iterable<NetworkInterface> interfaces) {
+  return networkFingerprintOf({
+    for (final interface in interfaces) interface.name: interface.addresses,
+  });
+}
+
+/// See [networkInterfacesFingerprint]: [interfaces] maps interface names to
+/// their addresses. IPv6 addresses are ignored (privacy addresses rotate on
+/// their own without any change for the IPv4 sockets).
+String networkFingerprintOf(Map<String, Iterable<InternetAddress>> interfaces) {
+  final entries = [
+    for (final MapEntry(key: name, value: addresses) in interfaces.entries)
+      '$name=${(addresses.where((a) => a.type == InternetAddressType.IPv4).map((a) => a.address).toList()..sort()).join(',')}',
+  ]..sort();
+  return entries.join(';');
 }

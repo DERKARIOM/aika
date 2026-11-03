@@ -61,14 +61,11 @@ class LocalSendApp extends StatelessWidget {
                 ref.redux(localIpProvider).dispatch(InitLocalIpAction());
                 // Links may have died while in the background (mobile).
                 ref.notifier(chatProvider).retryLinksNow();
-                // After a long background stay, the OS may have closed the
-                // receive server and discovery sockets: rebind them.
+                // Checks that reception still works (the OS may have closed
+                // the receive server or the discovery sockets, the network
+                // may have changed) and repairs only what broke.
                 // ignore: discarded_futures
-                ref.read(receiveWatchdogProvider).onResumed().then((restarted) {
-                  if (restarted) {
-                    ref.notifier(chatProvider).retryLinksNow();
-                  }
-                });
+                ref.read(receiveWatchdogProvider).onResumed();
                 // [FOSS_REMOVE_START]
                 maybeCheckForUpdate(ref, trigger: UpdateCheckTrigger.resume);
                 // [FOSS_REMOVE_END]

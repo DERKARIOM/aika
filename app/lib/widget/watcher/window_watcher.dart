@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:localsend_app/provider/animation_provider.dart';
+import 'package:localsend_app/provider/network/receive_watchdog.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/provider/window_dimensions_provider.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
@@ -113,15 +114,29 @@ class _WindowWatcherState extends State<WindowWatcher> with WindowListener, Refe
   void onWindowFocus() {
     // call set state according to window_manager README
     setState(() {});
+    _onForeground();
   }
 
   @override
   void onWindowMinimize() {
     ref.notifier(sleepProvider).setState((_) => true);
+    ref.read(receiveWatchdogProvider).onBackground();
   }
 
   @override
   void onWindowRestore() {
     ref.notifier(sleepProvider).setState((_) => false);
+    _onForeground();
+  }
+
+  /// The user is back (restored, focused): makes sure that reception still
+  /// works before they start a transfer. The check is throttled and only
+  /// repairs what is actually broken.
+  void _onForeground() {
+    if (!checkPlatformIsDesktop()) {
+      return;
+    }
+    // ignore: discarded_futures
+    ref.read(receiveWatchdogProvider).onResumed();
   }
 }

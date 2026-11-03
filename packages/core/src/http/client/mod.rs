@@ -168,6 +168,15 @@ pub(super) fn upload_body(
     reqwest::Body::wrap_stream(stream)
 }
 
+/// Maximum time to establish a TCP connection to a peer on the local network.
+const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Idle time after which TCP keepalive probes check that the peer is still there.
+const TCP_KEEPALIVE: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Idle pooled connections are dropped after this duration.
+const POOL_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
 pub(super) fn create_reqwest_client(
     private_key: &str,
     cert: &str,
@@ -184,7 +193,16 @@ pub(super) fn create_reqwest_client(
         .use_rustls_tls()
         .danger_accept_invalid_certs(true)
         .tls_info(true)
-        .identity(identity);
+        .identity(identity)
+        // A peer whose IP is stale (asleep, gone, new DHCP lease) fails fast
+        // instead of leaving the transfer "waiting" for the OS SYN timeout.
+        .connect_timeout(CONNECT_TIMEOUT)
+        // Detects a peer that vanished while a request waits (e.g. for the
+        // receiver to accept), instead of waiting forever on a dead socket.
+        .tcp_keepalive(TCP_KEEPALIVE)
+        // Pooled connections go stale while the app idles in the background
+        // (peer slept, Wi-Fi roamed): never reuse one that old.
+        .pool_idle_timeout(POOL_IDLE_TIMEOUT);
 
     if let Some(timeout) = timeout {
         builder = builder.timeout(timeout);

@@ -559,6 +559,188 @@ async fn test_second_session_blocked_and_cancel() {
         .unwrap();
 }
 
+/// Peers that connect and reset right away (HTTP subnet scans of other
+/// devices, aborted handshakes) must never take the server down.
+#[tokio::test]
+async fn test_server_survives_reset_connections() {
+    let server = start_test_server(None, true, None).await;
+
+    for _ in 0..200 {
+        let stream = tokio::net::TcpStream::connect(("127.0.0.1", server.port))
+            .await
+            .unwrap();
+        // SO_LINGER 0: closing sends a RST instead of a FIN.
+        socket2::SockRef::from(&stream)
+            .set_linger(Some(Duration::ZERO))
+            .unwrap();
+        drop(stream);
+    }
+
+    let client = LsHttpClientV2::try_new_without_cert().unwrap();
+    let response = client
+        .register(ProtocolType::Http, "127.0.0.1", server.port, sender_info())
+        .await
+        .unwrap();
+    assert_eq!(response.body.alias, "Test Server");
+}
+
+/// Moves the clock of the (single-threaded) test runtime forward.
+async fn advance_clock(duration: Duration) {
+    tokio::time::pause();
+    tokio::time::advance(duration).await;
+    tokio::time::resume();
+}
+
+/// A sender that vanished after its session was accepted (Wi-Fi lost,
+/// device asleep...) must not block every later transfer until a restart.
+#[tokio::test]
+async fn test_abandoned_session_is_replaced() {
+    let server = start_test_server(None, true, None).await;
+    let client = LsHttpClientV2::try_new_without_cert().unwrap();
+    let file = file_dto("file-a", "a.bin", 5);
+
+    let abandoned = client
+        .prepare_upload(
+            ProtocolType::Http,
+            "127.0.0.1",
+            server.port,
+            None,
+            prepare_upload_request(&[file.clone()]),
+            None,
+        )
+        .await
+        .unwrap()
+        .response
+        .unwrap();
+
+    // Still recent: a new request is blocked as before.
+    let result = client
+        .prepare_upload(
+            ProtocolType::Http,
+            "127.0.0.1",
+            server.port,
+            None,
+            prepare_upload_request(&[file.clone()]),
+            None,
+        )
+        .await;
+    assert_status(result, 409);
+
+    // The sender never uploads anything.
+    advance_clock(Duration::from_secs(61)).await;
+
+    let replacement = client
+        .prepare_upload(
+            ProtocolType::Http,
+            "127.0.0.1",
+            server.port,
+            None,
+            prepare_upload_request(&[file.clone()]),
+            None,
+        )
+        .await
+        .unwrap()
+        .response
+        .unwrap();
+    assert_ne!(replacement.session_id, abandoned.session_id);
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let session_ends = server.session_ends.lock().await.clone();
+    assert_eq!(
+        session_ends,
+        vec![(abandoned.session_id.clone(), SessionEndReasonV2::Cancelled)]
+    );
+
+    // The new session works end to end.
+    upload_bytes(
+        &client,
+        server.port,
+        &replacement.session_id,
+        &file.id,
+        &replacement.files[&file.id],
+        b"hello",
+    )
+    .await
+    .unwrap();
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(server.received.lock().await[&file.id], b"hello".to_vec());
+}
+
+/// A slow but alive transfer (a file is being received) is never replaced,
+/// however long it takes.
+#[tokio::test]
+async fn test_session_receiving_a_file_is_not_replaced() {
+    let server = start_test_server(None, true, None).await;
+    let client = Arc::new(LsHttpClientV2::try_new_without_cert().unwrap());
+    let file = file_dto("file-a", "a.bin", 5);
+
+    let session = client
+        .prepare_upload(
+            ProtocolType::Http,
+            "127.0.0.1",
+            server.port,
+            None,
+            prepare_upload_request(&[file.clone()]),
+            None,
+        )
+        .await
+        .unwrap()
+        .response
+        .unwrap();
+
+    // Starts the upload but keeps the body open (2 of 5 bytes sent).
+    let (tx, rx) = mpsc::channel::<Bytes>(4);
+    tx.send(Bytes::from_static(b"he")).await.unwrap();
+    let upload = tokio::spawn({
+        let client = client.clone();
+        let port = server.port;
+        let session_id = session.session_id.clone();
+        let token = session.files[&file.id].clone();
+        let file_id = file.id.clone();
+        async move {
+            let body = localsend::reqwest::Body::wrap_stream(
+                ReceiverStream::new(rx).map(Ok::<Bytes, std::io::Error>),
+            );
+            client
+                .upload(
+                    ProtocolType::Http,
+                    "127.0.0.1",
+                    port,
+                    None,
+                    &session_id,
+                    &file_id,
+                    &token,
+                    body,
+                    CancellationToken::new(),
+                )
+                .await
+        }
+    });
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    advance_clock(Duration::from_secs(120)).await;
+
+    let result = client
+        .prepare_upload(
+            ProtocolType::Http,
+            "127.0.0.1",
+            server.port,
+            None,
+            prepare_upload_request(&[file.clone()]),
+            None,
+        )
+        .await;
+    assert_status(result, 409);
+    assert!(server.session_ends.lock().await.is_empty());
+
+    // Finishing the upload completes the session normally.
+    tx.send(Bytes::from_static(b"llo")).await.unwrap();
+    drop(tx);
+    upload.await.unwrap().unwrap();
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(server.received.lock().await[&file.id], b"hello".to_vec());
+}
+
 #[tokio::test]
 async fn test_prepare_upload_declined() {
     let server = start_test_server(None, false, None).await;
