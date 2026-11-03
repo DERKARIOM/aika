@@ -45,6 +45,8 @@ var TRANSLATIONS = {
     uploadTitle: 'Envoyer des fichiers',
     dropHint: 'Glissez-déposez vos fichiers ici',
     pickFiles: 'Choisir des fichiers',
+    pickMedia: 'Photos et vidéos',
+    multiHint: 'Astuce : pour choisir plusieurs fichiers, appuyez longuement sur le premier, puis touchez les autres.',
     uploadNote: 'Les fichiers sont envoyés directement à l’appareil hôte, sur votre réseau local.',
     cancelAll: 'Tout annuler',
     summaryActive: 'Envoi en cours — {done}/{total} fichier(s)',
@@ -105,6 +107,8 @@ var TRANSLATIONS = {
     uploadTitle: 'Send files',
     dropHint: 'Drag and drop your files here',
     pickFiles: 'Choose files',
+    pickMedia: 'Photos & videos',
+    multiHint: 'Tip: to choose several files, long-press the first one, then tap the others.',
     uploadNote: 'Files are sent directly to the host device, over your local network.',
     cancelAll: 'Cancel all',
     summaryActive: 'Sending — {done}/{total} file(s)',
@@ -1483,17 +1487,29 @@ function initLangSwitch() {
   }
 }
 
-function initUpload() {
-  var input = document.getElementById('file-input');
-  var zone = document.getElementById('drop-zone');
-
-  document.getElementById('pick-files-btn').addEventListener('click', function () {
+/** Opens [input] from [button]; every pick adds to the upload queue. */
+function bindPicker(button, input) {
+  button.addEventListener('click', function () {
     input.click();
   });
   input.addEventListener('change', function () {
     addFiles(input.files);
     input.value = ''; // allow selecting the same file again
   });
+}
+
+function initUpload() {
+  var zone = document.getElementById('drop-zone');
+
+  bindPicker(document.getElementById('pick-files-btn'), document.getElementById('file-input'));
+  bindPicker(document.getElementById('pick-media-btn'), document.getElementById('media-input'));
+
+  // Phones and tablets: the system file picker selects several files only
+  // after a long press, which nobody guesses. Offer the photo picker (simple
+  // taps) and explain the long press.
+  var touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  document.getElementById('pick-media-btn').hidden = !touch;
+  document.getElementById('multi-hint').hidden = !touch;
 
   var dragDepth = 0;
   zone.addEventListener('dragenter', function (event) {
