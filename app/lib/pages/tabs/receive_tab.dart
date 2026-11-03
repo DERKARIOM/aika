@@ -804,7 +804,15 @@ class _Actions extends StatelessWidget {
   /// Same pickers as the Send tab; once something is selected, a second
   /// sheet lists the nearby devices (and the QR scanner) so the transfer
   /// starts from here, without opening the Send tab.
+  ///
+  /// When files are already selected (share, drag and drop, a send left
+  /// unfinished...), the send page opens directly: the selection is shown
+  /// with its devices instead of asking again what to send.
   Future<void> _sendFiles(BuildContext context) async {
+    if (context.ref.read(selectedSendingFilesProvider).isNotEmpty) {
+      await context.push(() => const SendFilesPage());
+      return;
+    }
     final option = await context.pushBottomSheet(() => const _SendSourceSheet());
     if (option == _moreOptions && context.mounted) {
       await context.push(() => const SendFilesPage());
